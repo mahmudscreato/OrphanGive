@@ -1,21 +1,29 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-const REFRESH_COOKIE = "directus_refresh_token";
+const ACCESS_COOKIE = "directus_access_token";
 
 export function proxy(request: NextRequest) {
-  if (request.cookies.get(REFRESH_COOKIE)) {
+  const token = request.cookies.get(ACCESS_COOKIE)?.value;
+
+  if (token) {
     return NextResponse.next();
   }
-  const url = new URL("/signin", request.url);
-  url.searchParams.set("next", request.nextUrl.pathname);
-  return NextResponse.redirect(url);
+
+  const { pathname, search } = request.nextUrl;
+  const from = `${pathname}${search}`;
+  const signInUrl = new URL("/signin", request.url);
+  signInUrl.searchParams.set("from", from);
+
+  return NextResponse.redirect(signInUrl);
 }
 
 export const config = {
   matcher: [
+    "/dashboard",
     "/dashboard/:path*",
+    "/sponsor",
     "/sponsor/:path*",
+    "/account",
     "/account/:path*",
   ],
 };
