@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/layout/SiteNav";
@@ -31,6 +31,11 @@ export const metadata: Metadata = {
   description: "OrphanGive public site",
 };
 
+export const viewport: Viewport = {
+  colorScheme: "light",
+  themeColor: "#FFFAF2",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -41,7 +46,10 @@ export default function RootLayout({
       lang="en"
       className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-cream text-ink">
+      <body
+        className="min-h-full flex flex-col bg-cream text-ink"
+        suppressHydrationWarning={true}
+      >
         <SiteNav />
         <main className="flex-1">{children}</main>
         <SiteFooter />

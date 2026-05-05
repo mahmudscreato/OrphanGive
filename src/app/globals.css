@@ -59,12 +59,17 @@
   box-sizing: border-box;
 }
 
+:root {
+  color-scheme: light;
+}
+
 html {
   scroll-behavior: smooth;
+  background-color: var(--cream);
 }
 
 body {
-  background: var(--cream);
+  background-color: var(--cream);
   color: var(--ink);
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;

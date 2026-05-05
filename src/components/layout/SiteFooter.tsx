@@ -96,8 +96,7 @@ export function SiteFooter() {
 
         <div className="pt-8 flex flex-wrap justify-between items-center gap-4 font-mono text-[11px] text-cream/40 tracking-[0.08em]">
           <span>
-            © {year} Children&apos;s Heaven Trust · Built on the OrphanGive
-            platform
+            © {year} Children&apos;s Heaven Trust · Operated with OrphanGive
           </span>
           <div className="flex gap-6">
             {BOTTOM_LINKS.map((link) => (
