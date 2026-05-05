@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --tangerine: #F39322;
+  --tangerine-deep: #D97A0F;
+  --tangerine-light: #FFB453;
+  --tangerine-soft: #FFE4C4;
+  --tangerine-mist: #FFF4E6;
+  --ink: #2A2A2C;
+  --slate: #5C5C5E;
+  --slate-soft: #8B8B8E;
+  --cream: #FFFAF2;
+  --linen: #F8F1E4;
+  --sand: #F4E8D5;
+  --moss: #6B8E5A;
+  --moss-soft: #D4E0CC;
+}
+
+@theme inline {
+  --color-tangerine: var(--tangerine);
+  --color-tangerine-deep: var(--tangerine-deep);
+  --color-tangerine-light: var(--tangerine-light);
+  --color-tangerine-soft: var(--tangerine-soft);
+  --color-tangerine-mist: var(--tangerine-mist);
+  --color-ink: var(--ink);
+  --color-slate: var(--slate);
+  --color-slate-soft: var(--slate-soft);
+  --color-cream: var(--cream);
+  --color-linen: var(--linen);
+  --color-sand: var(--sand);
+  --color-moss: var(--moss);
+  --color-moss-soft: var(--moss-soft);
+
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
