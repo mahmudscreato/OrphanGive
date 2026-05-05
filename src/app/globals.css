@@ -81,3 +81,140 @@ body {
   background: var(--tangerine);
   color: var(--white);
 }
+
+/* ============ ANIMATIONS ============ */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+@keyframes float-in {
+  from { opacity: 0; transform: translate(-20px, 20px); }
+  to { opacity: 1; transform: translate(0, 0); }
+}
+@keyframes gentle-bob {
+  0%, 100% { transform: rotate(20deg) translateY(0); }
+  50% { transform: rotate(15deg) translateY(-12px); }
+}
+
+.animate-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+.animate-float-in { animation: float-in 1s var(--ease-spring) 600ms backwards; }
+.animate-gentle-bob {
+  transform: rotate(20deg);
+  animation: gentle-bob 6s ease-in-out infinite;
+}
+
+/* ============ PAINTERLY UNDERLINE ============ */
+.painterly-underline {
+  position: relative;
+  display: inline-block;
+}
+.painterly-underline::after {
+  content: '';
+  position: absolute;
+  left: -2%;
+  right: -2%;
+  bottom: 6px;
+  height: 12px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 12' preserveAspectRatio='none'%3E%3Cpath d='M2 8 Q50 2 100 6 T198 4' stroke='%23F39322' stroke-width='3' fill='none' stroke-linecap='round' opacity='0.25'/%3E%3C/svg%3E") no-repeat;
+  background-size: 100% 100%;
+  z-index: -1;
+}
+
+/* ============ CHILD PHOTO PLACEHOLDER ============ */
+.child-photo-placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #c9a880 0%, #8a6442 50%, #5c4028 100%);
+}
+.child-photo-placeholder::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse at 50% 30%, rgba(255, 220, 180, 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse at 30% 70%, rgba(0, 0, 0, 0.35) 0%, transparent 60%);
+}
+.child-photo-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Cellipse cx='200' cy='160' rx='65' ry='80' fill='%23593b25' opacity='0.5'/%3E%3Cpath d='M 110 260 Q 200 200 290 260 L 310 400 L 90 400 Z' fill='%233a2618' opacity='0.6'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  mix-blend-mode: multiply;
+}
+
+.hero-photo-placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #c9a880 0%, #8a6442 50%, #5c4028 100%);
+}
+.hero-photo-placeholder::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse at 65% 35%, rgba(255, 220, 180, 0.45) 0%, transparent 50%),
+    radial-gradient(ellipse at 30% 80%, rgba(0, 0, 0, 0.4) 0%, transparent 60%);
+}
+.hero-photo-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 500'%3E%3Cellipse cx='200' cy='180' rx='75' ry='90' fill='%23593b25' opacity='0.5'/%3E%3Cpath d='M 110 300 Q 200 240 290 300 L 310 500 L 90 500 Z' fill='%233a2618' opacity='0.6'/%3E%3Crect x='150' y='370' width='100' height='80' rx='3' fill='%23d4a574' opacity='0.35' transform='rotate(-4 200 410)'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  mix-blend-mode: multiply;
+}
+
+.story-photo-placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #b8945e 0%, #6b4a2c 60%, #3d2818 100%);
+}
+.story-photo-placeholder::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(ellipse at 60% 35%, rgba(255, 220, 180, 0.3) 0%, transparent 55%),
+    radial-gradient(ellipse at 30% 80%, rgba(0, 0, 0, 0.4) 0%, transparent 55%);
+}
+.story-photo-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 500'%3E%3Cellipse cx='200' cy='180' rx='75' ry='90' fill='%23593b25' opacity='0.5'/%3E%3Cpath d='M 110 300 Q 200 240 290 300 L 310 500 L 90 500 Z' fill='%233a2618' opacity='0.6'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  mix-blend-mode: multiply;
+}
+
+/* ============ DECORATIVE LOGO MOTIFS ============ */
+.logo-motif {
+  position: absolute;
+  background-image: url('/logo-mark.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* Tag with leading line — used in section eyebrows */
+.eyebrow-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-jetbrains-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tangerine-deep);
+}
+.eyebrow-tag::before {
+  content: '';
+  width: 28px;
+  height: 1.5px;
+  background: var(--tangerine);
+}
+

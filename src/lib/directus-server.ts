@@ -14,6 +14,14 @@ export function getServerDirectus(token?: string) {
   return client;
 }
 
+export function getAdminDirectus() {
+  const token = process.env.DIRECTUS_SERVER_TOKEN;
+  if (!token) {
+    throw new Error("DIRECTUS_SERVER_TOKEN is not defined");
+  }
+  return createDirectus(url!).with(rest()).with(staticToken(token));
+}
+
 export const ACCESS_COOKIE = "directus_access_token";
 export const REFRESH_COOKIE = "directus_refresh_token";
 

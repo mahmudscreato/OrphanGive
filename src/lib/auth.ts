@@ -3,13 +3,21 @@ import {
   login,
   logout,
   readMe,
+  readRoles,
+  readUsers,
   refresh,
   registerUser,
   registerUserVerify,
+  updateUser,
   type AuthenticationData,
 } from "@directus/sdk";
 import { directus } from "./directus";
-import { ACCESS_COOKIE, REFRESH_COOKIE, getServerDirectus } from "./directus-server";
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  getAdminDirectus,
+  getServerDirectus,
+} from "./directus-server";
 
 export type DonorProfile = {
   first_name?: string;
@@ -41,6 +49,26 @@ export async function signIn(
   return directus.request(login({ email, password }, { mode: "json" }));
 }
 
+let donorRoleIdCache: string | null = null;
+
+async function getDonorRoleId(): Promise<string | null> {
+  if (donorRoleIdCache) return donorRoleIdCache;
+  try {
+    const admin = getAdminDirectus();
+    const roles = await admin.request(
+      readRoles({ fields: ["id", "name"], limit: -1 }),
+    );
+    const match = roles.find(
+      (r) => typeof r.name === "string" && r.name.toLowerCase() === "donor",
+    );
+    const id = match?.id ?? null;
+    if (id) donorRoleIdCache = id;
+    return id;
+  } catch {
+    return null;
+  }
+}
+
 export async function signUp(
   email: string,
   password: string,
@@ -55,6 +83,29 @@ export async function signUp(
       ...(donorProfile.last_name ? { last_name: donorProfile.last_name } : {}),
     }),
   );
+
+  // Defensive: assign role=donor explicitly so signup doesn't depend on
+  // Directus's Public Registration "Default Role" being configured. If the
+  // server token is missing or Directus rejects the patch, log and continue —
+  // the verification email has already been sent.
+  try {
+    const donorRoleId = await getDonorRoleId();
+    if (!donorRoleId) return;
+    const admin = getAdminDirectus();
+    const matches = await admin.request(
+      readUsers({
+        filter: { email: { _eq: email } },
+        fields: ["id", "role"],
+        limit: 1,
+      }),
+    );
+    const created = matches[0];
+    if (created && created.role !== donorRoleId) {
+      await admin.request(updateUser(created.id, { role: donorRoleId }));
+    }
+  } catch (err) {
+    console.warn("[signUp] post-registration role assignment failed:", err);
+  }
 }
 
 export async function signOut(refreshToken?: string): Promise<void> {
