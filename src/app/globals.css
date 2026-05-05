@@ -9,11 +9,21 @@
   --ink: #2A2A2C;
   --slate: #5C5C5E;
   --slate-soft: #8B8B8E;
+  --slate-mist: #C8C8CB;
   --cream: #FFFAF2;
   --linen: #F8F1E4;
   --sand: #F4E8D5;
   --moss: #6B8E5A;
   --moss-soft: #D4E0CC;
+  --sky: #9FBFD9;
+  --white: #FFFFFF;
+
+  --shadow-card: 0 1px 2px rgba(42, 42, 44, 0.04), 0 8px 24px -8px rgba(42, 42, 44, 0.08);
+  --shadow-lift: 0 2px 4px rgba(42, 42, 44, 0.06), 0 16px 40px -12px rgba(42, 42, 44, 0.12);
+  --shadow-warm: 0 8px 32px -8px rgba(243, 147, 34, 0.25);
+
+  --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.5, 1.5, 0.5, 1);
 }
 
 @theme inline {
@@ -25,19 +35,44 @@
   --color-ink: var(--ink);
   --color-slate: var(--slate);
   --color-slate-soft: var(--slate-soft);
+  --color-slate-mist: var(--slate-mist);
   --color-cream: var(--cream);
   --color-linen: var(--linen);
   --color-sand: var(--sand);
   --color-moss: var(--moss);
   --color-moss-soft: var(--moss-soft);
+  --color-sky: var(--sky);
 
   --font-display: var(--font-fraunces);
   --font-body: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
+  --shadow-warm: var(--shadow-warm);
+
+  --ease-soft: var(--ease-soft);
+  --ease-spring: var(--ease-spring);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--cream);
   color: var(--ink);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+::selection {
+  background: var(--tangerine);
+  color: var(--white);
 }
