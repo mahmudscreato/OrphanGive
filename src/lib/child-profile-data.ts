@@ -362,6 +362,54 @@ export async function getChildUpdates(
   }
 }
 
+// ─── Moments gallery ────────────────────────────────────────────────────────
+export type ChildMoment = {
+  id: string;
+  photo: string | null;
+  caption: string | null;
+  taken_at: string | null;
+};
+
+const MOMENTS_PUBLIC_LIMIT = 10;
+
+export async function getChildMoments(childId: string): Promise<ChildMoment[]> {
+  if (!UUID_RE.test(childId)) return [];
+  try {
+    const items = (await directusServer().request(
+      readItems("child_moment" as never, {
+        filter: {
+          _and: [
+            { child: { _eq: childId } },
+            { status: { _eq: "published" } },
+          ],
+        },
+        fields: ["id", "photo", "caption", "taken_at"],
+        // display_order ASC (manual priority), then most-recent first.
+        sort: ["display_order", "-taken_at"],
+        limit: MOMENTS_PUBLIC_LIMIT,
+      } as never),
+    )) as unknown as Array<{
+      id: string;
+      photo?: string | null;
+      caption?: string | null;
+      taken_at?: string | null;
+    }> | undefined;
+    if (!Array.isArray(items)) return [];
+    return items.map((row) => ({
+      id: String(row.id),
+      photo: row.photo ?? null,
+      caption: row.caption?.trim() || null,
+      taken_at: row.taken_at ?? null,
+    }));
+  } catch (err) {
+    console.warn(
+      "[child-profile-data] getChildMoments failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
 // ─── Reveal status (TIER 3 enrichment) ──────────────────────────────────────
 // TODO: when the reveal-request flow ships, look up reveal_request rows where
 // donor=viewerId AND child=childId AND status='approved' AND revoked_at is

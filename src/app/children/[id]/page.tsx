@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { ProfileHero } from "@/components/profile/ProfileHero";
 import { StorySection } from "@/components/profile/StorySection";
+import { MomentsGallery } from "@/components/profile/MomentsGallery";
 import { LockedFieldsBand } from "@/components/profile/LockedFieldsBand";
 import { DocumentsBanner } from "@/components/profile/DocumentsBanner";
 import { UpdatesSection } from "@/components/profile/UpdatesSection";
@@ -10,6 +11,7 @@ import { SponsorCTA } from "@/components/profile/SponsorCTA";
 import {
   getChildById,
   getChildDocumentsStatus,
+  getChildMoments,
   getChildUpdates,
   getViewerTier,
 } from "@/lib/child-profile-data";
@@ -27,10 +29,11 @@ export default async function ChildProfilePage({
   const { tier } = await getViewerTier();
 
   // Fetch in parallel — all server-side via the admin token client.
-  const [child, docs, updates] = await Promise.all([
+  const [child, docs, updates, moments] = await Promise.all([
     getChildById(id, tier),
     getChildDocumentsStatus(id),
     getChildUpdates(id),
+    getChildMoments(id),
   ]);
 
   if (!child) notFound();
@@ -50,6 +53,7 @@ export default async function ChildProfilePage({
       </div>
       <ProfileHero child={child} tier={tier} />
       <StorySection child={child} tier={tier} />
+      <MomentsGallery childName={child.display_name} moments={moments} />
       <LockedFieldsBand child={child} tier={tier} />
       <DocumentsBanner docs={docs} />
       <UpdatesSection childName={child.display_name} updates={updates} />
