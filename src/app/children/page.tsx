@@ -80,8 +80,8 @@ export default async function BrowseChildrenPage({
             <EmptyState />
           ) : (
             <div className="grid grid-cols-3 gap-7 max-lg:grid-cols-2 max-md:grid-cols-1">
-              {page.children.map((c) => (
-                <ChildCard key={c.id} child={c} />
+              {page.children.map((c, i) => (
+                <ChildCard key={c.id} child={c} preload={i < 3} />
               ))}
             </div>
           )}

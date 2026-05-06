@@ -46,7 +46,9 @@ type DirectusChildRow = {
   region?: string | null;
   district?: string | null;
   story?: string | null;
-  photo?: string | null;
+  // Directus field is `Photo` (capital P) — relation to directus_files.
+  // When requested as a literal field it returns the file UUID string.
+  Photo?: string | null;
   education_level?: string | null;
   class_grade?: string | null;
 };
@@ -59,7 +61,7 @@ const SAFE_FIELDS = [
   "region",
   "district",
   "story",
-  "photo",
+  "Photo",
   "education_level",
   "class_grade",
 ] as const;
@@ -153,7 +155,7 @@ function rowToSummary(row: DirectusChildRow): ChildSummary {
     region: row.region?.trim() ?? null,
     district: row.district?.trim() ?? null,
     story_preview: previewStory(row.story),
-    photo: row.photo ?? null,
+    photo: row.Photo ?? null,
     education_level: row.education_level ?? null,
     class_grade: row.class_grade ?? null,
   };

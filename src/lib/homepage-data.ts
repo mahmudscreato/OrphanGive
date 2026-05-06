@@ -26,7 +26,9 @@ type DirectusChildRow = {
   region?: string | null;
   district?: string | null;
   story?: string | null;
-  photo?: string | null;
+  // Directus field is `Photo` (capital P) — relation to directus_files.
+  // When requested as a literal field it returns the file UUID string.
+  Photo?: string | null;
   status?: string | null;
 };
 
@@ -106,7 +108,7 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
           "region",
           "district",
           "story",
-          "photo",
+          "Photo",
           "status",
         ],
         limit: 3,
@@ -120,7 +122,7 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
       region: row.region ?? null,
       district: row.district ?? null,
       story: trimStory(row.story),
-      photo: row.photo ?? null,
+      photo: row.Photo ?? null,
       status: row.status ?? null,
     }));
   } catch (err) {
@@ -136,7 +138,5 @@ export function directusAssetUrl(
   photoId: string | null | undefined,
 ): string | null {
   if (!photoId) return null;
-  const base = process.env.NEXT_PUBLIC_DIRECTUS_URL;
-  if (!base) return null;
-  return `${base}/assets/${photoId}`;
+  return `/api/assets/${photoId}`;
 }

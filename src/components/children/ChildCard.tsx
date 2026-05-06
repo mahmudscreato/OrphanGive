@@ -3,12 +3,20 @@ import Image from "next/image";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import type { ChildSummary } from "@/lib/children-data";
 
+const CARD_SIZES =
+  "(max-width: 768px) 100vw, (max-width: 1200px) 33vw, 400px";
+
+const BLUR_DATA_URL =
+  "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3Crect width='1' height='1' fill='%23e8e2d8'/%3E%3C/svg%3E";
+
 function ChildPhoto({
   photo,
   name,
+  preload,
 }: {
   photo: string | null;
   name: string;
+  preload: boolean;
 }) {
   const src = directusAssetUrl(photo);
   if (src) {
@@ -16,9 +24,14 @@ function ChildPhoto({
       <Image
         src={src}
         alt={name}
-        fill
-        sizes="(max-width: 768px) 100vw, 33vw"
-        className="object-cover transition-transform duration-[800ms] ease-soft group-hover:scale-[1.06]"
+        width={600}
+        height={600}
+        sizes={CARD_SIZES}
+        quality={85}
+        preload={preload}
+        placeholder="blur"
+        blurDataURL={BLUR_DATA_URL}
+        className="w-full h-full object-cover transition-transform duration-[800ms] ease-soft group-hover:scale-[1.06]"
       />
     );
   }
@@ -30,7 +43,13 @@ function ChildPhoto({
   );
 }
 
-export function ChildCard({ child }: { child: ChildSummary }) {
+export function ChildCard({
+  child,
+  preload = false,
+}: {
+  child: ChildSummary;
+  preload?: boolean;
+}) {
   const name = child.display_name ?? "A child awaiting sponsorship";
   const districtLine = child.district ?? child.region ?? null;
   const ageLine = child.age !== null ? `Age ${child.age}` : null;
@@ -40,7 +59,7 @@ export function ChildCard({ child }: { child: ChildSummary }) {
       className="group block bg-white rounded-[28px] overflow-hidden border border-ink/[0.05] transition-all duration-[400ms] ease-soft hover:-translate-y-1.5 hover:shadow-lift"
     >
       <div className="relative aspect-square overflow-hidden">
-        <ChildPhoto photo={child.photo} name={name} />
+        <ChildPhoto photo={child.photo} name={name} preload={preload} />
         <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[10px] tracking-[0.1em] uppercase text-ink font-medium">
           <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
           Awaiting
