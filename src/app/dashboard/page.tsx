@@ -5,6 +5,7 @@ import {
   type Donor,
 } from "@/lib/donor-data";
 import { getRandomActiveChildren } from "@/lib/children-data";
+import { getAllDonorReveals } from "@/lib/reveal-data";
 import { DonorWelcome } from "./components/DonorWelcome";
 import { AwaitingApprovalBanner } from "./components/AwaitingApprovalBanner";
 import { RecommendedChildren } from "./components/RecommendedChildren";
@@ -14,6 +15,7 @@ import {
   type SponsorshipRow,
 } from "./components/SponsorshipHistorySection";
 import { AccountSummary } from "./components/AccountSummary";
+import { RevealRequestsSection } from "./components/RevealRequestsSection";
 
 export const dynamic = "force-dynamic";
 
@@ -65,9 +67,12 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
   // For Session 9 there's no sponsorship table yet. Empty array.
   const sponsorships: SponsorshipRow[] = [];
 
-  // Recommend up to 4 random active children. Excluding ids the donor
-  // already saved/sponsors will land in Session 11 — for now no exclusion.
-  const recommended = await getRandomActiveChildren("", 4);
+  // Parallel fetch: recommended children + donor's reveal requests across
+  // all children. Both are cheap server-token reads.
+  const [recommended, revealRequests] = await Promise.all([
+    getRandomActiveChildren("", 4),
+    getAllDonorReveals(donor.id),
+  ]);
 
   return (
     <main className="bg-cream">
@@ -80,6 +85,7 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
           ) : (
             <SponsorshipHistorySection sponsorships={sponsorships} />
           )}
+          <RevealRequestsSection requests={revealRequests} />
           <AccountSummary donor={donor} />
         </div>
       </section>

@@ -17,6 +17,14 @@ import {
   getViewerTier,
 } from "@/lib/child-profile-data";
 import { getRandomActiveChildren } from "@/lib/children-data";
+import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
+import {
+  ALLOWED_REVEAL_FIELDS,
+  fetchRevealedFieldValues,
+  getActiveReveals,
+  getDonorRevealsForChild,
+  type AllowedRevealField,
+} from "@/lib/reveal-data";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +49,49 @@ export default async function ChildProfilePage({
 
   if (!child) notFound();
 
+  // Reveal-aware enrichment for approved donors. Public/admin/pending donors
+  // skip this entirely — admin already has child.encrypted, and other tiers
+  // never request encrypted values.
+  let activeReveals: ReadonlySet<AllowedRevealField> = new Set();
+  let revealedValues: Partial<Record<AllowedRevealField, string | null>> = {};
+  let revealedApprovedAt: Partial<Record<AllowedRevealField, string | null>> = {};
+
+  if (tier === "donor") {
+    const donor = await getCurrentDonor();
+    if (donor && getDonorState(donor) === "approved") {
+      activeReveals = await getActiveReveals(donor.id, child.id);
+      if (activeReveals.size > 0) {
+        const fieldList: AllowedRevealField[] = [];
+        for (const f of activeReveals) fieldList.push(f);
+        // For compound categories (guardian: name+contact), if either is
+        // approved, fetch both — keeps the UX consistent.
+        if (
+          fieldList.includes("guardian_full_name_encrypted") ||
+          fieldList.includes("guardian_contact_encrypted")
+        ) {
+          if (!fieldList.includes("guardian_full_name_encrypted"))
+            fieldList.push("guardian_full_name_encrypted");
+          if (!fieldList.includes("guardian_contact_encrypted"))
+            fieldList.push("guardian_contact_encrypted");
+        }
+        const valuesMap = await fetchRevealedFieldValues(child.id, fieldList);
+        for (const [k, v] of valuesMap) revealedValues[k] = v;
+
+        // Look up approved_at timestamps for the approved + unexpired
+        // requests. One lightweight query against reveal_request.
+        const allReveals = await getDonorRevealsForChild(donor.id, child.id);
+        for (const r of allReveals) {
+          if (r.status === "approved" && r.field_name && r.decided_at) {
+            const fn = r.field_name as AllowedRevealField;
+            if ((ALLOWED_REVEAL_FIELDS as readonly string[]).includes(fn)) {
+              revealedApprovedAt[fn] = r.decided_at;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return (
     <>
       <div className="px-6 pt-32 bg-cream max-md:pt-28">
@@ -57,7 +108,13 @@ export default async function ChildProfilePage({
       <ProfileHero child={child} tier={tier} />
       <StorySection child={child} tier={tier} />
       <MomentsGallery childName={child.display_name} moments={moments} />
-      <LockedFieldsBand child={child} tier={tier} />
+      <LockedFieldsBand
+        child={child}
+        tier={tier}
+        activeReveals={activeReveals}
+        revealedValues={revealedValues}
+        revealedApprovedAt={revealedApprovedAt}
+      />
       <DocumentsBanner docs={docs} />
       <UpdatesSection childName={child.display_name} updates={updates} />
       <EducationSection child={child} />

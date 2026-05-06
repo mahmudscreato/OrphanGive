@@ -1,192 +1,83 @@
-import Link from "next/link";
 import type { ChildProfile, ViewerTier } from "@/lib/child-profile-data";
+import {
+  RevealCategoryCard,
+  type RevealCategory,
+} from "@/components/reveal/RevealCategoryCard";
+import type { AllowedRevealField } from "@/lib/reveal-data";
 
-type LockedCategory = {
-  key: "address" | "school" | "guardian" | "family";
-  label: string;
-  blurb: string;
-  // Reads any/all of these from the encrypted block (admin/tier-3 only).
-  encryptedKeys: ReadonlyArray<keyof NonNullable<ChildProfile["encrypted"]>>;
-  icon: React.ReactNode;
-};
-
-const LocationIcon = (
-  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" />
-    <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
-  </svg>
-);
-const SchoolIcon = (
-  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-    <path d="M3 7v13h18V7M3 7l9-4 9 4M3 7h18" stroke="currentColor" strokeWidth="2" />
-  </svg>
-);
-const GuardianIcon = (
-  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" strokeWidth="2" />
-    <path d="M4 21a8 8 0 0116 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-const FamilyIcon = (
-  <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-    <path d="M9 11a3 3 0 100-6 3 3 0 000 6zm6 0a3 3 0 100-6 3 3 0 000 6zM3 20a6 6 0 0112 0H3zm12 0a6 6 0 016-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-
-const CATEGORIES: LockedCategory[] = [
+// User-facing categories. Each maps to one or more encrypted fields on the
+// child collection. The first field is the "primary" one tracked in
+// reveal_request; the rest unlock together when primary is approved.
+const CATEGORIES: RevealCategory[] = [
   {
     key: "address",
     label: "Full address",
     blurb: "Visible to sponsors after consent.",
-    encryptedKeys: ["full_address"],
-    icon: LocationIcon,
+    fields: ["full_address_encrypted"],
+    iconKey: "location",
   },
   {
     key: "school",
     label: "School name",
     blurb: "Visible to sponsors after consent.",
-    encryptedKeys: ["school_name"],
-    icon: SchoolIcon,
+    fields: ["school_name_encrypted"],
+    iconKey: "school",
   },
   {
     key: "guardian",
     label: "Guardian details",
     blurb: "Visible to sponsors after consent.",
-    encryptedKeys: ["guardian_full_name", "guardian_contact"],
-    icon: GuardianIcon,
+    fields: ["guardian_full_name_encrypted", "guardian_contact_encrypted"],
+    iconKey: "guardian",
   },
   {
     key: "family",
     label: "Family circumstances",
     blurb: "Visible to sponsors after consent.",
-    encryptedKeys: ["family_circumstances"],
-    icon: FamilyIcon,
+    fields: ["family_circumstances_encrypted"],
+    iconKey: "family",
   },
 ];
 
-function BlurredBlocks() {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-block bg-ink/[0.18] h-3 rounded-sm w-14" />
-      <span className="inline-block bg-ink/[0.18] h-3 rounded-sm w-8" />
-      <span className="inline-block bg-ink/[0.18] h-3 rounded-sm w-20" />
-    </span>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-tangerine-deep">
-      <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="2" />
-      <path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function CategoryCard({
-  category,
-  child,
-  tier,
-}: {
-  category: LockedCategory;
+type Props = {
   child: ChildProfile;
   tier: ViewerTier;
-}) {
-  // Tier 3 (admin) — show actual values inline if any encrypted data is present.
-  const revealed =
-    tier === "admin" &&
-    child.encrypted &&
-    category.encryptedKeys.some((k) => Boolean(child.encrypted![k]));
-
-  return (
-    <div
-      className={`rounded-[20px] p-7 transition-all duration-[400ms] ease-soft ${
-        revealed
-          ? "bg-tangerine-mist border-[1.5px] border-tangerine-soft"
-          : "bg-white border-[1.5px] border-dashed border-tangerine/40 hover:bg-tangerine-mist hover:-translate-y-0.5"
-      }`}
-    >
-      <div className="flex items-center gap-3 text-tangerine-deep">
-        {category.icon}
-        <div className="font-mono text-[11px] tracking-[0.14em] uppercase text-slate font-medium">
-          {category.label}
-        </div>
-      </div>
-
-      {revealed ? (
-        <div className="mt-4 space-y-2.5 font-display text-[17px] text-ink leading-snug">
-          {category.encryptedKeys.map((k) => {
-            const v = child.encrypted![k];
-            return v ? (
-              <div key={k}>
-                <span className="text-[11px] uppercase tracking-[0.12em] text-slate-soft font-mono mr-2 block mt-1">
-                  {k.replace(/_/g, " ")}
-                </span>
-                {v}
-              </div>
-            ) : null;
-          })}
-        </div>
-      ) : (
-        <>
-          <div className="mt-4">
-            <span className="inline-flex items-center gap-2.5 bg-tangerine-mist border-[1.5px] border-dashed border-tangerine/40 rounded-xl px-3.5 py-2">
-              <BlurredBlocks />
-              <LockIcon />
-            </span>
-          </div>
-          <p className="mt-4 text-[13.5px] text-slate leading-snug">
-            {category.blurb}
-          </p>
-          <div className="mt-5">
-            {tier === "public" ? (
-              <Link
-                href={`/signin?from=/children/${child.id}`}
-                className="inline-flex items-center gap-2 text-tangerine-deep text-[13px] font-medium transition-[gap] duration-[250ms] hover:gap-3"
-              >
-                Sign in to learn more →
-              </Link>
-            ) : (
-              <RequestRevealLink childId={child.id} field={category.key} />
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// Server component shim — the actual reveal-modal flow ships in Phase 2.
-// For TIER 2 we render an explicit link to a /reveal-request route stub that
-// will eventually open the modal. Until that ships, the link 404s and that's
-// intentional (the user said "shows an alert 'Reveal request flow coming
-// soon'" — but we cannot use onClick from a Server Component, so we link to
-// a placeholder route the user can build out). Keeping behaviour explicit
-// over silently broken.
-function RequestRevealLink({
-  childId,
-  field,
-}: {
-  childId: string;
-  field: string;
-}) {
-  return (
-    <Link
-      href={`/children/${childId}/reveal?field=${field}`}
-      className="inline-flex items-center gap-2 text-tangerine-deep text-[13px] font-medium transition-[gap] duration-[250ms] hover:gap-3"
-    >
-      Request to view →
-    </Link>
-  );
-}
+  // Empty by default — defense in depth. Approved donor + active reveal
+  // populates this; admin tier renders all encrypted values via a
+  // separate code path that pre-fills `revealedValues` below.
+  activeReveals?: ReadonlySet<AllowedRevealField>;
+  // field_name → actual decrypted value, fetched server-side.
+  revealedValues?: Partial<Record<AllowedRevealField, string | null>>;
+  // field_name → ISO timestamp of approval (used for "Approved Nd ago" caption).
+  revealedApprovedAt?: Partial<Record<AllowedRevealField, string | null>>;
+};
 
 export function LockedFieldsBand({
   child,
   tier,
-}: {
-  child: ChildProfile;
-  tier: ViewerTier;
-}) {
+  activeReveals = new Set(),
+  revealedValues = {},
+  revealedApprovedAt = {},
+}: Props) {
+  const childFirstName = child.display_name.split(" ")[0]!;
+  const interactive = tier !== "public";
+  const signInHref = `/signin?from=/children/${child.id}`;
+
+  // Admin tier: pre-merge the encrypted block (already fetched in
+  // getChildById) into revealedValues so admin sees everything without
+  // having to set up reveals.
+  const merged: Partial<Record<AllowedRevealField, string | null>> = {
+    ...revealedValues,
+  };
+  if (tier === "admin" && child.encrypted) {
+    merged.full_address_encrypted ??= child.encrypted.full_address;
+    merged.school_name_encrypted ??= child.encrypted.school_name;
+    merged.guardian_full_name_encrypted ??= child.encrypted.guardian_full_name;
+    merged.guardian_contact_encrypted ??= child.encrypted.guardian_contact;
+    merged.family_circumstances_encrypted ??=
+      child.encrypted.family_circumstances;
+  }
+
   return (
     <section className="px-6 py-16 bg-cream max-md:py-12">
       <div className="max-w-[1100px] mx-auto">
@@ -197,17 +88,40 @@ export function LockedFieldsBand({
             until you&apos;re a sponsor.
           </h2>
           <p className="mt-3 text-[16px] text-slate leading-[1.65]">
-            We protect specifics that could put {child.display_name.split(" ")[0]}{" "}
-            at risk if they appeared online or in the wrong hands. Sponsors can
-            request access individually — our safeguarding team reviews every
-            request.
+            We protect specifics that could put {childFirstName} at risk if
+            they appeared online or in the wrong hands. Sponsors can request
+            access individually — our safeguarding team reviews every request.
           </p>
         </div>
 
         <div className="mt-7 grid grid-cols-2 gap-4 max-md:grid-cols-1 max-md:mt-6 max-md:gap-3">
-          {CATEGORIES.map((c) => (
-            <CategoryCard key={c.key} category={c} child={child} tier={tier} />
-          ))}
+          {CATEGORIES.map((category) => {
+            const primary = category.fields[0]!;
+            // We treat admin as having "active reveals" for everything.
+            const isActive =
+              tier === "admin" ||
+              activeReveals.has(primary as AllowedRevealField);
+            // Pull only the values relevant to this category (defense
+            // in depth — don't spill another category's data here).
+            const values: Partial<Record<AllowedRevealField, string | null>> = {};
+            if (isActive) {
+              for (const f of category.fields) {
+                values[f] = merged[f] ?? null;
+              }
+            }
+            return (
+              <RevealCategoryCard
+                key={category.key}
+                category={category}
+                childId={child.id}
+                childFirstName={childFirstName}
+                interactive={interactive}
+                signInHref={signInHref}
+                revealedValues={values}
+                approvedAt={revealedApprovedAt[primary] ?? null}
+              />
+            );
+          })}
         </div>
 
         <div className="mt-6 rounded-[20px] bg-moss-soft/60 border border-moss/20 px-6 py-5 flex items-start gap-4">
