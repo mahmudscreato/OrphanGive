@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import type { ChildSummary } from "@/lib/children-data";
 
@@ -21,7 +21,7 @@ function ChildPhoto({
   const src = directusAssetUrl(photo);
   if (src) {
     return (
-      <Image
+      <ProtectedChildImage
         src={src}
         alt={name}
         width={600}

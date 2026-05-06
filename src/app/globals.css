@@ -257,6 +257,18 @@ body {
   transform: scale(1.1);
 }
 
+/* ============ POLITE PHOTO PROTECTION ============ */
+/* Applied to every child-photo Image. Pointer-events: none lets clicks
+   pass through to the Link wrapper while disabling drag/select/save UI.
+   The wrapper element holds the onContextMenu handler. */
+.child-photo-protect {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
+}
+
 /* Tag with leading line — used in section eyebrows */
 .eyebrow-tag {
   display: inline-flex;
