@@ -8,6 +8,7 @@ import { DocumentsBanner } from "@/components/profile/DocumentsBanner";
 import { UpdatesSection } from "@/components/profile/UpdatesSection";
 import { EducationSection } from "@/components/profile/EducationSection";
 import { SponsorCTA } from "@/components/profile/SponsorCTA";
+import { RelatedChildren } from "@/components/profile/RelatedChildren";
 import {
   getChildById,
   getChildDocumentsStatus,
@@ -15,6 +16,7 @@ import {
   getChildUpdates,
   getViewerTier,
 } from "@/lib/child-profile-data";
+import { getRandomActiveChildren } from "@/lib/children-data";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +31,12 @@ export default async function ChildProfilePage({
   const { tier } = await getViewerTier();
 
   // Fetch in parallel — all server-side via the admin token client.
-  const [child, docs, updates, moments] = await Promise.all([
+  const [child, docs, updates, moments, related] = await Promise.all([
     getChildById(id, tier),
     getChildDocumentsStatus(id),
     getChildUpdates(id),
     getChildMoments(id),
+    getRandomActiveChildren(id, 4),
   ]);
 
   if (!child) notFound();
@@ -59,6 +62,7 @@ export default async function ChildProfilePage({
       <UpdatesSection childName={child.display_name} updates={updates} />
       <EducationSection child={child} />
       <SponsorCTA child={child} tier={tier} />
+      <RelatedChildren items={related} />
     </>
   );
 }

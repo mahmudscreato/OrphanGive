@@ -240,6 +240,76 @@ export async function getChildrenPage(
   };
 }
 
+// Returns up to `limit` random active children, EXCLUDING the given id.
+// Implementation: fetch the lightweight ID list of active children via the
+// admin token (single round-trip), pick `limit` random ids, then fetch full
+// summaries for those. Two queries total, no ORDER BY RANDOM().
+//
+// Trade-off: this loads all active child ids into memory. Fine at the
+// current scale (<50). Above ~5k rows, switch to a DB-side random sample
+// (TABLESAMPLE BERNOULLI on Postgres, or a precomputed shuffle column).
+export async function getRandomActiveChildren(
+  excludeId: string,
+  limit = 4,
+): Promise<ChildSummary[]> {
+  if (limit <= 0) return [];
+  let allIds: string[] = [];
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: { status: { _eq: "active" } },
+        fields: ["id"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ id?: string | null }> | undefined;
+    if (Array.isArray(rows)) {
+      allIds = rows
+        .map((r) => r.id)
+        .filter((id): id is string => typeof id === "string" && id !== excludeId);
+    }
+  } catch (err) {
+    console.warn(
+      "[children-data] getRandomActiveChildren id-list failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  if (allIds.length === 0) return [];
+
+  // Fisher–Yates partial shuffle for the first `limit` slots.
+  const n = allIds.length;
+  const take = Math.min(limit, n);
+  for (let i = 0; i < take; i++) {
+    const j = i + Math.floor(Math.random() * (n - i));
+    const tmp = allIds[i]!;
+    allIds[i] = allIds[j]!;
+    allIds[j] = tmp;
+  }
+  const picked = allIds.slice(0, take);
+
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: { id: { _in: picked } },
+        fields: [...SAFE_FIELDS],
+      } as never),
+    )) as unknown as DirectusChildRow[] | undefined;
+    if (!Array.isArray(rows)) return [];
+    // Preserve the random order rather than the order Directus returns.
+    const byId = new Map(rows.map((r) => [String(r.id), r]));
+    return picked
+      .map((id) => byId.get(id))
+      .filter((r): r is DirectusChildRow => Boolean(r))
+      .map(rowToSummary);
+  } catch (err) {
+    console.warn(
+      "[children-data] getRandomActiveChildren detail-fetch failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
 export async function getActiveDistricts(): Promise<string[]> {
   try {
     const rows = (await directusServer().request(
