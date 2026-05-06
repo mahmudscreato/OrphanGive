@@ -19,12 +19,17 @@ export type FeaturedChild = {
   status: string | null;
 };
 
+type RelationRow = { code?: string | null; name?: string | null } | null;
+
 type DirectusChildRow = {
   id: string | number;
   display_name?: string | null;
   date_of_birth?: string | null;
-  region?: string | null;
-  district?: string | null;
+  // Region/district are now M2O relations to bd_division / bd_district. We
+  // request `.name` and re-expose it as the legacy string shape for the
+  // frontend. The legacy text columns were removed during schema migration.
+  bd_division?: RelationRow;
+  bd_district?: RelationRow;
   story?: string | null;
   // Directus field is `Photo` (capital P) — relation to directus_files.
   // When requested as a literal field it returns the file UUID string.
@@ -105,8 +110,10 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
           "id",
           "display_name",
           "date_of_birth",
-          "region",
-          "district",
+          "bd_division.code",
+          "bd_division.name",
+          "bd_district.code",
+          "bd_district.name",
           "story",
           "Photo",
           "status",
@@ -119,8 +126,8 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
       id: String(row.id),
       display_name: row.display_name ?? null,
       age: calcAge(row.date_of_birth),
-      region: row.region ?? null,
-      district: row.district ?? null,
+      region: row.bd_division?.name ?? null,
+      district: row.bd_district?.name ?? null,
       story: trimStory(row.story),
       photo: row.Photo ?? null,
       status: row.status ?? null,

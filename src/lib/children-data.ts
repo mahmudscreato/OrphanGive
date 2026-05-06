@@ -38,13 +38,17 @@ export type ChildSummary = {
   class_grade: string | null;
 };
 
+type RelationRow = { code?: string | null; name?: string | null } | null;
+
 type DirectusChildRow = {
   id: string | number;
   display_name?: string | null;
   gender?: string | null;
   date_of_birth?: string | null;
-  region?: string | null;
-  district?: string | null;
+  // Region/district are now M2O relations to bd_division / bd_district.
+  // The legacy text columns were removed during schema migration.
+  bd_division?: RelationRow;
+  bd_district?: RelationRow;
   story?: string | null;
   // Directus field is `Photo` (capital P) — relation to directus_files.
   // When requested as a literal field it returns the file UUID string.
@@ -58,8 +62,10 @@ const SAFE_FIELDS = [
   "display_name",
   "gender",
   "date_of_birth",
-  "region",
-  "district",
+  "bd_division.code",
+  "bd_division.name",
+  "bd_district.code",
+  "bd_district.name",
   "story",
   "Photo",
   "education_level",
@@ -129,7 +135,9 @@ function buildDirectusFilter(filters: ChildrenFilters) {
   const f: Record<string, unknown> = { status: { _eq: "active" } };
 
   if (filters.district) {
-    f.district = { _eq: filters.district };
+    // The URL carries the district display name (e.g. "Khulna"). Resolve
+    // it through the M2O relation since the legacy text column is gone.
+    f.bd_district = { name: { _eq: filters.district } };
   }
   if (filters.gender) {
     f.gender = { _eq: filters.gender };
@@ -152,8 +160,8 @@ function rowToSummary(row: DirectusChildRow): ChildSummary {
     display_name: row.display_name?.trim() ?? null,
     gender: row.gender ?? null,
     age: calcAge(row.date_of_birth),
-    region: row.region?.trim() ?? null,
-    district: row.district?.trim() ?? null,
+    region: row.bd_division?.name?.trim() ?? null,
+    district: row.bd_district?.name?.trim() ?? null,
     story_preview: previewStory(row.story),
     photo: row.Photo ?? null,
     education_level: row.education_level ?? null,
@@ -237,14 +245,14 @@ export async function getActiveDistricts(): Promise<string[]> {
     const rows = (await directusServer().request(
       readItems("child" as never, {
         filter: { status: { _eq: "active" } },
-        fields: ["district"],
+        fields: ["bd_district.name"],
         limit: -1,
       } as never),
-    )) as unknown as Array<{ district?: string | null }> | undefined;
+    )) as unknown as Array<{ bd_district?: { name?: string | null } | null }> | undefined;
     if (!Array.isArray(rows)) return [];
     const set = new Set<string>();
     for (const r of rows) {
-      const d = r.district?.trim();
+      const d = r.bd_district?.name?.trim();
       if (d) set.add(d);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
