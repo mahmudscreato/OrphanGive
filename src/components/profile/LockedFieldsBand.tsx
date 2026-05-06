@@ -188,15 +188,15 @@ export function LockedFieldsBand({
   tier: ViewerTier;
 }) {
   return (
-    <section className="px-6 py-28 bg-cream max-md:py-20">
+    <section className="px-6 py-16 bg-cream max-md:py-12">
       <div className="max-w-[1100px] mx-auto">
         <div className="max-w-[640px]">
           <div className="eyebrow-tag">Privacy by default</div>
-          <h2 className="font-display font-normal mt-5 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2rem,3.75vw,3rem)]">
+          <h2 className="font-display font-normal mt-3 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2rem,3.75vw,3rem)]">
             Some details stay <em className="italic text-tangerine">private</em>{" "}
             until you&apos;re a sponsor.
           </h2>
-          <p className="mt-5 text-[16px] text-slate leading-[1.65]">
+          <p className="mt-3 text-[16px] text-slate leading-[1.65]">
             We protect specifics that could put {child.display_name.split(" ")[0]}{" "}
             at risk if they appeared online or in the wrong hands. Sponsors can
             request access individually — our safeguarding team reviews every
@@ -204,13 +204,13 @@ export function LockedFieldsBand({
           </p>
         </div>
 
-        <div className="mt-12 grid grid-cols-2 gap-5 max-md:grid-cols-1">
+        <div className="mt-7 grid grid-cols-2 gap-4 max-md:grid-cols-1 max-md:mt-6 max-md:gap-3">
           {CATEGORIES.map((c) => (
             <CategoryCard key={c.key} category={c} child={child} tier={tier} />
           ))}
         </div>
 
-        <div className="mt-10 rounded-[20px] bg-moss-soft/60 border border-moss/20 px-6 py-5 flex items-start gap-4">
+        <div className="mt-6 rounded-[20px] bg-moss-soft/60 border border-moss/20 px-6 py-5 flex items-start gap-4">
           <div className="w-8 h-8 rounded-full bg-moss text-cream flex items-center justify-center shrink-0">
             <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4">
               <path
