@@ -8,6 +8,9 @@ import {
 import { RevealApprovedEmail } from "@/emails/RevealApprovedEmail";
 import { RevealDeniedEmail } from "@/emails/RevealDeniedEmail";
 import { MonthlyReceiptEmail } from "@/emails/MonthlyReceiptEmail";
+import { SponsorshipPausedEmail } from "@/emails/SponsorshipPausedEmail";
+import { SponsorshipModifiedEmail } from "@/emails/SponsorshipModifiedEmail";
+import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
 
 export const runtime = "nodejs";
 
@@ -17,6 +20,9 @@ const TEMPLATES = [
   "reveal-approved",
   "reveal-denied",
   "monthly-receipt",
+  "sponsorship-paused",
+  "sponsorship-modified",
+  "sponsorship-cancelled",
 ] as const;
 type TemplateId = (typeof TEMPLATES)[number];
 
@@ -101,6 +107,44 @@ function buildSample(template: TemplateId, firstName: string) {
             Date.now() + 30 * 86_400_000,
           ).toISOString(),
           dashboardUrl: siteUrl("/dashboard"),
+        }),
+      };
+
+    case "sponsorship-paused":
+      return {
+        subject: "Your sponsorship of Mim Khatun is paused",
+        element: SponsorshipPausedEmail({
+          firstName,
+          childName: "Mim Khatun",
+          resumeUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+        }),
+      };
+
+    case "sponsorship-modified":
+      return {
+        subject: "Your sponsorship amount has been updated",
+        element: SponsorshipModifiedEmail({
+          firstName,
+          childName: "Mim Khatun",
+          oldAmountUsd: 25,
+          newAmountUsd: 50,
+          nextBillingDate: new Date(
+            Date.now() + 12 * 86_400_000,
+          ).toISOString(),
+          prorationCents: 1041,
+          dashboardUrl: siteUrl("/dashboard"),
+        }),
+      };
+
+    case "sponsorship-cancelled":
+      return {
+        subject: "Your sponsorship of Mim Khatun has ended",
+        element: SponsorshipCancelledEmail({
+          firstName,
+          childName: "Mim Khatun",
+          browseUrl: siteUrl("/children"),
         }),
       };
   }

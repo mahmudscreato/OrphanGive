@@ -79,13 +79,13 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
       <section className="px-6 pt-32 pb-24 max-md:pt-28 max-md:pb-16">
         <div className="max-w-[1100px] mx-auto space-y-12">
           <DonorWelcome donor={donor} approved={true} />
-          <RecommendedChildren items={recommended} />
           {hasDisplayable ? (
             <SponsorshipsSection items={sponsorships} />
           ) : (
             <EmptyDonorState />
           )}
           <RevealRequestsSection requests={revealRequests} />
+          <RecommendedChildren items={recommended} />
           <AccountSummary donor={donor} />
         </div>
       </section>

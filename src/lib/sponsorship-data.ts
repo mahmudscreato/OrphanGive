@@ -1,5 +1,6 @@
 import {
   createItem,
+  readItem,
   readItems,
   updateItem,
 } from "@directus/sdk";
@@ -12,6 +13,13 @@ export type SponsorshipStatus =
   | "cancelled"
   | "completed"
   | "failed";
+
+export type ModificationEntry = {
+  from_amount: number;
+  to_amount: number;
+  at: string;
+  reason?: string | null;
+};
 
 export type Sponsorship = {
   id: string;
@@ -41,6 +49,9 @@ export type Sponsorship = {
   date_created: string | null;
   checkout_fingerprint: string | null;
   cancellation_reason: string | null;
+  paused_at: string | null;
+  modified_at: string | null;
+  modification_history: ModificationEntry[] | null;
 };
 
 const FULL_FIELDS = [
@@ -49,6 +60,7 @@ const FULL_FIELDS = [
   "started_at", "ended_at", "cancelled_at", "next_billing_date",
   "total_paid_usd", "payment_count", "date_created",
   "checkout_fingerprint", "cancellation_reason",
+  "paused_at", "modified_at", "modification_history",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
 ] as const;
@@ -321,5 +333,123 @@ export async function markStripeEventProcessed(
       "[sponsorship-data] markStripeEventProcessed failed (likely race, non-fatal)",
       err instanceof Error ? err.message : err,
     );
+  }
+}
+
+// ─── Single-row fetch + ownership ────────────────────────────────────────────
+// Used by the detail page and the donor-action API routes. Returns null
+// if the row doesn't exist OR isn't owned by `donorId` — callers should
+// 404 in either case (don't reveal existence to non-owners).
+export async function getSponsorshipForDonor(
+  sponsorshipId: string,
+  donorId: string,
+): Promise<Sponsorship | null> {
+  if (!UUID_RE.test(sponsorshipId) || !UUID_RE.test(donorId)) return null;
+  try {
+    const row = (await directusServer().request(
+      readItem("sponsorship" as never, sponsorshipId as never, {
+        fields: [...FULL_FIELDS],
+      } as never),
+    )) as unknown as Sponsorship | null;
+    if (!row || row.donor !== donorId) return null;
+    return row;
+  } catch (err) {
+    // 403/404 from Directus also lands here — treat as not-found.
+    console.warn(
+      "[sponsorship-data] getSponsorshipForDonor failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+// ─── Payments for a sponsorship ─────────────────────────────────────────────
+export type PaymentRow = {
+  id: string;
+  amount_usd: number;
+  currency: string;
+  status: string;
+  stripe_charge_id: string | null;
+  stripe_invoice_id: string | null;
+  stripe_payment_intent_id: string | null;
+  payment_method_type: string | null;
+  failure_reason: string | null;
+  paid_at: string | null;
+  date_created: string | null;
+};
+
+export async function getPaymentsForSponsorship(
+  sponsorshipId: string,
+): Promise<PaymentRow[]> {
+  if (!UUID_RE.test(sponsorshipId)) return [];
+  try {
+    const rows = (await directusServer().request(
+      readItems("payment" as never, {
+        filter: { sponsorship: { _eq: sponsorshipId } },
+        fields: [
+          "id",
+          "amount_usd",
+          "currency",
+          "status",
+          "stripe_charge_id",
+          "stripe_invoice_id",
+          "stripe_payment_intent_id",
+          "payment_method_type",
+          "failure_reason",
+          "paid_at",
+          "date_created",
+        ],
+        sort: ["-paid_at"],
+        limit: -1,
+      } as never),
+    )) as unknown as PaymentRow[];
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.warn(
+      "[sponsorship-data] getPaymentsForSponsorship failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
+// ─── Child updates timeline ─────────────────────────────────────────────────
+export type ChildUpdate = {
+  id: string;
+  title: string | null;
+  content: string | null;
+  type: string | null;
+  photo: string | null;
+  published_at: string | null;
+};
+
+export async function getApprovedChildUpdates(
+  childId: string,
+  limit = 20,
+): Promise<ChildUpdate[]> {
+  if (!UUID_RE.test(childId)) return [];
+  const nowIso = new Date().toISOString();
+  try {
+    const rows = (await directusServer().request(
+      readItems("child_update" as never, {
+        filter: {
+          _and: [
+            { child: { _eq: childId } },
+            { status: { _eq: "approved" } },
+            { published_at: { _lte: nowIso } },
+          ],
+        },
+        fields: ["id", "title", "content", "type", "photo", "published_at"],
+        sort: ["-published_at"],
+        limit,
+      } as never),
+    )) as unknown as ChildUpdate[];
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.warn(
+      "[sponsorship-data] getApprovedChildUpdates failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
   }
 }

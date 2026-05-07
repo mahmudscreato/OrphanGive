@@ -11,6 +11,7 @@ import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import { formatUsd } from "@/lib/pricing";
 import type { Sponsorship } from "@/lib/sponsorship-data";
+import { PendingCardActions } from "./PendingCardActions";
 
 type DisplayStatus = "active" | "pending_payment" | "cancelled";
 
@@ -239,9 +240,7 @@ function PendingCard({
         </div>
       </div>
       <div className="mt-3 pt-3 border-t border-ink/[0.04]">
-        <span className="text-[12.5px] text-slate-soft italic">
-          Awaiting first payment
-        </span>
+        <PendingCardActions sponsorshipId={s.id} />
       </div>
     </li>
   );
@@ -322,22 +321,22 @@ export function SponsorshipsSection({ items }: { items: Sponsorship[] }) {
       {active.length > 0 ? (
         <div className="mt-7">
           {showActiveHeader ? <GroupHeader label="Active" /> : null}
-          <ul className="space-y-3">
-            {active.map((s) => (
-              <ActiveCard key={s.id} s={s} />
-            ))}
-          </ul>
+          <GroupBody
+            items={active}
+            renderItem={(s) => <ActiveCard key={s.id} s={s} />}
+            listClassName="space-y-3"
+          />
         </div>
       ) : null}
 
       {pending.length > 0 ? (
         <div className="mt-8">
           <GroupHeader label="Pending payment" pulsing />
-          <ul className="space-y-3">
-            {pending.map((s) => (
-              <PendingCard key={s.id} s={s} />
-            ))}
-          </ul>
+          <GroupBody
+            items={pending}
+            renderItem={(s) => <PendingCard key={s.id} s={s} />}
+            listClassName="space-y-3"
+          />
         </div>
       ) : null}
 
@@ -349,14 +348,61 @@ export function SponsorshipsSection({ items }: { items: Sponsorship[] }) {
             </span>
             <span>Cancelled ({cancelled.length})</span>
           </summary>
-          <ul className="mt-3 space-y-2">
-            {cancelled.map((s) => (
-              <CancelledCard key={s.id} s={s} />
-            ))}
-          </ul>
+          <div className="mt-3">
+            <GroupBody
+              items={cancelled}
+              renderItem={(s) => <CancelledCard key={s.id} s={s} />}
+              listClassName="space-y-2"
+            />
+          </div>
         </details>
       ) : null}
     </section>
+  );
+}
+
+// Splits a group's items by payment_mode and renders subheaders only if
+// the donor has BOTH modes in this group. Single-mode donors see a
+// plain list with no subheader.
+function GroupBody<T extends Sponsorship>({
+  items,
+  renderItem,
+  listClassName,
+}: {
+  items: T[];
+  renderItem: (s: T) => React.ReactNode;
+  listClassName: string;
+}) {
+  const monthly = items.filter((s) => s.payment_mode === "monthly");
+  const oneTime = items.filter((s) => s.payment_mode === "one_time");
+  const showSubheaders = monthly.length > 0 && oneTime.length > 0;
+
+  if (!showSubheaders) {
+    return <ul className={listClassName}>{items.map(renderItem)}</ul>;
+  }
+  return (
+    <>
+      {monthly.length > 0 ? (
+        <div>
+          <SubHeader label="Monthly support" />
+          <ul className={listClassName}>{monthly.map(renderItem)}</ul>
+        </div>
+      ) : null}
+      {oneTime.length > 0 ? (
+        <div className="mt-5">
+          <SubHeader label="One-time gifts" />
+          <ul className={listClassName}>{oneTime.map(renderItem)}</ul>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function SubHeader({ label }: { label: string }) {
+  return (
+    <h4 className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-slate-soft mb-2 mt-0">
+      {label}
+    </h4>
   );
 }
 
