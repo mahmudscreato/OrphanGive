@@ -17,6 +17,15 @@ export type Donor = {
   og_admin_approved_at: string | null;
   og_agreed_to_terms_at: string | null;
   last_access: string | null;
+  // Cloudinary secure_url for the donor's avatar; null until they
+  // upload one. See migrations/2026-05-08-add-og-profile-photo-url.sql.
+  og_profile_photo_url: string | null;
+  // Stripe Customer id, set on first checkout. Used by /dashboard/billing
+  // to read saved payment methods and to gate the Customer Portal.
+  og_stripe_customer_id: string | null;
+  // Account-creation timestamp from Directus's standard user metadata;
+  // used as the "Member since" line on the profile page.
+  date_created: string | null;
 };
 
 // ─── State machine ───────────────────────────────────────────────────────────
@@ -91,25 +100,49 @@ export async function getCurrentDonor(): Promise<Donor | null> {
     return null;
   }
 
-  // 2) Server-token fetch of full user row (Donor policy can't read og_*)
+  // 2) Server-token fetch of full user row (Donor policy can't read og_*).
+  //
+  // We split the fetch into two passes:
+  //   • Required fields — always fetchable, drives the auth state machine.
+  //   • Optional fields — added by post-launch migrations (e.g.
+  //     og_profile_photo_url from Session 13.5c Part B). If the running
+  //     Directus schema doesn't have those columns yet (migration not yet
+  //     applied in this environment), the secondary fetch is silently
+  //     dropped and the donor object reports those fields as null.
+  // This keeps auth working through forward-compatible deploys.
+  const REQUIRED_FIELDS = [
+    "id",
+    "email",
+    "first_name",
+    "last_name",
+    "status",
+    "og_country",
+    "og_phone",
+    "og_admin_approval_status",
+    "og_admin_approved_at",
+    "og_agreed_to_terms_at",
+    "last_access",
+    "og_stripe_customer_id",
+    "date_created",
+  ] as const;
+  const OPTIONAL_FIELDS = ["og_profile_photo_url"] as const;
+
   try {
-    const row = (await directusServer().request(
+    let row = (await directusServer().request(
       readUser(userId, {
-        fields: [
-          "id",
-          "email",
-          "first_name",
-          "last_name",
-          "status",
-          "og_country",
-          "og_phone",
-          "og_admin_approval_status",
-          "og_admin_approved_at",
-          "og_agreed_to_terms_at",
-          "last_access",
-        ],
+        fields: [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS],
       } as never),
-    )) as Record<string, unknown> | null;
+    ).catch(async () => {
+      // Likely cause: the optional column doesn't exist in this Directus
+      // schema yet. Fall back to the required fields only.
+      console.warn(
+        "[donor-data] full-field readUser failed; falling back to required-only set. Did you forget to run migrations/2026-05-08-add-og-profile-photo-url.sql?",
+      );
+      return (await directusServer().request(
+        readUser(userId, { fields: [...REQUIRED_FIELDS] } as never),
+      )) as Record<string, unknown> | null;
+    })) as Record<string, unknown> | null;
+    if (!row) row = null;
 
     if (!row || typeof row !== "object") return null;
 
@@ -125,6 +158,11 @@ export async function getCurrentDonor(): Promise<Donor | null> {
       og_admin_approved_at: (row.og_admin_approved_at as string | null) ?? null,
       og_agreed_to_terms_at: (row.og_agreed_to_terms_at as string | null) ?? null,
       last_access: (row.last_access as string | null) ?? null,
+      og_profile_photo_url:
+        (row.og_profile_photo_url as string | null) ?? null,
+      og_stripe_customer_id:
+        (row.og_stripe_customer_id as string | null) ?? null,
+      date_created: (row.date_created as string | null) ?? null,
     };
   } catch (err) {
     console.warn(

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { signOutAction } from "@/app/(auth)/actions";
+import { ToastProvider } from "@/components/ui/Toast";
 import { DashboardSidebar } from "./components/DashboardSidebar";
 
 export default async function DashboardLayout({
@@ -42,14 +43,16 @@ export default async function DashboardLayout({
       );
     case "approved":
       return (
-        <div className="bg-cream min-h-screen">
-          <DashboardSidebar donor={donor!} />
-          <div className="lg:ml-60">
-            <div className="px-10 pt-12 pb-24 max-lg:px-6 max-lg:pt-20 max-lg:pb-16">
-              <div className="max-w-[1080px] mx-auto">{children}</div>
+        <ToastProvider>
+          <div className="bg-cream min-h-screen">
+            <DashboardSidebar donor={donor!} />
+            <div className="lg:ml-60">
+              <div className="px-10 pt-12 pb-24 max-lg:px-6 max-lg:pt-20 max-lg:pb-16">
+                <div className="max-w-[1080px] mx-auto">{children}</div>
+              </div>
             </div>
           </div>
-        </div>
+        </ToastProvider>
       );
   }
 }
