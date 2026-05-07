@@ -52,6 +52,21 @@ export type Sponsorship = {
   paused_at: string | null;
   modified_at: string | null;
   modification_history: ModificationEntry[] | null;
+  // Duration + payment schedule (from sponsor flow refactor).
+  // For monthly indefinite: duration_months=null, payment_schedule='monthly'.
+  // For monthly fixed-term recurring: duration_months=N, payment_schedule='monthly'.
+  // For monthly prepaid: duration_months=N, payment_schedule='monthly_prepaid',
+  //                     prepaid_months_total=N, prepaid_months_remaining counts down.
+  // For one-time: all duration fields null.
+  duration_months: number | null;
+  payment_schedule: "monthly" | "monthly_prepaid" | null;
+  prepaid_months_total: number | null;
+  prepaid_months_remaining: number | null;
+  scheduled_end_date: string | null;
+  // Set when a donor cancels during a prepaid period — the row stays
+  // 'active' until the prepaid period ends, at which point the cron
+  // flips status to 'cancelled'.
+  cancellation_scheduled_at: string | null;
 };
 
 const FULL_FIELDS = [
@@ -61,6 +76,9 @@ const FULL_FIELDS = [
   "total_paid_usd", "payment_count", "date_created",
   "checkout_fingerprint", "cancellation_reason",
   "paused_at", "modified_at", "modification_history",
+  "duration_months", "payment_schedule",
+  "prepaid_months_total", "prepaid_months_remaining", "scheduled_end_date",
+  "cancellation_scheduled_at",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
 ] as const;
@@ -138,6 +156,12 @@ export async function createPendingSponsorship(opts: {
   stripe_payment_intent_id?: string | null;
   stripe_customer_id?: string | null;
   checkout_fingerprint?: string | null;
+  // New duration + schedule fields.
+  duration_months?: number | null;
+  payment_schedule?: "monthly" | "monthly_prepaid" | null;
+  prepaid_months_total?: number | null;
+  prepaid_months_remaining?: number | null;
+  scheduled_end_date?: string | null;
 }): Promise<{ id: string }> {
   const payload: Record<string, unknown> = {
     donor: opts.donor,
@@ -150,6 +174,11 @@ export async function createPendingSponsorship(opts: {
     stripe_payment_intent_id: opts.stripe_payment_intent_id ?? null,
     stripe_customer_id: opts.stripe_customer_id ?? null,
     checkout_fingerprint: opts.checkout_fingerprint ?? null,
+    duration_months: opts.duration_months ?? null,
+    payment_schedule: opts.payment_schedule ?? null,
+    prepaid_months_total: opts.prepaid_months_total ?? null,
+    prepaid_months_remaining: opts.prepaid_months_remaining ?? null,
+    scheduled_end_date: opts.scheduled_end_date ?? null,
   };
   const created = (await directusServer().request(
     createItem("sponsorship" as never, payload as never),

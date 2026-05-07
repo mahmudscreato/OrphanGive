@@ -1,7 +1,8 @@
-// Renders the donor's sponsorships in three groups:
-//   1. Active        — moss pill, full card with thumbnail + details
-//   2. Pending       — tangerine pill, dimmed card, "Awaiting first payment"
-//   3. Cancelled     — collapsed <details> at the bottom
+// Renders the donor's sponsorships in four groups:
+//   1. Active        — moss pill, full card with thumbnail + config
+//   2. Completed     — moss pill, finished fixed-term commitments (success)
+//   3. Pending       — tangerine pill, dimmed card, "Awaiting first payment"
+//   4. Cancelled     — collapsed <details> at the bottom
 //
 // Empty groups are hidden. The "Active" header is suppressed when it's
 // the only group on screen so a typical donor sees the simplest layout.
@@ -13,28 +14,32 @@ import { formatUsd } from "@/lib/pricing";
 import type { Sponsorship } from "@/lib/sponsorship-data";
 import { PendingCardActions } from "./PendingCardActions";
 
-type DisplayStatus = "active" | "pending_payment" | "cancelled";
+type DisplayStatus = "active" | "completed" | "pending_payment" | "cancelled";
 
 const STATUS_PILL: Record<DisplayStatus, string> = {
   active:          "bg-moss-soft text-moss border-moss/30",
+  completed:       "bg-moss-soft text-moss border-moss/30",
   pending_payment: "bg-tangerine-mist text-tangerine-deep border-tangerine-soft",
   cancelled:       "bg-ink/[0.04] text-slate-soft border-ink/[0.08]",
 };
 
 const STATUS_LABEL: Record<DisplayStatus, string> = {
   active:          "Active",
+  completed:       "Completed",
   pending_payment: "Pending",
   cancelled:       "Cancelled",
 };
 
 // Used by /dashboard/page.tsx to decide whether to render this section
-// at all vs. show <EmptyDonorState />. We include "cancelled" so a donor
-// whose only sponsorships are cancelled still sees them (collapsed).
+// at all vs. show <EmptyDonorState />. We include "cancelled" + "completed"
+// so a donor whose only sponsorships are in those terminal states still
+// sees them.
 export function isDisplaySponsorship(
   s: Sponsorship,
 ): s is Sponsorship & { status: DisplayStatus } {
   return (
     s.status === "active" ||
+    s.status === "completed" ||
     s.status === "pending_payment" ||
     s.status === "cancelled"
   );
@@ -131,10 +136,30 @@ function StatusPill({ status }: { status: DisplayStatus }) {
 function AmountInline({
   amountUsd,
   paymentMode,
+  paymentSchedule,
+  prepaidMonthsTotal,
 }: {
   amountUsd: number;
   paymentMode: Sponsorship["payment_mode"];
+  paymentSchedule?: Sponsorship["payment_schedule"];
+  prepaidMonthsTotal?: number | null;
 }) {
+  // Prepaid headline shows the FULL upfront sum (rate × months) since
+  // that's what the donor was actually charged. Recurring monthly shows
+  // the rate; one-time shows the gift amount.
+  if (paymentSchedule === "monthly_prepaid" && prepaidMonthsTotal) {
+    return (
+      <div className="text-right whitespace-nowrap">
+        <span className="font-display font-medium text-[20px] text-ink tracking-[-0.01em]">
+          {formatUsd(amountUsd * prepaidMonthsTotal)}
+        </span>
+        <span className="font-body text-[13px] text-slate ml-0.5">
+          {" "}
+          prepaid
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="text-right whitespace-nowrap">
       <span className="font-display font-medium text-[20px] text-ink tracking-[-0.01em]">
@@ -147,21 +172,79 @@ function AmountInline({
   );
 }
 
+// "Months between today and scheduled_end_date". Returns null if no end
+// date or already past. Uses 30.44-day months to match the cancel_at
+// scheduling we set in /api/checkout/init.
+function monthsRemainingUntil(endIso: string | null): number | null {
+  if (!endIso) return null;
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) return null;
+  const ms = end.getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.max(1, Math.round(ms / (30.44 * 24 * 60 * 60 * 1000)));
+}
+
+// Long-form configuration string used on each Active card. The shape
+// depends on (paymentMode, payment_schedule, duration_months). Examples:
+//   "Monthly · $25/mo · until I cancel"
+//   "Monthly · $25/mo · 6 months (5 remaining)"
+//   "Prepaid · $150 for 6 months (4 remaining)"
+//   "One-time gift · $100"
+function describeActiveSponsorship(s: Sponsorship): string {
+  if (s.payment_mode === "one_time") {
+    return `One-time gift · ${formatUsd(s.amount_usd)}`;
+  }
+  // monthly
+  if (s.payment_schedule === "monthly_prepaid") {
+    const total = s.prepaid_months_total ?? null;
+    const remaining = s.prepaid_months_remaining ?? null;
+    if (total != null && remaining != null) {
+      return `Prepaid · ${formatUsd(s.amount_usd * total)} for ${total} ${
+        total === 1 ? "month" : "months"
+      } (${remaining} remaining)`;
+    }
+    return `Prepaid · ${formatUsd(s.amount_usd)}/mo`;
+  }
+  // monthly recurring (indefinite or fixed-term)
+  if (s.duration_months == null) {
+    return `Monthly · ${formatUsd(s.amount_usd)}/mo · until I cancel`;
+  }
+  const total = s.duration_months;
+  const remaining =
+    monthsRemainingUntil(s.scheduled_end_date) ?? total;
+  return `Monthly · ${formatUsd(s.amount_usd)}/mo · ${total} ${
+    total === 1 ? "month" : "months"
+  } (${remaining} remaining)`;
+}
+
+// Bottom-line ("started" / "next charge" / "coverage ends") for an
+// active card. Returns null if we have nothing useful to say.
+function bottomLineForActive(s: Sponsorship): string | null {
+  if (s.payment_mode === "one_time") {
+    const startedAt = formatDate(s.started_at);
+    return startedAt ? `Started ${startedAt}` : null;
+  }
+  // monthly
+  if (s.payment_schedule === "monthly_prepaid") {
+    const ends = formatDate(s.scheduled_end_date);
+    return ends ? `Coverage ends: ${ends}` : null;
+  }
+  // monthly recurring
+  const next = formatDate(s.next_billing_date);
+  const ends = formatDate(s.scheduled_end_date);
+  if (next && ends) return `Next charge: ${next} · Ends: ${ends}`;
+  if (next) return `Next charge: ${next}`;
+  if (ends) return `Ends: ${ends}`;
+  return null;
+}
+
 function ActiveCard({ s }: { s: Sponsorship & { status: "active" } }) {
   const c = childOf(s);
-  const sub = [c.district, c.age != null ? `age ${c.age}` : null]
+  const meta = [c.district, c.age != null ? `age ${c.age}` : null]
     .filter(Boolean)
     .join(" · ");
-  const startedAt = formatDate(s.started_at);
-  const nextAt = formatDate(s.next_billing_date);
-  const bottom =
-    s.payment_mode === "monthly"
-      ? nextAt
-        ? `Next charge: ${nextAt}`
-        : null
-      : startedAt
-        ? `Started ${startedAt}`
-        : null;
+  const config = describeActiveSponsorship(s);
+  const bottom = bottomLineForActive(s);
 
   return (
     <li className="rounded-[18px] bg-white border border-ink/[0.06] px-5 py-4">
@@ -180,13 +263,16 @@ function ActiveCard({ s }: { s: Sponsorship & { status: "active" } }) {
               {c.name}
             </span>
           )}
-          {sub ? (
-            <div className="text-[13px] text-slate-soft mt-0.5">{sub}</div>
+          {meta ? (
+            <div className="text-[12.5px] text-slate-soft mt-0.5">{meta}</div>
           ) : null}
+          <div className="text-[13px] text-slate mt-1">{config}</div>
         </div>
         <AmountInline
           amountUsd={s.amount_usd}
           paymentMode={s.payment_mode}
+          paymentSchedule={s.payment_schedule}
+          prepaidMonthsTotal={s.prepaid_months_total}
         />
         <div className="shrink-0">
           <StatusPill status="active" />
@@ -195,6 +281,65 @@ function ActiveCard({ s }: { s: Sponsorship & { status: "active" } }) {
       <div className="mt-3 pt-3 border-t border-ink/[0.04] flex items-center justify-between gap-3 max-md:flex-wrap">
         <div className="font-mono text-[11px] text-slate-soft tracking-[0.1em] uppercase">
           {bottom ?? "—"}
+        </div>
+        <Link
+          href={`/dashboard/sponsorship/${s.id}`}
+          className="text-[12px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
+        >
+          View details →
+        </Link>
+      </div>
+    </li>
+  );
+}
+
+// Completed = a fixed-term sponsorship that ran its full term. Visual
+// signal is success (moss), not grey — this is something to celebrate.
+function CompletedCard({
+  s,
+}: {
+  s: Sponsorship & { status: "completed" };
+}) {
+  const c = childOf(s);
+  const ended = formatDate(s.ended_at ?? s.scheduled_end_date);
+  const months = s.duration_months ?? s.prepaid_months_total ?? null;
+  const bottom = months
+    ? `${ended ? `Completed ${ended} · ` : ""}${months}-month commitment fulfilled`
+    : ended
+      ? `Completed ${ended}`
+      : "Completed";
+  return (
+    <li className="rounded-[18px] bg-white border border-moss/30 px-5 py-4">
+      <div className="flex items-center gap-4 max-md:flex-wrap">
+        <ChildThumb photoId={c.photoId} name={c.name} />
+        <div className="flex-1 min-w-0">
+          {c.id ? (
+            <Link
+              href={`/children/${c.id}`}
+              className="font-display text-[17px] text-ink leading-tight hover:text-tangerine-deep transition-colors"
+            >
+              {c.name}
+            </Link>
+          ) : (
+            <span className="font-display text-[17px] text-ink leading-tight">
+              {c.name}
+            </span>
+          )}
+          <div className="text-[13px] text-slate mt-1">
+            {s.payment_mode === "one_time"
+              ? `One-time gift · ${formatUsd(s.amount_usd)}`
+              : s.payment_schedule === "monthly_prepaid" && s.prepaid_months_total
+                ? `Prepaid · ${formatUsd(s.amount_usd * s.prepaid_months_total)} for ${s.prepaid_months_total} months`
+                : `Monthly · ${formatUsd(s.amount_usd)}/mo · ${s.duration_months ?? "—"} months`}
+          </div>
+        </div>
+        <div className="shrink-0">
+          <StatusPill status="completed" />
+        </div>
+      </div>
+      <div className="mt-3 pt-3 border-t border-moss/15 flex items-center justify-between gap-3 max-md:flex-wrap">
+        <div className="font-mono text-[11px] text-moss tracking-[0.1em] uppercase">
+          {bottom}
         </div>
         <Link
           href={`/dashboard/sponsorship/${s.id}`}
@@ -282,6 +427,10 @@ export function SponsorshipsSection({ items }: { items: Sponsorship[] }) {
   const active = items.filter(
     (s): s is Sponsorship & { status: "active" } => s.status === "active",
   );
+  const completed = items.filter(
+    (s): s is Sponsorship & { status: "completed" } =>
+      s.status === "completed",
+  );
   const pending = items.filter(
     (s): s is Sponsorship & { status: "pending_payment" } =>
       s.status === "pending_payment",
@@ -293,7 +442,12 @@ export function SponsorshipsSection({ items }: { items: Sponsorship[] }) {
   // Nothing to show — empty-state copy lives here in case the parent
   // switches to "always render section" later. Today the dashboard's
   // EmptyDonorState typically handles this branch.
-  if (active.length === 0 && pending.length === 0 && cancelled.length === 0) {
+  if (
+    active.length === 0 &&
+    completed.length === 0 &&
+    pending.length === 0 &&
+    cancelled.length === 0
+  ) {
     return (
       <section>
         <SectionHeader />
@@ -310,6 +464,7 @@ export function SponsorshipsSection({ items }: { items: Sponsorship[] }) {
   // version of the section.
   const groupCount =
     (active.length > 0 ? 1 : 0) +
+    (completed.length > 0 ? 1 : 0) +
     (pending.length > 0 ? 1 : 0) +
     (cancelled.length > 0 ? 1 : 0);
   const showActiveHeader = groupCount > 1;
@@ -324,6 +479,17 @@ export function SponsorshipsSection({ items }: { items: Sponsorship[] }) {
           <GroupBody
             items={active}
             renderItem={(s) => <ActiveCard key={s.id} s={s} />}
+            listClassName="space-y-3"
+          />
+        </div>
+      ) : null}
+
+      {completed.length > 0 ? (
+        <div className="mt-8">
+          <GroupHeader label="Completed" />
+          <GroupBody
+            items={completed}
+            renderItem={(s) => <CompletedCard key={s.id} s={s} />}
             listClassName="space-y-3"
           />
         </div>

@@ -320,13 +320,17 @@ async function ctxFromInvoicePaymentFailed(
 }
 
 async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
-  // We only auto-handle one-time payments here (tagged via metadata).
-  // Subscription invoices are handled by invoice.payment_succeeded above.
-  if (pi.metadata?.payment_mode !== "one_time") return;
+  // Two PI shapes flow through here:
+  //   payment_mode='one_time'        → multi-sponsorship bundle (one PI shared)
+  //   payment_mode='monthly_prepaid' → single sponsorship (one PI per row)
+  // Subscription invoices are handled by invoice.payment_succeeded above
+  // (they don't tag payment_mode in PI metadata).
+  const metaMode = pi.metadata?.payment_mode;
+  if (metaMode !== "one_time" && metaMode !== "monthly_prepaid") return;
 
   const sponsorships = await findSponsorshipsByStripeRef({ paymentIntentId: pi.id });
   if (sponsorships.length === 0) {
-    console.warn(`[stripe-webhook] no sponsorships for one-time PI ${pi.id}`);
+    console.warn(`[stripe-webhook] no sponsorships for PI ${pi.id} (${metaMode})`);
     return;
   }
 
@@ -345,10 +349,21 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
     /* non-fatal */
   }
 
+  // For one-time: per-row amount = s.amount_usd. The PI charge is the
+  // sum across sponsorships, but we record one payment row per
+  // sponsorship at its own amount.
+  // For prepaid: one row per PI. The payment row carries the FULL PI
+  // amount (months × monthly rate), not the per-month rate, since this
+  // is what the donor was actually charged today.
   for (const s of sponsorships) {
+    const isPrepaid = s.payment_schedule === "monthly_prepaid";
+    const paymentAmount = isPrepaid
+      ? (pi.amount ?? 0) / 100 // full upfront sum
+      : s.amount_usd;
+
     const created = await createPaymentIfMissing({
       sponsorshipId: s.id,
-      amount_usd: s.amount_usd,
+      amount_usd: paymentAmount,
       status: "succeeded",
       stripe_payment_intent_id: pi.id,
       stripe_charge_id: chargeId,
@@ -360,12 +375,12 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
     if (!s.started_at) patch.started_at = new Date().toISOString();
     if (created) {
       patch.payment_count = (s.payment_count ?? 0) + 1;
-      patch.total_paid_usd = Number(s.total_paid_usd ?? 0) + s.amount_usd;
+      patch.total_paid_usd = Number(s.total_paid_usd ?? 0) + paymentAmount;
     }
     await updateSponsorship(s.id, patch);
   }
 
-  // Convert cart for this donor (one-time PI carries donor_id in metadata).
+  // Convert cart for this donor.
   const donorId = pi.metadata?.donor_id;
   if (donorId) await clearCartByDonor(donorId).catch(() => {});
 }
@@ -389,14 +404,46 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
 
 async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
   const sponsorships = await findSponsorshipsByStripeRef({ subscriptionId: sub.id });
+
+  // Distinguish a SCHEDULED end-of-term cancel (cancel_at hit) from a
+  // MANUAL cancel (donor or admin). For fixed-term subs created via
+  // /api/checkout/init we set sub.cancel_at; when Stripe auto-cancels,
+  // sub.canceled_at lands very close to that scheduled time.
+  // Tolerance accounts for Stripe's billing scheduler not running on the
+  // exact second.
+  const SCHEDULED_TOLERANCE_SEC = 5 * 60;
+  const isScheduledCompletion =
+    typeof sub.cancel_at === "number" &&
+    typeof sub.canceled_at === "number" &&
+    Math.abs(sub.canceled_at - sub.cancel_at) <= SCHEDULED_TOLERANCE_SEC;
+
+  const nowIso = new Date().toISOString();
   for (const s of sponsorships) {
-    if (s.status === "cancelled") continue;
-    await updateSponsorship(s.id, {
-      status: "cancelled",
-      ended_at: new Date().toISOString(),
-      cancelled_at: new Date().toISOString(),
-      cancellation_reason: "stripe_cancelled",
-    });
+    if (s.status === "cancelled" || s.status === "completed") continue;
+    // Donor scheduled cancellation during prepaid: their Stripe sub
+    // (the monthly tail) gets cancelled immediately, but the local row
+    // stays 'active' until the prepaid period ends. Don't overwrite —
+    // Session 15's cron will flip the row at the right time.
+    if (s.cancellation_scheduled_at) {
+      console.log(
+        `[stripe-webhook] sub deleted for sponsorship ${s.id} — leaving 'active', cancellation already scheduled for ${s.cancellation_scheduled_at}`,
+      );
+      continue;
+    }
+    if (isScheduledCompletion) {
+      await updateSponsorship(s.id, {
+        status: "completed",
+        ended_at: nowIso,
+        cancellation_reason: "completed_term",
+      });
+    } else {
+      await updateSponsorship(s.id, {
+        status: "cancelled",
+        ended_at: nowIso,
+        cancelled_at: nowIso,
+        cancellation_reason: "stripe_cancelled",
+      });
+    }
   }
 }
 

@@ -22,16 +22,27 @@ export const metadata = {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type DisplayStatus = "active" | "paused" | "cancelled";
+type DisplayStatus =
+  | "active"
+  | "prepaid"
+  | "paused"
+  | "completed"
+  | "cancelled";
 
 const STATUS_PILL: Record<DisplayStatus, string> = {
   active:    "bg-moss-soft text-moss border-moss/30",
+  // Distinct visual for prepaid: same moss family but a deeper saturation
+  // so it reads as "active and fully paid up".
+  prepaid:   "bg-moss text-cream border-moss",
   paused:    "bg-sky/20 text-sky border-sky/30",
+  completed: "bg-moss-soft text-moss border-moss/30",
   cancelled: "bg-ink/[0.04] text-slate-soft border-ink/[0.08]",
 };
 const STATUS_LABEL: Record<DisplayStatus, string> = {
   active:    "Active",
+  prepaid:   "Prepaid",
   paused:    "Paused",
+  completed: "Completed",
   cancelled: "Cancelled",
 };
 
@@ -72,7 +83,7 @@ export default async function SponsorshipDetailPage({
   const district = childObj?.bd_district?.name?.trim() ?? null;
   const age = ageFromDob(childObj?.date_of_birth ?? null);
 
-  const status = normalizeStatus(sponsorship.status);
+  const status = normalizeStatus(sponsorship);
 
   const totalContributed = payments
     .filter((p) => p.status === "succeeded")
@@ -109,22 +120,28 @@ export default async function SponsorshipDetailPage({
             totalContributed={totalContributed}
           />
 
-          {/* Actions */}
-          {sponsorship.payment_mode === "monthly" && status !== "cancelled" ? (
+          {/* Actions — hidden entirely for completed/cancelled. The
+              SponsorshipActions client component itself decides which
+              modal to surface for "Add more months" based on the
+              sponsorship's type (recurring / prepaid / indefinite). */}
+          {status !== "completed" &&
+          status !== "cancelled" ? (
             <section className="mt-10">
               <SponsorshipActions
                 sponsorshipId={sponsorship.id}
                 paymentMode={sponsorship.payment_mode}
                 status={status}
                 amountUsd={sponsorship.amount_usd}
+                childId={childId}
                 childName={childName}
                 nextBillingDate={sponsorship.next_billing_date}
+                durationMonths={sponsorship.duration_months}
+                paymentSchedule={sponsorship.payment_schedule}
+                prepaidMonthsTotal={sponsorship.prepaid_months_total}
+                prepaidMonthsRemaining={sponsorship.prepaid_months_remaining}
+                scheduledEndDate={sponsorship.scheduled_end_date}
               />
             </section>
-          ) : sponsorship.payment_mode === "one_time" ? (
-            <p className="mt-10 text-[13.5px] text-slate-soft italic">
-              One-time sponsorships cannot be modified.
-            </p>
           ) : null}
 
           {/* Payments */}
@@ -202,27 +219,79 @@ function SponsorshipSummary({
   totalContributed: number;
 }) {
   const startedAt = formatDate(sponsorship.started_at);
+  const endedAt = formatDate(sponsorship.ended_at);
   const cancelledAt = formatDate(sponsorship.cancelled_at ?? sponsorship.ended_at);
   const pausedAt = formatDate(sponsorship.paused_at);
   const nextAt = formatDate(sponsorship.next_billing_date);
+  const scheduledEnd = formatDate(sponsorship.scheduled_end_date);
+
+  // Headline label + value mirror the dashboard cards' config.
+  const isPrepaid = sponsorship.payment_schedule === "monthly_prepaid";
+  const isFixedTermRecurring =
+    sponsorship.payment_mode === "monthly" &&
+    sponsorship.payment_schedule === "monthly" &&
+    sponsorship.duration_months != null;
+
+  let typeLabel: string;
+  let typeValue: React.ReactNode;
+  if (sponsorship.payment_mode === "one_time") {
+    typeLabel = "One-time gift";
+    typeValue = (
+      <span className="font-display font-medium text-ink text-[20px]">
+        {formatUsd(sponsorship.amount_usd)}
+      </span>
+    );
+  } else if (isPrepaid) {
+    const total = sponsorship.prepaid_months_total ?? 0;
+    typeLabel = "Prepaid";
+    typeValue = (
+      <span>
+        <span className="font-display font-medium text-ink text-[20px]">
+          {formatUsd(sponsorship.amount_usd * total)}
+        </span>
+        <span className="font-body text-[13px] text-slate ml-1">
+          for {total} {total === 1 ? "month" : "months"}
+        </span>
+      </span>
+    );
+  } else {
+    typeLabel = "Monthly";
+    typeValue = (
+      <span>
+        <span className="font-display font-medium text-ink text-[20px]">
+          {formatUsd(sponsorship.amount_usd)}
+        </span>
+        <span className="font-body text-[13px] text-slate ml-0.5">/month</span>
+        {isFixedTermRecurring ? (
+          <span className="font-body text-[13px] text-slate-soft ml-2">
+            · {sponsorship.duration_months} months
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  // Progress for fixed-term + prepaid.
+  let progressLabel: string | null = null;
+  let progressValue: string | null = null;
+  if (isFixedTermRecurring && sponsorship.duration_months) {
+    const total = sponsorship.duration_months;
+    const completedMonths = Math.max(
+      0,
+      Math.min(total, total - (monthsRemainingUntil(sponsorship.scheduled_end_date) ?? 0)),
+    );
+    progressLabel = "Progress";
+    progressValue = `Month ${Math.max(1, completedMonths + 1)} of ${total}`;
+  } else if (isPrepaid && sponsorship.prepaid_months_total) {
+    progressLabel = "Months remaining";
+    progressValue = `${sponsorship.prepaid_months_remaining ?? 0} of ${sponsorship.prepaid_months_total}`;
+  }
 
   return (
     <section className="mt-6 rounded-[20px] bg-white border border-ink/[0.06] px-6 py-5 max-md:px-5">
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 max-md:grid-cols-1">
         <Field label="Sponsoring since" value={startedAt ?? "—"} />
-        <Field
-          label={sponsorship.payment_mode === "monthly" ? "Monthly" : "One-time"}
-          value={
-            <span>
-              <span className="font-display font-medium text-ink text-[20px]">
-                {formatUsd(sponsorship.amount_usd)}
-              </span>
-              <span className="font-body text-[13px] text-slate ml-0.5">
-                {sponsorship.payment_mode === "monthly" ? "/month" : " gift"}
-              </span>
-            </span>
-          }
-        />
+        <Field label={typeLabel} value={typeValue} />
         <Field
           label="Total contributed"
           value={
@@ -231,11 +300,46 @@ function SponsorshipSummary({
             </span>
           }
         />
-        {status === "active" && sponsorship.payment_mode === "monthly" && nextAt ? (
-          <Field label="Next charge" value={nextAt} />
+        {progressLabel && progressValue ? (
+          <Field label={progressLabel} value={progressValue} />
+        ) : null}
+        {status === "active" &&
+        sponsorship.payment_mode === "monthly" &&
+        !isPrepaid &&
+        nextAt ? (
+          <Field
+            label="Next charge"
+            value={
+              isFixedTermRecurring && scheduledEnd ? (
+                <span>
+                  {nextAt}
+                  <span className="text-slate-soft"> · Ends {scheduledEnd}</span>
+                </span>
+              ) : (
+                nextAt
+              )
+            }
+          />
+        ) : null}
+        {isPrepaid && scheduledEnd ? (
+          <Field label="Coverage ends" value={scheduledEnd} />
         ) : null}
         {status === "paused" && pausedAt ? (
           <Field label="Paused since" value={pausedAt} />
+        ) : null}
+        {status === "completed" ? (
+          <Field
+            label="Completed"
+            value={
+              <span>
+                {endedAt ?? "—"}
+                <span className="text-slate-soft">
+                  {" · "}
+                  {sponsorship.duration_months ?? sponsorship.prepaid_months_total ?? "—"}-month commitment fulfilled
+                </span>
+              </span>
+            }
+          />
         ) : null}
         {status === "cancelled" && cancelledAt ? (
           <Field
@@ -256,6 +360,17 @@ function SponsorshipSummary({
       </div>
     </section>
   );
+}
+
+// Best-effort "months between today and end date" using 30.44-day months
+// (matches the cancel_at scheduling in /api/checkout/init). 0 if past.
+function monthsRemainingUntil(endIso: string | null): number | null {
+  if (!endIso) return null;
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) return null;
+  const ms = end.getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.max(1, Math.round(ms / (30.44 * 24 * 60 * 60 * 1000)));
 }
 
 function PaymentsSection({ payments }: { payments: PaymentRow[] }) {
@@ -431,11 +546,18 @@ function ageFromDob(dob: string | null): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
-function normalizeStatus(s: string): DisplayStatus {
-  if (s === "active" || s === "paused" || s === "cancelled") return s;
-  // Anything else (pending_payment, completed, failed) renders as
-  // "cancelled" tone for the pill so the UI doesn't break — the page
-  // also hides actions in that case.
-  if (s === "pending_payment") return "active";
+// Maps the DB status (+ payment_schedule) to a richer display status.
+// A sponsorship with status='active' AND payment_schedule='monthly_prepaid'
+// is shown with the deeper "Prepaid" pill instead of the standard Active.
+function normalizeStatus(s: Sponsorship): DisplayStatus {
+  if (s.status === "completed") return "completed";
+  if (s.status === "paused") return "paused";
+  if (s.status === "cancelled") return "cancelled";
+  if (s.status === "active") {
+    return s.payment_schedule === "monthly_prepaid" ? "prepaid" : "active";
+  }
+  // pending_payment / failed / anything else → fall back to "active"
+  // tone (the page itself decides whether to render actions).
+  if (s.status === "pending_payment") return "active";
   return "cancelled";
 }

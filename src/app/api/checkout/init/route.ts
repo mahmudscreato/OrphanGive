@@ -10,6 +10,7 @@ import {
   readCart,
   type HydratedCartItem,
 } from "@/lib/cart-data";
+import { calculateScheduledEndDate } from "@/lib/pricing";
 import { getStripe, getStripePublishableKey } from "@/lib/stripe-client";
 import {
   createPendingSponsorship,
@@ -25,18 +26,29 @@ export const runtime = "nodejs";
 const REUSE_WINDOW_MS = 30 * 60_000;
 
 // ─── Fingerprint helpers ────────────────────────────────────────────────────
-// Stable hash of cart contents. Same children + amounts + modes → same hash,
-// regardless of cart-add order.
+// Stable hash of cart contents. Same children + amounts + modes + duration +
+// schedule → same hash, regardless of cart-add order. Changing any of those
+// fields between attempts forces a fresh checkout (the previous pending
+// sponsorships get cancelled with reason='abandoned' before new ones are
+// created).
 function fingerprintCart(items: ReadonlyArray<HydratedCartItem>): string {
   const normalized = items
     .map((i) => ({
       childId: i.childId,
       paymentMode: i.paymentMode,
       amountUsd: i.amountUsd,
+      durationMonths: i.durationMonths ?? null,
+      paymentSchedule: i.paymentSchedule ?? null,
     }))
     .sort((a, b) => {
       if (a.childId !== b.childId) return a.childId < b.childId ? -1 : 1;
       if (a.paymentMode !== b.paymentMode) return a.paymentMode < b.paymentMode ? -1 : 1;
+      if ((a.durationMonths ?? -1) !== (b.durationMonths ?? -1)) {
+        return (a.durationMonths ?? -1) - (b.durationMonths ?? -1);
+      }
+      if ((a.paymentSchedule ?? "") !== (b.paymentSchedule ?? "")) {
+        return (a.paymentSchedule ?? "") < (b.paymentSchedule ?? "") ? -1 : 1;
+      }
       return a.amountUsd - b.amountUsd;
     });
   return createHash("sha256")
@@ -90,35 +102,28 @@ async function ensureStripeCustomer(donor: {
 }
 
 // ─── Reuse path: revive existing pending sponsorships ───────────────────────
-// Given a set of pending Sponsorship rows whose checkout_fingerprint matches
-// the current cart, fetch their Stripe Subscription / PaymentIntent and
-// pull a usable client_secret out. Returns null if any object can't be
-// reused (e.g. expired, already paid, deleted) — caller falls through to
-// the cancel-and-recreate path.
+// We dispatch by Stripe-object kind, not payment_mode: a row with a
+// stripe_subscription_id is a Subscription (indefinite or fixed-term),
+// a row with only stripe_payment_intent_id is a PaymentIntent (one-time
+// or monthly_prepaid). Each PI can be shared across multiple sponsorship
+// rows (one-time bundle), so we dedup PI lookups.
 async function tryReusePendings(
   stripe: Stripe,
   pendings: Sponsorship[],
 ): Promise<{ clientSecrets: string[]; sponsorshipIds: string[] } | null> {
   const clientSecrets: string[] = [];
   const sponsorshipIds: string[] = [];
-  // Dedup PI ids — multiple one_time sponsorships share one PaymentIntent.
   const seenPI = new Set<string>();
 
   for (const s of pendings) {
     sponsorshipIds.push(s.id);
 
-    if (s.payment_mode === "monthly") {
-      const subId = s.stripe_subscription_id;
-      if (!subId) return null;
+    if (s.stripe_subscription_id) {
       try {
-        const sub = await stripe.subscriptions.retrieve(subId, {
+        const sub = await stripe.subscriptions.retrieve(s.stripe_subscription_id, {
           expand: ["latest_invoice.confirmation_secret", "latest_invoice.payment_intent"],
         });
-        // Only "incomplete" subscriptions are still awaiting first payment.
-        if (sub.status !== "incomplete" && sub.status !== "incomplete_expired") {
-          return null;
-        }
-        if (sub.status === "incomplete_expired") return null;
+        if (sub.status !== "incomplete") return null;
         const inv = sub.latest_invoice as Stripe.Invoice | string | null;
         if (!inv || typeof inv === "string") return null;
         const cs = extractClientSecret(inv);
@@ -127,15 +132,12 @@ async function tryReusePendings(
       } catch {
         return null;
       }
-    } else {
-      // one_time
+    } else if (s.stripe_payment_intent_id) {
       const piId = s.stripe_payment_intent_id;
-      if (!piId) return null;
       if (seenPI.has(piId)) continue;
       seenPI.add(piId);
       try {
         const pi = await stripe.paymentIntents.retrieve(piId);
-        // Reusable PI states: still awaiting a payment method or action.
         const reusable =
           pi.status === "requires_payment_method" ||
           pi.status === "requires_confirmation" ||
@@ -146,6 +148,9 @@ async function tryReusePendings(
       } catch {
         return null;
       }
+    } else {
+      // No Stripe ref at all — can't reuse.
+      return null;
     }
   }
 
@@ -168,16 +173,15 @@ function extractClientSecret(inv: Stripe.Invoice): string | null {
 }
 
 // ─── Cancel path: kill stale pendings before creating new ones ──────────────
-// Best-effort: for each sponsorship row, cancel its Stripe Subscription /
-// PaymentIntent and mark the row 'cancelled'. PIs are deduped because
-// multiple one_time rows share one PI.
+// Same dispatch as the reuse path: subscription_id → cancel sub,
+// payment_intent_id → cancel PI (deduped).
 async function cancelPendings(
   stripe: Stripe,
   pendings: Sponsorship[],
 ): Promise<void> {
   const cancelledPIs = new Set<string>();
   for (const s of pendings) {
-    if (s.payment_mode === "monthly" && s.stripe_subscription_id) {
+    if (s.stripe_subscription_id) {
       try {
         await stripe.subscriptions.cancel(s.stripe_subscription_id);
       } catch (e) {
@@ -187,7 +191,7 @@ async function cancelPendings(
         );
       }
     }
-    if (s.payment_mode === "one_time" && s.stripe_payment_intent_id) {
+    if (s.stripe_payment_intent_id) {
       const piId = s.stripe_payment_intent_id;
       if (!cancelledPIs.has(piId)) {
         cancelledPIs.add(piId);
@@ -216,9 +220,37 @@ async function cancelPendings(
   }
 }
 
+// ─── Cart-item bucketing ────────────────────────────────────────────────────
+type ItemBuckets = {
+  // Recurring monthly subscriptions (indefinite or fixed-term).
+  recurringSubItems: HydratedCartItem[];
+  // Single-charge prepaid bundles — one PI per item.
+  prepaidItems: HydratedCartItem[];
+  // One-time gifts — bundled into one shared PI.
+  oneTimeItems: HydratedCartItem[];
+};
+
+function bucketItems(items: ReadonlyArray<HydratedCartItem>): ItemBuckets {
+  const buckets: ItemBuckets = {
+    recurringSubItems: [],
+    prepaidItems: [],
+    oneTimeItems: [],
+  };
+  for (const it of items) {
+    if (it.paymentMode === "one_time") {
+      buckets.oneTimeItems.push(it);
+    } else if (it.paymentSchedule === "monthly_prepaid") {
+      buckets.prepaidItems.push(it);
+    } else {
+      // monthly recurring (indefinite or fixed-term-with-cancel_at)
+      buckets.recurringSubItems.push(it);
+    }
+  }
+  return buckets;
+}
+
 // ─── POST handler ───────────────────────────────────────────────────────────
 export async function POST() {
-  // Auth
   const donor = await getCurrentDonor();
   if (!donor) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
@@ -230,7 +262,6 @@ export async function POST() {
     );
   }
 
-  // Cart
   const cart = await readCart();
   if (!cart || cart.items.length === 0) {
     return NextResponse.json({ error: "Cart is empty." }, { status: 400 });
@@ -245,7 +276,6 @@ export async function POST() {
   }
   const hydrated = await hydrateCart(cart);
 
-  // Stripe configured?
   const publishableKey = getStripePublishableKey();
   if (!publishableKey) {
     return NextResponse.json(
@@ -278,36 +308,32 @@ export async function POST() {
   );
 
   if (matching.length > 0) {
-    // Order matters: client expects clientSecrets in monthly-first, then
-    // one-time order — same as the create path. Sort accordingly.
+    // Order: subs first, then prepaid PIs, then one-time PI. Matches the
+    // creation order so client iterates clientSecrets in a predictable
+    // sequence.
     matching.sort((a, b) => {
-      if (a.payment_mode === b.payment_mode) {
-        return (a.date_created ?? "").localeCompare(b.date_created ?? "");
-      }
-      return a.payment_mode === "monthly" ? -1 : 1;
+      const ak = sortKey(a);
+      const bk = sortKey(b);
+      if (ak !== bk) return ak - bk;
+      return (a.date_created ?? "").localeCompare(b.date_created ?? "");
     });
     const reused = await tryReusePendings(stripe, matching);
     if (reused) {
-      // We're returning existing sponsorships unchanged; they keep
-      // their fingerprint. Only stale pendings need cancellation.
       if (stale.length > 0) await cancelPendings(stripe, stale);
       return NextResponse.json({
         clientSecrets: reused.clientSecrets,
         sponsorshipIds: reused.sponsorshipIds,
         stripePublishableKey: publishableKey,
-        monthlyTotal: hydrated.monthlyTotal,
+        monthlyTotal: hydrated.monthlyRecurringTotal,
         oneTimeTotal: hydrated.oneTimeTotal,
         reused: true,
       });
     }
-    // Fingerprint matched but Stripe objects expired. Treat as stale.
     stale.push(...matching);
   }
 
-  // Cancel anything stale before creating fresh objects.
   if (stale.length > 0) await cancelPendings(stripe, stale);
 
-  // ─── Create fresh ───────────────────────────────────────────────────
   return await createFreshCheckout({
     donor,
     hydrated,
@@ -317,6 +343,14 @@ export async function POST() {
   });
 }
 
+// 0 = subscription (recurring), 1 = prepaid PI, 2 = one-time PI bundle.
+function sortKey(s: Sponsorship): number {
+  if (s.stripe_subscription_id) return 0;
+  if (s.payment_schedule === "monthly_prepaid") return 1;
+  return 2;
+}
+
+// ─── Create fresh ───────────────────────────────────────────────────────────
 async function createFreshCheckout(opts: {
   donor: Donor;
   hydrated: Awaited<ReturnType<typeof hydrateCart>>;
@@ -341,14 +375,12 @@ async function createFreshCheckout(opts: {
       og_country: donor.og_country,
     });
 
-    const monthlyItems = hydrated.items.filter((i) => i.paymentMode === "monthly");
-    const oneTimeItems = hydrated.items.filter((i) => i.paymentMode === "one_time");
-
+    const buckets = bucketItems(hydrated.items);
     const clientSecrets: string[] = [];
     const sponsorshipIds: string[] = [];
 
-    // Monthly: one Subscription per item.
-    for (const item of monthlyItems) {
+    // ── (1) Recurring subscriptions: indefinite OR fixed-term-with-cancel_at
+    for (const item of buckets.recurringSubItems) {
       const product = await stripe.products.create({
         name: `Sponsorship: ${item.display_name ?? "Child"}`,
         metadata: { child_id: item.childId, donor_id: donor.id },
@@ -359,19 +391,39 @@ async function createFreshCheckout(opts: {
         currency: "usd",
         recurring: { interval: "month" },
       });
+
+      // For fixed-term: tell Stripe to auto-cancel at end of N months.
+      // The webhook customer.subscription.deleted will fire when this
+      // hits, and we differentiate scheduled vs manual cancel there.
+      const isFixedTerm = item.durationMonths != null;
+      const cancelAt = isFixedTerm
+        ? Math.floor(
+            calculateScheduledEndDate(item.durationMonths!)!.getTime() / 1000,
+          )
+        : undefined;
+
       const sub = await stripe.subscriptions.create({
         customer: customerId,
         items: [{ price: price.id }],
         payment_behavior: "default_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
         expand: ["latest_invoice.confirmation_secret", "latest_invoice.payment_intent"],
+        ...(cancelAt ? { cancel_at: cancelAt } : {}),
         metadata: {
           donor_id: donor.id,
           child_id: item.childId,
           sponsorship_pending: "true",
+          ...(isFixedTerm
+            ? { duration_months: String(item.durationMonths) }
+            : {}),
         },
       });
       created.subscriptionIds.push(sub.id);
+
+      const scheduledEnd =
+        item.durationMonths != null
+          ? calculateScheduledEndDate(item.durationMonths)?.toISOString() ?? null
+          : null;
 
       const { id: sponsorshipId } = await createPendingSponsorship({
         donor: donor.id,
@@ -381,6 +433,9 @@ async function createFreshCheckout(opts: {
         stripe_subscription_id: sub.id,
         stripe_customer_id: customerId,
         checkout_fingerprint: fingerprint,
+        duration_months: item.durationMonths ?? null,
+        payment_schedule: "monthly",
+        scheduled_end_date: scheduledEnd,
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);
@@ -392,9 +447,69 @@ async function createFreshCheckout(opts: {
       }
     }
 
-    // One-time: single PaymentIntent for the sum.
-    if (oneTimeItems.length > 0) {
-      const sumCents = oneTimeItems.reduce(
+    // ── (2) Prepaid bundles: one PaymentIntent per item, no Subscription
+    // We persist the PER-MONTH rate in amount_usd (so the dashboard can
+    // show "$25/mo prepaid for 6 months"), but the PI charges
+    // amount × months upfront. When the PI succeeds, the webhook marks
+    // the single sponsorship row active.
+    for (const item of buckets.prepaidItems) {
+      const months = item.durationMonths!;
+      const totalCents = Math.round(item.amountUsd * months * 100);
+      const scheduledEnd =
+        calculateScheduledEndDate(months)?.toISOString() ?? null;
+
+      // Create the sponsorship row first so we can stamp its id into the
+      // PaymentIntent metadata — the webhook uses that to find the row
+      // without needing to look up by PI id (cheaper and unambiguous).
+      // We create with a placeholder PI id that we'll patch after.
+      const { id: sponsorshipId } = await createPendingSponsorship({
+        donor: donor.id,
+        child: item.childId,
+        payment_mode: "monthly", // schema enum stays 'monthly'
+        amount_usd: item.amountUsd, // per-month rate, NOT the total
+        stripe_payment_intent_id: null, // patched after PI created
+        stripe_customer_id: customerId,
+        checkout_fingerprint: fingerprint,
+        duration_months: months,
+        payment_schedule: "monthly_prepaid",
+        prepaid_months_total: months,
+        prepaid_months_remaining: months,
+        scheduled_end_date: scheduledEnd,
+      });
+      created.sponsorshipIds.push(sponsorshipId);
+      sponsorshipIds.push(sponsorshipId);
+
+      const pi = await stripe.paymentIntents.create({
+        amount: totalCents,
+        currency: "usd",
+        customer: customerId,
+        automatic_payment_methods: { enabled: true },
+        // Saves the donor's card to their Stripe Customer as a reusable
+        // payment method. Required for /api/sponsorship/[id]/extend to
+        // be able to charge off-session for prepaid extensions later.
+        setup_future_usage: "off_session",
+        metadata: {
+          donor_id: donor.id,
+          payment_mode: "monthly_prepaid",
+          child_id: item.childId,
+          sponsorship_id: sponsorshipId,
+          duration_months: String(months),
+          monthly_amount_usd: String(item.amountUsd),
+        },
+      });
+      created.paymentIntentIds.push(pi.id);
+
+      // Patch the sponsorship row with its PI id.
+      await updateSponsorship(sponsorshipId, {
+        stripe_payment_intent_id: pi.id,
+      });
+
+      if (pi.client_secret) clientSecrets.push(pi.client_secret);
+    }
+
+    // ── (3) One-time gifts: single PaymentIntent for the sum
+    if (buckets.oneTimeItems.length > 0) {
+      const sumCents = buckets.oneTimeItems.reduce(
         (acc, it) => acc + Math.round(it.amountUsd * 100),
         0,
       );
@@ -403,16 +518,19 @@ async function createFreshCheckout(opts: {
         currency: "usd",
         customer: customerId,
         automatic_payment_methods: { enabled: true },
+        // Save the card on this customer for future off-session charges
+        // (e.g. extension flow). Same rationale as the prepaid PI above.
+        setup_future_usage: "off_session",
         metadata: {
           donor_id: donor.id,
           payment_mode: "one_time",
-          child_ids: oneTimeItems.map((i) => i.childId).join(","),
-          one_time_sponsorship_count: String(oneTimeItems.length),
+          child_ids: buckets.oneTimeItems.map((i) => i.childId).join(","),
+          one_time_sponsorship_count: String(buckets.oneTimeItems.length),
         },
       });
       created.paymentIntentIds.push(pi.id);
 
-      for (const item of oneTimeItems) {
+      for (const item of buckets.oneTimeItems) {
         const { id: sponsorshipId } = await createPendingSponsorship({
           donor: donor.id,
           child: item.childId,
@@ -421,6 +539,7 @@ async function createFreshCheckout(opts: {
           stripe_payment_intent_id: pi.id,
           stripe_customer_id: customerId,
           checkout_fingerprint: fingerprint,
+          // No duration / schedule fields for one-time.
         });
         created.sponsorshipIds.push(sponsorshipId);
         sponsorshipIds.push(sponsorshipId);
@@ -433,7 +552,7 @@ async function createFreshCheckout(opts: {
       clientSecrets,
       sponsorshipIds,
       stripePublishableKey: publishableKey,
-      monthlyTotal: hydrated.monthlyTotal,
+      monthlyTotal: hydrated.monthlyRecurringTotal,
       oneTimeTotal: hydrated.oneTimeTotal,
       reused: false,
     });

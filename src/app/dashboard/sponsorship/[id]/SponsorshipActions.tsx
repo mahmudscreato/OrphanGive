@@ -1,19 +1,71 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+import {
+  CardElement,
+  Elements,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 import { Modal } from "./Modal";
-import { formatUsd, MIN_AMOUNTS } from "@/lib/pricing";
+import {
+  CUSTOM_DURATION_MAX,
+  CUSTOM_DURATION_MIN,
+  formatUsd,
+  MIN_AMOUNTS,
+  type PaymentSchedule,
+} from "@/lib/pricing";
 
-type Status = "active" | "paused" | "cancelled";
+// Lazy-load Stripe.js once per session (matches the StripePaymentSection
+// pattern used at /checkout). Returns null if the publishable key isn't
+// configured — the inline card form refuses to render in that case.
+const stripePromiseCache = new Map<string, Promise<StripeJs | null>>();
+function getStripePromise(): Promise<StripeJs | null> | null {
+  const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+  if (!key) return null;
+  if (!stripePromiseCache.has(key)) {
+    stripePromiseCache.set(key, loadStripe(key));
+  }
+  return stripePromiseCache.get(key) ?? null;
+}
+
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      fontSize: "15px",
+      color: "#2A2A2C",
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif',
+      "::placeholder": { color: "#8B8B8E" },
+    },
+    invalid: {
+      color: "#A02B2B",
+      iconColor: "#A02B2B",
+    },
+  },
+  hidePostalCode: false,
+};
+
+type Status = "active" | "prepaid" | "paused" | "cancelled" | "completed";
 
 type Props = {
   sponsorshipId: string;
   paymentMode: "monthly" | "one_time";
   status: Status | string;
   amountUsd: number;
+  childId: string;
   childName: string;
   nextBillingDate: string | null;
+  // New: type metadata so the Extend modal can pick the right variant
+  // (indefinite / fixed-term recurring / prepaid / one-time / completed).
+  durationMonths: number | null;
+  paymentSchedule: PaymentSchedule | null;
+  prepaidMonthsTotal: number | null;
+  prepaidMonthsRemaining: number | null;
+  scheduledEndDate: string | null;
 };
 
 type ActiveModal =
@@ -29,17 +81,25 @@ export function SponsorshipActions({
   paymentMode,
   status,
   amountUsd,
+  childId,
   childName,
   nextBillingDate,
+  durationMonths,
+  paymentSchedule,
+  prepaidMonthsTotal,
+  prepaidMonthsRemaining,
+  scheduledEndDate,
 }: Props) {
   const router = useRouter();
   const [active, setActive] = useState<ActiveModal>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // For one-time or cancelled: no actions surface. We let the page render
-  // a friendly note; this component returns null.
-  if (paymentMode !== "monthly" || status === "cancelled") return null;
+  // For cancelled/completed: page hides the section entirely (parent guards).
+  // For one-time monthly: we still render Add more months (informational
+  // "can't extend" modal) + nothing else; cancel doesn't apply to a
+  // gift that's already completed.
+  if (status === "cancelled" || status === "completed") return null;
 
   async function call(path: string, body?: unknown) {
     setPending(true);
@@ -81,29 +141,47 @@ export function SponsorshipActions({
     setError(null);
   }
 
-  // Active button set is intentionally minimal: Add more months
-  // (placeholder, opens a "coming soon" modal) + Cancel. Pause /
-  // Resume / Change-amount remain implemented below as Modals + API
-  // routes for when we re-enable them, but their buttons are hidden.
+  // For one-time gifts the only action surfaced is the "Add more months"
+  // info modal explaining that one-time gifts can't be extended. Cancel
+  // doesn't apply.
+  const showCancelButton = paymentMode === "monthly";
+
   return (
     <>
       <div className="flex items-center gap-3 flex-wrap">
-        {status === "active" || status === "paused" ? (
-          <>
-            <ButtonOutline tone="tangerine" onClick={() => openModal("extend")}>
-              Add more months
-            </ButtonOutline>
-            <ButtonOutline tone="danger" onClick={() => openModal("cancel")}>
-              Cancel sponsorship
-            </ButtonOutline>
-          </>
+        <ButtonOutline tone="tangerine" onClick={() => openModal("extend")}>
+          Add more months
+        </ButtonOutline>
+        {showCancelButton ? (
+          <ButtonOutline tone="danger" onClick={() => openModal("cancel")}>
+            Cancel sponsorship
+          </ButtonOutline>
         ) : null}
       </div>
 
-      {/* Modals kept mounted but only one is open at a time. */}
-      <ExtendComingSoonModal
+      {/* Modals kept mounted but only one is open at a time. The
+          ExtendModal dispatches to a variant based on the sponsorship's
+          type (indefinite / fixed-term recurring / prepaid / one-time).
+          Extend variants own their own request lifecycle so they can
+          handle the "no saved card" sentinel by swapping into an inline
+          card-entry flow within the same modal. */}
+      <ExtendModal
         open={active === "extend"}
         onClose={closeModal}
+        sponsorshipId={sponsorshipId}
+        paymentMode={paymentMode}
+        durationMonths={durationMonths}
+        paymentSchedule={paymentSchedule}
+        prepaidMonthsTotal={prepaidMonthsTotal}
+        prepaidMonthsRemaining={prepaidMonthsRemaining}
+        scheduledEndDate={scheduledEndDate}
+        amountUsd={amountUsd}
+        childId={childId}
+        childName={childName}
+        onSuccess={() => {
+          setActive(null);
+          router.refresh();
+        }}
       />
       <PauseModal
         open={active === "pause"}
@@ -574,22 +652,211 @@ function CancelModal({
   );
 }
 
-// ─── Extend / Add more months (coming soon) ─────────────────────────────────
-function ExtendComingSoonModal({
+// ─── Extend / Add more months ───────────────────────────────────────────────
+// Dispatcher: picks one of 4 variants based on the sponsorship's type.
+// The two interactive variants (recurring + prepaid) own their request
+// lifecycle so they can swap to an inline card-entry flow when the donor
+// has no saved payment method.
+function ExtendModal({
   open,
   onClose,
+  sponsorshipId,
+  paymentMode,
+  durationMonths,
+  paymentSchedule,
+  prepaidMonthsTotal,
+  prepaidMonthsRemaining,
+  scheduledEndDate,
+  amountUsd,
+  childId: _childId,
+  childName,
+  onSuccess,
 }: {
   open: boolean;
   onClose: () => void;
+  sponsorshipId: string;
+  paymentMode: "monthly" | "one_time";
+  durationMonths: number | null;
+  paymentSchedule: PaymentSchedule | null;
+  prepaidMonthsTotal: number | null;
+  prepaidMonthsRemaining: number | null;
+  scheduledEndDate: string | null;
+  amountUsd: number;
+  childId: string;
+  childName: string;
+  onSuccess: () => void;
 }) {
+  if (paymentMode === "one_time") {
+    return (
+      <ExtendInfoModal
+        open={open}
+        onClose={onClose}
+        title="Add more months"
+        description={`One-time gifts cannot be extended. To support ${childName} again, please make a new sponsorship.`}
+      />
+    );
+  }
+  if (
+    paymentSchedule === "monthly" &&
+    durationMonths == null
+  ) {
+    return (
+      <ExtendInfoModal
+        open={open}
+        onClose={onClose}
+        title="Add more months"
+        description="This sponsorship continues until you cancel. To add a fixed-term commitment, please cancel and create a new sponsorship."
+      />
+    );
+  }
+  if (paymentSchedule === "monthly_prepaid") {
+    return (
+      <ExtendPrepaidModal
+        open={open}
+        onClose={onClose}
+        sponsorshipId={sponsorshipId}
+        amountUsd={amountUsd}
+        childName={childName}
+        prepaidMonthsTotal={prepaidMonthsTotal ?? 0}
+        prepaidMonthsRemaining={prepaidMonthsRemaining ?? 0}
+        scheduledEndDate={scheduledEndDate}
+        onSuccess={onSuccess}
+      />
+    );
+  }
   return (
-    <Modal
+    <ExtendRecurringModal
       open={open}
       onClose={onClose}
-      title="Add more months"
-      description="Coming soon. We're adding the ability to extend your sponsorship in the next update."
-    >
-      <div className="mt-4 flex items-center justify-end">
+      sponsorshipId={sponsorshipId}
+      amountUsd={amountUsd}
+      childName={childName}
+      durationMonths={durationMonths ?? 0}
+      scheduledEndDate={scheduledEndDate}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
+// ─── Extend request hook ────────────────────────────────────────────────────
+// Centralises the call → sentinel-detection → attach-and-retry flow used
+// by both interactive Extend modals.
+type ExtendPayload = {
+  additionalMonths: number;
+  paymentSchedule: PaymentSchedule;
+};
+type ExtendPhase = "idle" | "pending" | "needs_card" | "attaching";
+
+function useExtendCall(sponsorshipId: string, onSuccess: () => void) {
+  const [phase, setPhase] = useState<ExtendPhase>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [pendingPayload, setPendingPayload] = useState<ExtendPayload | null>(
+    null,
+  );
+
+  function reset() {
+    setPhase("idle");
+    setError(null);
+    setPendingPayload(null);
+  }
+
+  async function runExtend(payload: ExtendPayload) {
+    setPhase("pending");
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/sponsorship/${sponsorshipId}/extend`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          cache: "no-store",
+        },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        message?: string;
+      };
+      // Sentinel: server tells us the donor has no saved card. Swap UI
+      // into the card-entry flow. We hold onto the payload so we can
+      // retry once the card is attached.
+      if (json.error === "no_saved_payment_method") {
+        setPendingPayload(payload);
+        setPhase("needs_card");
+        setError(null);
+        return;
+      }
+      if (!res.ok || !json.success) {
+        setError(json.error ?? "Extension failed. Please try again.");
+        setPhase("idle");
+        return;
+      }
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error.");
+      setPhase("idle");
+    }
+  }
+
+  // After the donor enters a card, attach it to their customer + set as
+  // default, then retry the original extend payload.
+  async function attachAndRetry(paymentMethodId: string) {
+    if (!pendingPayload) {
+      setError("Lost track of your selection. Please close and try again.");
+      return;
+    }
+    setPhase("attaching");
+    setError(null);
+    try {
+      const attach = await fetch(
+        "/api/donor/me/payment-method/attach",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentMethodId }),
+          cache: "no-store",
+        },
+      );
+      const aj = (await attach.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!attach.ok || !aj.success) {
+        setError(aj.error ?? "Could not save card.");
+        setPhase("needs_card");
+        return;
+      }
+      // Card is now the customer's default → retrying extend should
+      // succeed off-session.
+      await runExtend(pendingPayload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error.");
+      setPhase("needs_card");
+    }
+  }
+
+  return { phase, error, setError, runExtend, attachAndRetry, reset };
+}
+
+// Plain informational modal (indefinite / one-time / completed cases).
+function ExtendInfoModal({
+  open,
+  onClose,
+  title,
+  description,
+  extraAction,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description: string;
+  extraAction?: React.ReactNode;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} description={description}>
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {extraAction}
         <ButtonFilled tone="tangerine" onClick={onClose}>
           Got it
         </ButtonFilled>
@@ -597,6 +864,521 @@ function ExtendComingSoonModal({
     </Modal>
   );
 }
+
+function ExtendRecurringModal({
+  open,
+  onClose,
+  sponsorshipId,
+  amountUsd,
+  childName,
+  durationMonths,
+  scheduledEndDate,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  sponsorshipId: string;
+  amountUsd: number;
+  childName: string;
+  durationMonths: number;
+  scheduledEndDate: string | null;
+  onSuccess: () => void;
+}) {
+  const [value, setValue] = useState<string>("3");
+  const [schedule, setSchedule] = useState<PaymentSchedule>("monthly");
+  const flow = useExtendCall(sponsorshipId, onSuccess);
+  useResetOnOpen(open, () => {
+    setValue("3");
+    setSchedule("monthly");
+    flow.reset();
+  });
+
+  const parsed = Number(value);
+  const valid =
+    Number.isFinite(parsed) &&
+    Number.isInteger(parsed) &&
+    parsed >= CUSTOM_DURATION_MIN &&
+    parsed <= CUSTOM_DURATION_MAX;
+  const total = valid ? amountUsd * parsed : 0;
+  const remaining = monthsRemainingUntil(scheduledEndDate) ?? durationMonths;
+  const busy = flow.phase !== "idle";
+
+  // Inline card-entry view: reached when the server returned the
+  // no_saved_payment_method sentinel. The form attaches the entered card
+  // and retries the same extend payload automatically.
+  if (flow.phase === "needs_card" || flow.phase === "attaching") {
+    return (
+      <Modal
+        open={open}
+        onClose={busy ? () => {} : onClose}
+        title="Add a payment method"
+        description={`To pay ${formatUsd(total)} for ${parsed} more ${
+          parsed === 1 ? "month" : "months"
+        }, please enter card details below. We'll save this card for future extensions.`}
+      >
+        <InlineCardCollector
+          amountUsd={total}
+          ctaLabel={`Pay ${formatUsd(total)}`}
+          submitting={flow.phase === "attaching"}
+          error={flow.error}
+          onSubmit={(pmId) => flow.attachAndRetry(pmId)}
+          onCancel={() => flow.reset()}
+        />
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => {} : onClose}
+      title={`Extend your sponsorship of ${childName}`}
+      description={`You're currently committed for ${durationMonths} ${
+        durationMonths === 1 ? "month" : "months"
+      } (${remaining} remaining). How many more months would you like to add?`}
+    >
+      <div className="mt-2">
+        <label className="block text-[12px] font-mono uppercase tracking-[0.12em] text-slate-soft mb-1.5">
+          Additional months
+        </label>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={CUSTOM_DURATION_MIN}
+          max={CUSTOM_DURATION_MAX}
+          step={1}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={busy}
+          className="w-24 px-3 py-2 rounded-xl border border-ink/[0.16] bg-white font-display text-[18px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine-soft focus:border-tangerine"
+        />
+        <span className="ml-3 text-[14px] text-slate">
+          months ({CUSTOM_DURATION_MIN}–{CUSTOM_DURATION_MAX})
+        </span>
+        {valid ? (
+          <div className="mt-2 text-[13px] text-slate-soft">
+            {formatUsd(amountUsd)} × {parsed} = {formatUsd(total)}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-5">
+        <div className="block text-[12px] font-mono uppercase tracking-[0.12em] text-slate-soft mb-2">
+          How would you like to pay?
+        </div>
+        <div className="space-y-2">
+          <RadioOption
+            checked={schedule === "monthly"}
+            onChange={() => setSchedule("monthly")}
+            disabled={busy}
+            label="Add to monthly schedule"
+            sub="No charge today. Your existing monthly billing simply continues for the additional months."
+          />
+          <RadioOption
+            checked={schedule === "monthly_prepaid"}
+            onChange={() => setSchedule("monthly_prepaid")}
+            disabled={busy}
+            label="Pay for additional months now"
+            sub={
+              valid
+                ? `${formatUsd(total)} charged today to your saved card.`
+                : "Charge for the full amount today."
+            }
+          />
+        </div>
+      </div>
+
+      {flow.error ? <ErrorBox message={flow.error} /> : null}
+
+      <div className="mt-5 flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="font-body text-[13.5px] text-slate hover:text-ink transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <ButtonFilled
+          tone="tangerine"
+          onClick={() =>
+            flow.runExtend({
+              additionalMonths: parsed,
+              paymentSchedule: schedule,
+            })
+          }
+          disabled={busy || !valid}
+        >
+          {flow.phase === "pending" ? <Spinner /> : null}
+          Confirm
+        </ButtonFilled>
+      </div>
+    </Modal>
+  );
+}
+
+function ExtendPrepaidModal({
+  open,
+  onClose,
+  sponsorshipId,
+  amountUsd,
+  childName,
+  prepaidMonthsTotal,
+  prepaidMonthsRemaining,
+  scheduledEndDate,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  sponsorshipId: string;
+  amountUsd: number;
+  childName: string;
+  prepaidMonthsTotal: number;
+  prepaidMonthsRemaining: number;
+  scheduledEndDate: string | null;
+  onSuccess: () => void;
+}) {
+  const [value, setValue] = useState<string>("3");
+  const [schedule, setSchedule] = useState<PaymentSchedule>("monthly_prepaid");
+  const flow = useExtendCall(sponsorshipId, onSuccess);
+  useResetOnOpen(open, () => {
+    setValue("3");
+    setSchedule("monthly_prepaid");
+    flow.reset();
+  });
+
+  const parsed = Number(value);
+  const valid =
+    Number.isFinite(parsed) &&
+    Number.isInteger(parsed) &&
+    parsed >= CUSTOM_DURATION_MIN &&
+    parsed <= CUSTOM_DURATION_MAX;
+  const total = valid ? amountUsd * parsed : 0;
+  const prepaidEndStr = formatHumanDate(scheduledEndDate);
+  const busy = flow.phase !== "idle";
+  const isPayNow = schedule === "monthly_prepaid";
+
+  if (flow.phase === "needs_card" || flow.phase === "attaching") {
+    // Both schedules require a saved card (pay-now charges immediately;
+    // monthly tail charges off-session at billing_cycle_anchor). The
+    // card-collector modal copy adjusts to mention "future monthly
+    // charges" when the donor picked the monthly option.
+    return (
+      <Modal
+        open={open}
+        onClose={busy ? () => {} : onClose}
+        title="Add a payment method"
+        description={
+          isPayNow
+            ? `To pay ${formatUsd(total)} for ${parsed} more ${
+                parsed === 1 ? "month" : "months"
+              }, please enter card details below. We'll save this card for future extensions.`
+            : `To start monthly billing of ${formatUsd(amountUsd)}/month after your prepaid period, please save a card. No charge today — billing begins ${prepaidEndStr ?? "after your prepaid period ends"}.`
+        }
+      >
+        <InlineCardCollector
+          amountUsd={isPayNow ? total : 0}
+          ctaLabel={isPayNow ? `Pay ${formatUsd(total)}` : "Save card"}
+          submitting={flow.phase === "attaching"}
+          error={flow.error}
+          onSubmit={(pmId) => flow.attachAndRetry(pmId)}
+          onCancel={() => flow.reset()}
+        />
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => {} : onClose}
+      title={`Extend your sponsorship of ${childName}`}
+      description={`You're currently prepaid for ${prepaidMonthsTotal} ${
+        prepaidMonthsTotal === 1 ? "month" : "months"
+      } (${prepaidMonthsRemaining} remaining). How many more months would you like to add?`}
+    >
+      <div className="mt-2">
+        <label className="block text-[12px] font-mono uppercase tracking-[0.12em] text-slate-soft mb-1.5">
+          Additional months
+        </label>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={CUSTOM_DURATION_MIN}
+          max={CUSTOM_DURATION_MAX}
+          step={1}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={busy}
+          className="w-24 px-3 py-2 rounded-xl border border-ink/[0.16] bg-white font-display text-[18px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine-soft focus:border-tangerine"
+        />
+        <span className="ml-3 text-[14px] text-slate">
+          months ({CUSTOM_DURATION_MIN}–{CUSTOM_DURATION_MAX})
+        </span>
+        {valid ? (
+          <div className="mt-2 text-[13px] text-slate-soft">
+            {formatUsd(amountUsd)} × {parsed} = {formatUsd(total)}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-5">
+        <div className="block text-[12px] font-mono uppercase tracking-[0.12em] text-slate-soft mb-2">
+          How would you like to pay?
+        </div>
+        <div className="space-y-2">
+          <RadioOption
+            checked={schedule === "monthly_prepaid"}
+            onChange={() => setSchedule("monthly_prepaid")}
+            disabled={busy}
+            label="Pay full amount now"
+            sub={
+              valid
+                ? `${formatUsd(total)} charged today, covers ${parsed} additional ${
+                    parsed === 1 ? "month" : "months"
+                  }.`
+                : "Charge for the full amount today."
+            }
+          />
+          <RadioOption
+            checked={schedule === "monthly"}
+            onChange={() => setSchedule("monthly")}
+            disabled={busy}
+            label="Continue with monthly billing"
+            sub={
+              prepaidEndStr
+                ? `No charge today. Monthly billing starts after your prepaid period ends (${prepaidEndStr}), then ${formatUsd(amountUsd)}/month for ${
+                    valid ? parsed : "N"
+                  } ${
+                    valid && parsed === 1 ? "month" : "months"
+                  }.`
+                : `No charge today. ${formatUsd(amountUsd)}/month begins after your prepaid period ends.`
+            }
+          />
+        </div>
+      </div>
+
+      {flow.error ? <ErrorBox message={flow.error} /> : null}
+
+      <div className="mt-5 flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="font-body text-[13.5px] text-slate hover:text-ink transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <ButtonFilled
+          tone="tangerine"
+          onClick={() =>
+            flow.runExtend({
+              additionalMonths: parsed,
+              paymentSchedule: schedule,
+            })
+          }
+          disabled={busy || !valid}
+        >
+          {flow.phase === "pending" ? <Spinner /> : null}
+          {!valid
+            ? "Confirm extension"
+            : isPayNow
+              ? `Pay ${formatUsd(total)} now`
+              : "Confirm extension"}
+        </ButtonFilled>
+      </div>
+    </Modal>
+  );
+}
+
+// Day/month/year used in modal subtitles. Keeps "Jan 6, 2027" form
+// consistent with the dashboard cards.
+function formatHumanDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// ─── Inline card collector (used by Extend modals on the no-saved-card
+// fallback path) ────────────────────────────────────────────────────────────
+function InlineCardCollector({
+  amountUsd: _amountUsd,
+  ctaLabel,
+  submitting,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  amountUsd: number;
+  ctaLabel: string;
+  submitting: boolean;
+  error: string | null;
+  onSubmit: (paymentMethodId: string) => void;
+  onCancel: () => void;
+}) {
+  const stripePromise = useMemo(() => getStripePromise(), []);
+  if (!stripePromise) {
+    return (
+      <ErrorBox message="Stripe is not configured. Contact support." />
+    );
+  }
+  return (
+    <Elements stripe={stripePromise}>
+      <InlineCardCollectorBody
+        ctaLabel={ctaLabel}
+        submitting={submitting}
+        error={error}
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+      />
+    </Elements>
+  );
+}
+
+function InlineCardCollectorBody({
+  ctaLabel,
+  submitting,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  ctaLabel: string;
+  submitting: boolean;
+  error: string | null;
+  onSubmit: (paymentMethodId: string) => void;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [cardComplete, setCardComplete] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  async function submit() {
+    if (!stripe || !elements) return;
+    const card = elements.getElement(CardElement);
+    if (!card) {
+      setLocalError("Card form not ready. Please refresh.");
+      return;
+    }
+    setCreating(true);
+    setLocalError(null);
+    const pm = await stripe.createPaymentMethod({ type: "card", card });
+    if (pm.error || !pm.paymentMethod) {
+      setLocalError(pm.error?.message ?? "Could not read card details.");
+      setCreating(false);
+      return;
+    }
+    onSubmit(pm.paymentMethod.id);
+    setCreating(false);
+  }
+
+  const busy = submitting || creating;
+  const merged = localError ?? error;
+
+  return (
+    <div className="mt-2">
+      <div className="rounded-xl border-[1.5px] border-ink/[0.12] bg-white px-4 py-3 transition-all focus-within:border-tangerine focus-within:ring-2 focus-within:ring-tangerine-soft">
+        <CardElement
+          options={CARD_ELEMENT_OPTIONS}
+          onChange={(e) => {
+            setCardComplete(e.complete);
+            if (e.error) setLocalError(e.error.message);
+            else if (localError && e.complete) setLocalError(null);
+          }}
+        />
+      </div>
+      {merged ? <ErrorBox message={merged} /> : null}
+      <div className="mt-4 flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="font-body text-[13.5px] text-slate hover:text-ink transition-colors disabled:opacity-50"
+        >
+          Back
+        </button>
+        <ButtonFilled
+          tone="tangerine"
+          onClick={submit}
+          disabled={busy || !cardComplete || !stripe}
+        >
+          {busy ? <Spinner /> : null}
+          {ctaLabel}
+        </ButtonFilled>
+      </div>
+    </div>
+  );
+}
+
+// Generic radio row used inside ExtendRecurringModal.
+function RadioOption({
+  checked,
+  onChange,
+  disabled,
+  label,
+  sub,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+  label: string;
+  sub: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      role="radio"
+      aria-checked={checked}
+      className={`w-full text-left rounded-[14px] px-4 py-3 transition-colors border-[1.5px] ${
+        checked
+          ? "bg-tangerine-mist border-tangerine"
+          : "bg-white border-ink/[0.08] hover:border-ink/[0.2]"
+      } disabled:opacity-50 disabled:cursor-not-allowed`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`inline-block w-3.5 h-3.5 rounded-full border-2 ${
+            checked
+              ? "border-tangerine bg-tangerine ring-2 ring-tangerine-mist"
+              : "border-ink/[0.2] bg-white"
+          }`}
+          aria-hidden="true"
+        />
+        <span className="font-display text-[15px] text-ink leading-tight">
+          {label}
+        </span>
+      </div>
+      <p className="mt-1 ml-[26px] text-[12.5px] text-slate leading-snug">
+        {sub}
+      </p>
+    </button>
+  );
+}
+
+// Reuses the same 30.44-day month math as the API + dashboard so all
+// three views agree on "X months remaining".
+function monthsRemainingUntil(endIso: string | null): number | null {
+  if (!endIso) return null;
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) return null;
+  const ms = end.getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.max(1, Math.round(ms / (30.44 * 24 * 60 * 60 * 1000)));
+}
+
+// Re-export the link helper used by the (currently unused but kept for
+// symmetry) completed-variant modal's "Visit profile" CTA. The page
+// itself hides actions for completed status so this branch is unreachable
+// today — wired for when we surface a completed-state inline message.
+void Link;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function formatDate(iso: string): string {

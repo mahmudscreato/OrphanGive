@@ -61,10 +61,90 @@ export async function POST(
     );
   }
 
-  // Pick the right Stripe op for the (mode, status) pair.
   const isPendingOneTime =
     sponsorship.payment_mode === "one_time" &&
     sponsorship.status === "pending_payment";
+
+  // ── Prepaid scheduling ─────────────────────────────────────────────
+  // If the donor cancels during a prepaid period (prepaid_months_remaining
+  // > 0), we honour their paid-for coverage: the row stays 'active' until
+  // the prepaid end date, at which point Session 15's cron flips it to
+  // 'cancelled'. We immediately cancel any Stripe Subscription (the
+  // monthly tail, if extended) so no future charges fire.
+  const isPrepaidWithRemaining =
+    sponsorship.payment_schedule === "monthly_prepaid" &&
+    (sponsorship.prepaid_months_remaining ?? 0) > 0 &&
+    !isPendingOneTime;
+
+  if (isPrepaidWithRemaining) {
+    // Prepaid period ends at scheduled_end_date - (extension months × 30.44d).
+    // For a pure prepaid sponsorship (no monthly extension), this equals
+    // scheduled_end_date itself.
+    const monthlyExtensionMonths = Math.max(
+      0,
+      (sponsorship.duration_months ?? 0) -
+        (sponsorship.prepaid_months_total ?? 0),
+    );
+    const baseEnd = sponsorship.scheduled_end_date
+      ? new Date(sponsorship.scheduled_end_date)
+      : null;
+    const prepaidEndIso = baseEnd
+      ? new Date(
+          baseEnd.getTime() -
+            monthlyExtensionMonths * 30.44 * 24 * 60 * 60 * 1000,
+        ).toISOString()
+      : new Date().toISOString();
+
+    // Cancel the monthly-extension sub if one exists. The webhook will
+    // fire customer.subscription.deleted; we guard against that
+    // overwriting our scheduled-cancel state by checking
+    // cancellation_scheduled_at in the deleted handler.
+    if (sponsorship.stripe_subscription_id) {
+      try {
+        await getStripe().subscriptions.cancel(
+          sponsorship.stripe_subscription_id,
+          { prorate: false },
+        );
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Stripe cancel failed.";
+        if (!/already|No such/i.test(msg)) {
+          console.error("[sponsorship/cancel] stripe sub cancel failed:", err);
+          return NextResponse.json({ error: msg }, { status: 502 });
+        }
+      }
+    }
+
+    try {
+      await updateSponsorship(sponsorship.id, {
+        // Keep status 'active' — the donor still has prepaid coverage.
+        cancellation_scheduled_at: prepaidEndIso,
+        cancellation_reason:
+          reasonRaw && reasonRaw !== "donor_cancelled"
+            ? reasonRaw
+            : "donor_cancelled_during_prepaid",
+        // Clear stripe_subscription_id since the sub is now gone.
+        stripe_subscription_id: null,
+      });
+    } catch (err) {
+      console.error("[sponsorship/cancel] directus update failed:", err);
+      return NextResponse.json(
+        { error: "Internal update failed." },
+        { status: 500 },
+      );
+    }
+
+    // Don't fire the SponsorshipCancelledEmail yet — the donor still
+    // has coverage. Session 15's cron will fire it at prepaid-period end.
+
+    return NextResponse.json({
+      success: true,
+      mode: "scheduled_for_prepaid_end",
+      cancellationScheduledAt: prepaidEndIso,
+    });
+  }
+
+  // ── Standard cancellation path (no remaining prepaid coverage) ─────
   if (isPendingOneTime) {
     if (!sponsorship.stripe_payment_intent_id) {
       return NextResponse.json(
@@ -95,8 +175,6 @@ export async function POST(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Stripe cancel failed.";
-    // "No such …" / "already canceled" isn't fatal — the local row
-    // should still be marked cancelled.
     if (!/already|No such/i.test(msg)) {
       console.error("[sponsorship/cancel] stripe failed:", err);
       return NextResponse.json({ error: msg }, { status: 502 });
@@ -122,7 +200,6 @@ export async function POST(
     );
   }
 
-  // Email — best-effort.
   try {
     const child = await fetchChildById(
       typeof sponsorship.child === "string"

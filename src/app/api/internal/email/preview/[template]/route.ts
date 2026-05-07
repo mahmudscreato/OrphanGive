@@ -11,6 +11,7 @@ import { MonthlyReceiptEmail } from "@/emails/MonthlyReceiptEmail";
 import { SponsorshipPausedEmail } from "@/emails/SponsorshipPausedEmail";
 import { SponsorshipModifiedEmail } from "@/emails/SponsorshipModifiedEmail";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
+import { SponsorshipExtendedEmail } from "@/emails/SponsorshipExtendedEmail";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,7 @@ const TEMPLATES = [
   "sponsorship-paused",
   "sponsorship-modified",
   "sponsorship-cancelled",
+  "sponsorship-extended",
 ] as const;
 type TemplateId = (typeof TEMPLATES)[number];
 
@@ -145,6 +147,26 @@ function buildSample(template: TemplateId, firstName: string) {
           firstName,
           childName: "Mim Khatun",
           browseUrl: siteUrl("/children"),
+        }),
+      };
+
+    case "sponsorship-extended":
+      return {
+        subject: "Your sponsorship of Mim Khatun has been extended",
+        element: SponsorshipExtendedEmail({
+          firstName,
+          childName: "Mim Khatun",
+          additionalMonths: 3,
+          newDurationMonths: 9,
+          monthsRemaining: 8,
+          newEndDateIso: new Date(
+            Date.now() + 8 * 30.44 * 86_400_000,
+          ).toISOString(),
+          paidNow: true,
+          paymentAmountUsd: 75,
+          sponsorshipUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
         }),
       };
   }
