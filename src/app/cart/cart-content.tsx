@@ -9,25 +9,38 @@ import type { HydratedCartItem } from "@/lib/cart-data";
 
 type Props = {
   items: HydratedCartItem[];
-  monthlyTotal: number;
-  oneTimeTotal: number;
+  monthlyRecurringTotal: number;
+  monthlyPrepaidTotal: number;
+  oneTimeOnlyTotal: number;
 };
 
-export function CartContent({ items: initialItems, monthlyTotal, oneTimeTotal }: Props) {
+export function CartContent({
+  items: initialItems,
+  monthlyRecurringTotal,
+  monthlyPrepaidTotal,
+  oneTimeOnlyTotal,
+}: Props) {
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
-  const [m, setM] = useState(monthlyTotal);
-  const [o, setO] = useState(oneTimeTotal);
+  const [recurring, setRecurring] = useState(monthlyRecurringTotal);
+  const [prepaid, setPrepaid] = useState(monthlyPrepaidTotal);
+  const [oneTime, setOneTime] = useState(oneTimeOnlyTotal);
 
   async function refresh() {
     const r = await fetch("/api/cart", { cache: "no-store" });
     const json = (await r.json().catch(() => ({}))) as {
-      cart?: { items?: HydratedCartItem[]; monthlyTotal?: number; oneTimeTotal?: number };
+      cart?: {
+        items?: HydratedCartItem[];
+        monthlyRecurringTotal?: number;
+        monthlyPrepaidTotal?: number;
+        oneTimeOnlyTotal?: number;
+      };
     };
     if (json.cart) {
       setItems(Array.isArray(json.cart.items) ? json.cart.items : []);
-      setM(json.cart.monthlyTotal ?? 0);
-      setO(json.cart.oneTimeTotal ?? 0);
+      setRecurring(json.cart.monthlyRecurringTotal ?? 0);
+      setPrepaid(json.cart.monthlyPrepaidTotal ?? 0);
+      setOneTime(json.cart.oneTimeOnlyTotal ?? 0);
       // Empty cart → re-render parent to switch to empty state.
       if ((json.cart.items?.length ?? 0) === 0) {
         router.refresh();
@@ -72,7 +85,11 @@ export function CartContent({ items: initialItems, monthlyTotal, oneTimeTotal }:
       </div>
 
       <aside className="space-y-4 lg:sticky lg:top-32">
-        <CartTotals monthlyTotal={m} oneTimeTotal={o} />
+        <CartTotals
+          monthlyRecurringTotal={recurring}
+          monthlyPrepaidTotal={prepaid}
+          oneTimeTotal={oneTime}
+        />
         <Link
           href="/checkout"
           className="w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[14px] text-[15px] hover:bg-tangerine-deep hover:shadow-warm transition-all"

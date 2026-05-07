@@ -29,7 +29,14 @@ export default async function CheckoutPage() {
   const cart = await readCart();
   const hydrated = cart
     ? await hydrateCart(cart)
-    : { items: [], monthlyTotal: 0, oneTimeTotal: 0 };
+    : {
+        items: [],
+        monthlyTotal: 0,
+        oneTimeTotal: 0,
+        monthlyRecurringTotal: 0,
+        monthlyPrepaidTotal: 0,
+        oneTimeOnlyTotal: 0,
+      };
 
   // Empty cart short-circuit.
   if (hydrated.items.length === 0) {

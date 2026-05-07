@@ -13,7 +13,19 @@ export default async function CartPage() {
   const cart = await readCart();
   const hydrated = cart
     ? await hydrateCart(cart)
-    : { items: [], monthlyTotal: 0, oneTimeTotal: 0, totalAmountUsd: 0, donorId: null, status: "active" as const, id: "", token: "" };
+    : {
+        items: [],
+        monthlyTotal: 0,
+        oneTimeTotal: 0,
+        monthlyRecurringTotal: 0,
+        monthlyPrepaidTotal: 0,
+        oneTimeOnlyTotal: 0,
+        totalAmountUsd: 0,
+        donorId: null,
+        status: "active" as const,
+        id: "",
+        token: "",
+      };
   return (
     <main className="bg-cream">
       <div className="px-6 pt-32 max-md:pt-28">
@@ -42,8 +54,9 @@ export default async function CartPage() {
           ) : (
             <CartContent
               items={hydrated.items}
-              monthlyTotal={hydrated.monthlyTotal}
-              oneTimeTotal={hydrated.oneTimeTotal}
+              monthlyRecurringTotal={hydrated.monthlyRecurringTotal}
+              monthlyPrepaidTotal={hydrated.monthlyPrepaidTotal}
+              oneTimeOnlyTotal={hydrated.oneTimeOnlyTotal}
             />
           )}
         </div>

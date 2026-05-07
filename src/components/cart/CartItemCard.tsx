@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
-import { formatUsd, type PaymentMode } from "@/lib/pricing";
+import { formatUsd } from "@/lib/pricing";
 import type { HydratedCartItem } from "@/lib/cart-data";
 
 type Props = {
@@ -38,8 +38,9 @@ export function CartItemCard({ item, editable = true, onChanged }: Props) {
     }
   }
 
-  const modeLabel = item.paymentMode === "monthly" ? "Monthly" : "One-time";
-  const amountSuffix = item.paymentMode === "monthly" ? "/month" : "";
+  const config = describeItem(item);
+  const headlineAmount = headlineFor(item);
+  const editHref = editLinkFor(item);
 
   return (
     <div className="rounded-[20px] bg-white border border-ink/[0.06] p-4 flex items-center gap-4 max-md:flex-wrap">
@@ -61,20 +62,33 @@ export function CartItemCard({ item, editable = true, onChanged }: Props) {
         <div className="font-display text-[18px] text-ink leading-snug truncate">
           {item.display_name ?? "Child"}
         </div>
-        <div className="mt-0.5 font-mono text-[10.5px] tracking-[0.12em] uppercase text-slate-soft">
-          {modeLabel}
-          {item.district ? <> · {item.district}</> : null}
+        <div className="mt-0.5 text-[12.5px] text-slate leading-snug">
+          {config}
         </div>
+        {item.district ? (
+          <div className="mt-1 font-mono text-[10.5px] tracking-[0.1em] uppercase text-slate-soft">
+            {item.district}
+          </div>
+        ) : null}
       </div>
-      <div className="text-right min-w-[100px]">
+      <div className="text-right min-w-[110px]">
         <div className="font-display text-[20px] text-ink leading-none">
-          {formatUsd(item.amountUsd)}
-          <span className="text-[12px] text-slate-soft">{amountSuffix}</span>
+          {headlineAmount.amount}
+          {headlineAmount.suffix ? (
+            <span className="text-[12px] text-slate-soft">
+              {headlineAmount.suffix}
+            </span>
+          ) : null}
         </div>
+        {headlineAmount.subline ? (
+          <div className="mt-1 font-mono text-[10px] tracking-[0.1em] uppercase text-slate-soft">
+            {headlineAmount.subline}
+          </div>
+        ) : null}
         {editable ? (
           <div className="mt-2 flex justify-end gap-3 text-[12px]">
             <Link
-              href={`/sponsor/${item.childId}`}
+              href={editHref}
               className="text-slate hover:text-tangerine-deep transition-colors underline-offset-4 hover:underline"
             >
               Edit
@@ -92,6 +106,75 @@ export function CartItemCard({ item, editable = true, onChanged }: Props) {
       </div>
     </div>
   );
+}
+
+// Describes the item in plain language. Examples:
+//   "Monthly · $25/mo · until I cancel"
+//   "Monthly · $25/mo × 6 months ($150 total)"
+//   "Monthly prepaid · $150 once for 6 months"
+//   "One-time gift · $100"
+function describeItem(item: HydratedCartItem): string {
+  if (item.paymentMode === "one_time") {
+    return `One-time gift · ${formatUsd(item.amountUsd)}`;
+  }
+  // monthly
+  if (item.paymentSchedule === "monthly_prepaid" && item.durationMonths) {
+    const total = item.amountUsd * item.durationMonths;
+    return `Monthly prepaid · ${formatUsd(total)} once for ${item.durationMonths} months`;
+  }
+  // monthly recurring
+  if (item.durationMonths === null || item.durationMonths === undefined) {
+    return `Monthly · ${formatUsd(item.amountUsd)}/mo · until I cancel`;
+  }
+  const total = item.amountUsd * item.durationMonths;
+  return `Monthly · ${formatUsd(item.amountUsd)}/mo × ${item.durationMonths} months (${formatUsd(total)} total)`;
+}
+
+// What the right-rail amount column shows. Prepaid carts show the full
+// upfront sum (since that's what the donor will be charged today);
+// recurring carts show the per-month rate.
+function headlineFor(item: HydratedCartItem): {
+  amount: string;
+  suffix: string;
+  subline: string | null;
+} {
+  if (item.paymentMode === "one_time") {
+    return { amount: formatUsd(item.amountUsd), suffix: "", subline: null };
+  }
+  if (item.paymentSchedule === "monthly_prepaid" && item.durationMonths) {
+    return {
+      amount: formatUsd(item.amountUsd * item.durationMonths),
+      suffix: "",
+      subline: "today",
+    };
+  }
+  return {
+    amount: formatUsd(item.amountUsd),
+    suffix: "/mo",
+    subline: null,
+  };
+}
+
+// Edit link points back at the sponsor page with all current selections
+// pre-filled via search params. The sponsor page reads these on mount
+// and jumps straight to the review step.
+function editLinkFor(item: HydratedCartItem): string {
+  const params = new URLSearchParams();
+  params.set("mode", item.paymentMode);
+  params.set("amount", String(item.amountUsd));
+  if (item.paymentMode === "monthly") {
+    params.set(
+      "duration",
+      item.durationMonths === null || item.durationMonths === undefined
+        ? "indef"
+        : String(item.durationMonths),
+    );
+    if (item.paymentSchedule) {
+      params.set("schedule", item.paymentSchedule);
+    }
+  }
+  params.set("edit", "1");
+  return `/sponsor/${item.childId}?${params.toString()}`;
 }
 
 export default CartItemCard;

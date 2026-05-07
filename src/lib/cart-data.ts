@@ -9,8 +9,11 @@ import {
 import { directusServer } from "./directus";
 import {
   isPaymentMode,
+  isPaymentSchedule,
   isValidAmount,
+  isValidDurationMonths,
   type PaymentMode,
+  type PaymentSchedule,
 } from "./pricing";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -22,6 +25,12 @@ export type CartItem = {
   childId: string;
   paymentMode: PaymentMode;
   amountUsd: number;
+  // Monthly-only fields. For one_time, both must be null.
+  // For monthly indefinite: durationMonths=null, paymentSchedule="monthly".
+  // For monthly fixed-term: durationMonths is 1-36, paymentSchedule is
+  //   either "monthly" (recurring) or "monthly_prepaid" (single upfront).
+  durationMonths: number | null;
+  paymentSchedule: PaymentSchedule | null;
 };
 
 export type HydratedCartItem = CartItem & {
@@ -45,8 +54,17 @@ export type HydratedCart = {
   token: string;
   donorId: string | null;
   items: HydratedCartItem[];
+  // Legacy fields, kept for back-compat with existing checkout/init code
+  // that doesn't yet split the buckets. monthlyTotal is the per-month
+  // recurring amount; oneTimeTotal is one-time + prepaid (the
+  // "charge-today" bucket).
   monthlyTotal: number;
   oneTimeTotal: number;
+  // New cart UI surfaces these explicitly. monthly_prepaid is broken
+  // out so the cart can show "Today's charge" = prepaid + one-time.
+  monthlyRecurringTotal: number;
+  monthlyPrepaidTotal: number;
+  oneTimeOnlyTotal: number;
   totalAmountUsd: number;
   status: Cart["status"];
 };
@@ -62,27 +80,83 @@ function generateToken(): string {
 function isPlainCartItem(v: unknown): v is CartItem {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return (
-    typeof o.childId === "string" &&
-    UUID_RE.test(o.childId) &&
-    typeof o.paymentMode === "string" &&
-    isPaymentMode(o.paymentMode) &&
-    typeof o.amountUsd === "number" &&
-    isValidAmount(o.paymentMode, o.amountUsd)
-  );
+  if (
+    typeof o.childId !== "string" ||
+    !UUID_RE.test(o.childId) ||
+    typeof o.paymentMode !== "string" ||
+    !isPaymentMode(o.paymentMode) ||
+    typeof o.amountUsd !== "number" ||
+    !isValidAmount(o.paymentMode, o.amountUsd)
+  ) {
+    return false;
+  }
+  // durationMonths + paymentSchedule may be missing on legacy cart rows
+  // — treat absent as null. We only persist the new shape going forward,
+  // but reading older sessions shouldn't 500.
+  const durationRaw = o.durationMonths;
+  const durationMonths =
+    durationRaw === undefined || durationRaw === null
+      ? null
+      : typeof durationRaw === "number"
+        ? durationRaw
+        : NaN; // sentinel — fails validation below
+  if (Number.isNaN(durationMonths)) return false;
+  if (!isValidDurationMonths(o.paymentMode, durationMonths)) return false;
+
+  const scheduleRaw = o.paymentSchedule;
+  const paymentSchedule =
+    scheduleRaw === undefined || scheduleRaw === null
+      ? null
+      : isPaymentSchedule(scheduleRaw)
+        ? scheduleRaw
+        : "__invalid__";
+  if (paymentSchedule === "__invalid__") return false;
+
+  // Cross-field invariants:
+  // - one_time: schedule must be null.
+  // - monthly indefinite: schedule must be "monthly".
+  // - monthly fixed-term: schedule must be "monthly" OR "monthly_prepaid".
+  if (o.paymentMode === "one_time") {
+    if (paymentSchedule !== null) return false;
+  } else {
+    if (durationMonths === null) {
+      if (paymentSchedule !== "monthly") return false;
+    } else {
+      if (paymentSchedule !== "monthly" && paymentSchedule !== "monthly_prepaid") {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
+// Totals across the cart. We track 3 buckets that drive the cart's
+// "Recurring monthly" / "Today's charge" split:
+//   monthlyRecurring  → monthly items charged each month (indefinite or
+//                       fixed-term with paymentSchedule='monthly')
+//   monthlyPrepaid    → monthly_prepaid items, summed as N × amount
+//                       (the entire commitment hits the donor today)
+//   oneTime           → one-time gifts
 function totalsOf(items: ReadonlyArray<CartItem>): {
-  monthly: number;
+  monthlyRecurring: number;
+  monthlyPrepaid: number;
   oneTime: number;
 } {
-  let monthly = 0;
+  let monthlyRecurring = 0;
+  let monthlyPrepaid = 0;
   let oneTime = 0;
   for (const it of items) {
-    if (it.paymentMode === "monthly") monthly += it.amountUsd;
-    else oneTime += it.amountUsd;
+    if (it.paymentMode === "one_time") {
+      oneTime += it.amountUsd;
+    } else if (it.paymentSchedule === "monthly_prepaid") {
+      // durationMonths is required for prepaid (validated above).
+      const months = it.durationMonths ?? 0;
+      monthlyPrepaid += it.amountUsd * months;
+    } else {
+      monthlyRecurring += it.amountUsd;
+    }
   }
-  return { monthly, oneTime };
+  return { monthlyRecurring, monthlyPrepaid, oneTime };
 }
 
 // ─── Cart cookie + record ────────────────────────────────────────────────────
@@ -194,7 +268,11 @@ async function createCart(opts: {
 // Persist items + total + bump last_activity. Returns the same Cart shape.
 async function persistCart(cart: Cart, nextItems: CartItem[]): Promise<Cart> {
   const totals = totalsOf(nextItems);
-  const total = totals.monthly + totals.oneTime;
+  // total_amount_usd represents the *immediate* charge — what the donor
+  // is committing to pay today. That's monthly_prepaid (full N months
+  // upfront) + one-time gifts. Recurring monthly is excluded; that's a
+  // future-charge concept.
+  const total = totals.monthlyPrepaid + totals.oneTime;
   const now = new Date();
   const expires = new Date(now.getTime() + CART_TTL_MS).toISOString();
   await directusServer().request(
@@ -298,8 +376,16 @@ export async function hydrateCart(cart: Cart): Promise<HydratedCart> {
     token: cart.token,
     donorId: cart.donorId,
     items,
-    monthlyTotal: totals.monthly,
-    oneTimeTotal: totals.oneTime,
+    // Legacy aliases. monthlyTotal still means "per-month recurring";
+    // oneTimeTotal now includes the prepaid bucket so existing checkout
+    // code that sums (monthlyTotal recurring) + (oneTimeTotal upfront)
+    // produces a correct "what the donor is committing to right now"
+    // pair. Net behaviour unchanged for existing single-mode carts.
+    monthlyTotal: totals.monthlyRecurring,
+    oneTimeTotal: totals.oneTime + totals.monthlyPrepaid,
+    monthlyRecurringTotal: totals.monthlyRecurring,
+    monthlyPrepaidTotal: totals.monthlyPrepaid,
+    oneTimeOnlyTotal: totals.oneTime,
     totalAmountUsd: cart.totalAmountUsd,
     status: cart.status,
   };
