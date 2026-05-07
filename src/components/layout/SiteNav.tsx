@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { CartIconButton } from "@/components/cart/CartIconButton";
 
 const NAV_LINKS = [
   { href: "/children", label: "Children" },
@@ -69,6 +70,7 @@ export function SiteNav() {
       </div>
 
       <div className="flex items-center gap-2">
+        <CartIconButton />
         <Link
           href="/sign-in"
           className="text-sm font-medium text-slate hover:text-ink px-4 py-2.5 max-md:hidden"
