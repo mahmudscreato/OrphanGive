@@ -35,28 +35,11 @@ type PaidInvoiceCtx = {
 };
 
 async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
-  console.log("[webhook] activateFromPaidInvoice:", {
-    source: ctx.source,
-    invoice_id: ctx.invoiceId,
-    subscription: ctx.subId,
-    payment_intent: ctx.piId,
-    amount_paid: ctx.amountPaidCents,
-  });
-
-  if (!ctx.subId) {
-    console.log(`[webhook] ${ctx.source}: no subscription on invoice — skipping`);
-    return;
-  }
+  if (!ctx.subId) return;
 
   const sponsorships = await findSponsorshipsByStripeRef({
     subscriptionId: ctx.subId,
   });
-  console.log(
-    `[webhook] findSponsorshipsByStripeRef(sub=${ctx.subId}) -> ` +
-      (sponsorships.length === 0
-        ? "null"
-        : sponsorships.map((s) => s.id).join(",")),
-  );
   if (sponsorships.length === 0) {
     console.warn(`[stripe-webhook] no sponsorship found for sub ${ctx.subId}`);
     return;
@@ -93,11 +76,6 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
       payment_method_type: methodType,
       paid_at: ctx.paidAtIso,
     });
-    console.log(
-      `[webhook] createPaymentIfMissing(sponsorship=${sponsorship.id}) -> ${
-        created ? "created" : "already-existed"
-      }`,
-    );
   } catch (err) {
     console.error(
       `[webhook] createPaymentIfMissing(sponsorship=${sponsorship.id}) THREW:`,
@@ -261,12 +239,6 @@ type FailedInvoiceCtx = {
 };
 
 async function handleFailedInvoice(ctx: FailedInvoiceCtx) {
-  console.log("[webhook] handleFailedInvoice:", {
-    source: ctx.source,
-    invoice_id: ctx.invoiceId,
-    subscription: ctx.subId,
-    payment_intent: ctx.piId,
-  });
   if (!ctx.subId) return;
   const sponsorships = await findSponsorshipsByStripeRef({
     subscriptionId: ctx.subId,
@@ -464,11 +436,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  console.log(`[webhook] received event: ${event.type} ${event.id}`);
-
   // Idempotency guard.
   if (await isStripeEventProcessed(event.id)) {
-    console.log(`[webhook] event already processed, skipping: ${event.id}`);
     return NextResponse.json({ received: true, dedup: true });
   }
 
@@ -509,9 +478,7 @@ export async function POST(req: NextRequest) {
         break;
       // ── Informational only ───────────────────────────────────────────
       case "invoice_payment.created":
-        console.log(
-          `[webhook] invoice_payment.created (informational, ignored): ${event.id}`,
-        );
+        // Ack and ignore; we react to invoice_payment.paid instead.
         break;
       // ── One-time PaymentIntents ──────────────────────────────────────
       case "payment_intent.succeeded":

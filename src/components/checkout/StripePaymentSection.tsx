@@ -55,16 +55,6 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
 
   useEffect(() => () => { cancelled.current = true; }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    console.log(
-      "[checkout] StripePaymentSection mounted with sponsorshipIds:",
-      sponsorshipIds,
-      "clientSecrets count:",
-      clientSecrets.length,
-    );
-  }, []);
-
   async function handlePay() {
     if (!stripe || !elements) return;
     setError(null);
@@ -82,7 +72,6 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
       // the CardElement across multiple confirmCardPayment() calls is
       // unreliable — Stripe consumes the element on first confirm and
       // subsequent confirms can hang or silently fail.
-      console.log("[checkout] Creating payment method…");
       const pmRes = await stripe.createPaymentMethod({
         type: "card",
         card,
@@ -93,25 +82,15 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
         return;
       }
       const paymentMethodId = pmRes.paymentMethod.id;
-      console.log(`[checkout] Payment method created: ${paymentMethodId}`);
 
       // Step 2: confirm each clientSecret with the same payment_method id.
       // No `card:` field — that's only used at PaymentMethod creation.
       for (let i = 0; i < clientSecrets.length; i++) {
         const cs = clientSecrets[i]!;
-        console.log(
-          `[checkout] Confirming clientSecret ${i + 1} of ${clientSecrets.length}…`,
-        );
         const result = await stripe.confirmCardPayment(cs, {
           payment_method: paymentMethodId,
         });
         const finalStatus = result.paymentIntent?.status;
-        console.log(
-          `[checkout] confirm ${i + 1} status:`,
-          finalStatus ?? "(no paymentIntent)",
-          "error:",
-          result.error?.code ?? "(none)",
-        );
         if (result.error) {
           console.warn(`[checkout] confirm ${i + 1} failed:`, result.error);
           setError(result.error.message ?? "Payment could not be completed.");
@@ -153,18 +132,9 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
       // permanently — which used to silently kill the redirect. The
       // ref is still useful for guarding setState in async error
       // paths, but a successful navigation must fire unconditionally.
-      console.log("[checkout] All confirms loop completed");
-      console.log("[checkout] sponsorshipIds:", sponsorshipIds);
-      console.log("[checkout] About to call router.push");
-
-      console.log("[checkout] All confirms successful, redirecting…");
       const successUrl = `/checkout/success?ids=${sponsorshipIds.join(",")}`;
-      console.log("[checkout] Calling router.push to:", successUrl);
       try {
         router.push(successUrl);
-        console.log(
-          "[checkout] router.push returned (this should not appear if navigation occurred)",
-        );
         // Safety net: if the URL hasn't changed in 500ms, fall back to a
         // hard nav. router.push can no-op silently if the App Router
         // tries to reuse a cached layout that errors during render.
