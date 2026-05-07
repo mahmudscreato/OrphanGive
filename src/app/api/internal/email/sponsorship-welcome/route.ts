@@ -6,6 +6,8 @@ import {
   fetchSponsorshipsByIds,
   formatTo,
   isUuid,
+  recentSentAtWithin,
+  setDonorEmailSentAt,
 } from "@/lib/email-data";
 import {
   SponsorshipWelcomeEmail,
@@ -13,6 +15,8 @@ import {
 } from "@/emails/SponsorshipWelcomeEmail";
 
 export const runtime = "nodejs";
+
+const DEDUP_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   const unauthed = verifyInternalAuth(req);
@@ -65,6 +69,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Dedup: if we sent this donor a welcome email within the last 6h,
+  // don't send another. Covers Stripe-webhook retry storms and Flow
+  // double-fires after a successful checkout.
+  const recent = recentSentAtWithin(
+    donor.welcome_email_sent_at,
+    DEDUP_WINDOW_MS,
+  );
+  if (recent) {
+    return NextResponse.json({
+      skipped: true,
+      reason: "already_sent_recently",
+      sentAt: recent,
+    });
+  }
+
   const childMap = await fetchChildrenByIds(sponsorships.map((s) => s.child));
   const items: SponsorshipWelcomeItem[] = sponsorships.map((s) => {
     const c = childMap.get(s.child);
@@ -96,8 +115,13 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.success) {
+    // Do NOT mark sent — let the next call retry.
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
+
+  // Best-effort timestamp write; logged on failure but doesn't fail the call.
+  await setDonorEmailSentAt(donor.id, "welcome_email_sent_at");
+
   return NextResponse.json({
     success: true,
     messageId: result.messageId,

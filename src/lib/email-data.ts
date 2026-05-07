@@ -2,7 +2,7 @@
 // touch the donor's session — they're called by Directus Flows or by
 // the webhook with bearer-token auth.
 
-import { readItem, readItems, readUser } from "@directus/sdk";
+import { readItem, readItems, readUser, updateUser } from "@directus/sdk";
 import { directusServer } from "./directus";
 
 const UUID_RE =
@@ -18,6 +18,8 @@ export type EmailDonor = {
   email: string;
   first_name: string | null;
   og_admin_approval_status: string;
+  approval_email_sent_at: string | null;
+  welcome_email_sent_at: string | null;
 };
 
 export async function fetchDonorById(id: string): Promise<EmailDonor | null> {
@@ -30,6 +32,8 @@ export async function fetchDonorById(id: string): Promise<EmailDonor | null> {
           "email",
           "first_name",
           "og_admin_approval_status",
+          "approval_email_sent_at",
+          "welcome_email_sent_at",
         ],
       } as never),
     )) as unknown as Record<string, unknown> | null;
@@ -39,6 +43,10 @@ export async function fetchDonorById(id: string): Promise<EmailDonor | null> {
       email: String(row.email ?? ""),
       first_name: (row.first_name as string | null) ?? null,
       og_admin_approval_status: String(row.og_admin_approval_status ?? ""),
+      approval_email_sent_at:
+        (row.approval_email_sent_at as string | null) ?? null,
+      welcome_email_sent_at:
+        (row.welcome_email_sent_at as string | null) ?? null,
     };
   } catch (err) {
     console.warn(
@@ -47,6 +55,45 @@ export async function fetchDonorById(id: string): Promise<EmailDonor | null> {
     );
     return null;
   }
+}
+
+// Best-effort write of an "email sent at" timestamp on a donor row. Used
+// by the donor-approved + sponsorship-welcome routes to mark a successful
+// send for dedup. Errors are logged and NOT thrown — the email already
+// went out, and we'd rather risk a rare duplicate than turn a successful
+// send into a 5xx response.
+export type DedupTimestampField =
+  | "approval_email_sent_at"
+  | "welcome_email_sent_at";
+
+export async function setDonorEmailSentAt(
+  donorId: string,
+  field: DedupTimestampField,
+  iso: string = new Date().toISOString(),
+): Promise<void> {
+  if (!isUuid(donorId)) return;
+  try {
+    await directusServer().request(
+      updateUser(donorId as never, { [field]: iso } as never),
+    );
+  } catch (err) {
+    console.warn(
+      `[email-data] setDonorEmailSentAt(${field}) failed`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+// Helper used by both dedup-aware routes. Returns the existing sent-at
+// ISO string if it's within `windowMs`, otherwise null.
+export function recentSentAtWithin(
+  iso: string | null,
+  windowMs: number,
+): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  return Date.now() - t < windowMs ? iso : null;
 }
 
 // ─── Child (lookup by id) ───────────────────────────────────────────────────
