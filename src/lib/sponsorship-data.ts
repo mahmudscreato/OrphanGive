@@ -18,7 +18,13 @@ export type Sponsorship = {
   donor: string;
   child:
     | string
-    | { id: string; display_name: string | null; Photo?: string | null };
+    | {
+        id: string;
+        display_name: string | null;
+        Photo?: string | null;
+        date_of_birth?: string | null;
+        bd_district?: { name?: string | null } | null;
+      };
   payment_mode: "monthly" | "one_time";
   amount_usd: number;
   currency: string;
@@ -44,6 +50,7 @@ const FULL_FIELDS = [
   "total_paid_usd", "payment_count", "date_created",
   "checkout_fingerprint", "cancellation_reason",
   "child.id", "child.display_name", "child.Photo",
+  "child.date_of_birth", "child.bd_district.name",
 ] as const;
 
 const UUID_RE =
