@@ -90,68 +90,63 @@ export default async function SponsorshipDetailPage({
     .reduce((acc, p) => acc + Number(p.amount_usd ?? 0), 0);
 
   return (
-    <main className="bg-cream min-h-screen">
-      <section className="px-6 pt-32 pb-24 max-md:pt-24 max-md:pb-16">
-        <div className="max-w-[720px] mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between gap-4 flex-wrap mb-8">
-            <Link
-              href="/dashboard"
-              className="text-[13.5px] text-slate-soft hover:text-tangerine-deep transition-colors"
-            >
-              ← Dashboard
-            </Link>
-            <StatusPill status={status} />
-          </div>
+    <div className="max-w-[720px] mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-8">
+        <Link
+          href="/dashboard/sponsorships"
+          className="text-[13.5px] text-slate-soft hover:text-tangerine-deep transition-colors"
+        >
+          ← Back to children
+        </Link>
+        <StatusPill status={status} />
+      </div>
 
-          {/* Child summary card */}
-          <ChildCard
+      {/* Child summary card */}
+      <ChildCard
+        childId={childId}
+        childName={childName}
+        photoId={childPhoto}
+        district={district}
+        age={age}
+      />
+
+      {/* Sponsorship summary */}
+      <SponsorshipSummary
+        sponsorship={sponsorship}
+        status={status}
+        totalContributed={totalContributed}
+      />
+
+      {/* Actions — hidden entirely for completed/cancelled. The
+          SponsorshipActions client component itself decides which
+          modal to surface for "Add more months" based on the
+          sponsorship's type (recurring / prepaid / indefinite). */}
+      {status !== "completed" && status !== "cancelled" ? (
+        <section className="mt-10">
+          <SponsorshipActions
+            sponsorshipId={sponsorship.id}
+            paymentMode={sponsorship.payment_mode}
+            status={status}
+            amountUsd={sponsorship.amount_usd}
             childId={childId}
             childName={childName}
-            photoId={childPhoto}
-            district={district}
-            age={age}
+            nextBillingDate={sponsorship.next_billing_date}
+            durationMonths={sponsorship.duration_months}
+            paymentSchedule={sponsorship.payment_schedule}
+            prepaidMonthsTotal={sponsorship.prepaid_months_total}
+            prepaidMonthsRemaining={sponsorship.prepaid_months_remaining}
+            scheduledEndDate={sponsorship.scheduled_end_date}
           />
+        </section>
+      ) : null}
 
-          {/* Sponsorship summary */}
-          <SponsorshipSummary
-            sponsorship={sponsorship}
-            status={status}
-            totalContributed={totalContributed}
-          />
+      {/* Payments */}
+      <PaymentsSection payments={payments} />
 
-          {/* Actions — hidden entirely for completed/cancelled. The
-              SponsorshipActions client component itself decides which
-              modal to surface for "Add more months" based on the
-              sponsorship's type (recurring / prepaid / indefinite). */}
-          {status !== "completed" &&
-          status !== "cancelled" ? (
-            <section className="mt-10">
-              <SponsorshipActions
-                sponsorshipId={sponsorship.id}
-                paymentMode={sponsorship.payment_mode}
-                status={status}
-                amountUsd={sponsorship.amount_usd}
-                childId={childId}
-                childName={childName}
-                nextBillingDate={sponsorship.next_billing_date}
-                durationMonths={sponsorship.duration_months}
-                paymentSchedule={sponsorship.payment_schedule}
-                prepaidMonthsTotal={sponsorship.prepaid_months_total}
-                prepaidMonthsRemaining={sponsorship.prepaid_months_remaining}
-                scheduledEndDate={sponsorship.scheduled_end_date}
-              />
-            </section>
-          ) : null}
-
-          {/* Payments */}
-          <PaymentsSection payments={payments} />
-
-          {/* Child updates */}
-          <UpdatesSection updates={updates} childName={childName} />
-        </div>
-      </section>
-    </main>
+      {/* Child updates */}
+      <UpdatesSection updates={updates} childName={childName} />
+    </div>
   );
 }
 

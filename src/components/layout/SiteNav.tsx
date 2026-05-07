@@ -19,8 +19,17 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SiteNav() {
+type Props = {
+  signedIn: boolean;
+  firstName: string | null;
+};
+
+export function SiteNav({ signedIn, firstName }: Props) {
   const pathname = usePathname();
+
+  // The dashboard renders its own permanent left sidebar, so the
+  // floating top nav would just compete for attention. Hide it there.
+  if (pathname.startsWith("/dashboard")) return null;
 
   return (
     <nav
@@ -71,12 +80,21 @@ export function SiteNav() {
 
       <div className="flex items-center gap-2">
         <CartIconButton />
-        <Link
-          href="/sign-in"
-          className="text-sm font-medium text-slate hover:text-ink px-4 py-2.5 max-md:hidden"
-        >
-          Sign in
-        </Link>
+        {signedIn ? (
+          <Link
+            href="/dashboard"
+            className="text-sm font-medium text-slate hover:text-ink px-4 py-2.5 max-md:hidden"
+          >
+            {firstName ? `Hi, ${firstName}` : "Dashboard"}
+          </Link>
+        ) : (
+          <Link
+            href="/signin"
+            className="text-sm font-medium text-slate hover:text-ink px-4 py-2.5 max-md:hidden"
+          >
+            Sign in
+          </Link>
+        )}
         <Button href="/sponsor" variant="primary">
           Sponsor a Child
         </Button>

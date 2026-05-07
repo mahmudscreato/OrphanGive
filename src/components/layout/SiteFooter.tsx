@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 type FooterLink = { href: string; label: string };
 type FooterColumn = { heading: string; links: FooterLink[] };
@@ -54,6 +57,11 @@ const BOTTOM_LINKS: FooterLink[] = [
 ];
 
 export function SiteFooter() {
+  const pathname = usePathname();
+  // Dashboard owns its own chrome (sidebar). The marketing footer
+  // would visually collide with the sidebar's bottom donor card.
+  if (pathname.startsWith("/dashboard")) return null;
+
   const year = new Date().getFullYear();
 
   return (

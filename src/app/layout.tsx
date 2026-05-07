@@ -3,6 +3,7 @@ import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { getCurrentDonor } from "@/lib/donor-data";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -36,11 +37,14 @@ export const viewport: Viewport = {
   themeColor: "#FFFAF2",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Fetch donor at the top so SiteNav can render auth-aware UI.
+  // SiteNav itself decides to skip rendering on /dashboard/* routes.
+  const donor = await getCurrentDonor();
   return (
     <html
       lang="en"
@@ -50,7 +54,14 @@ export default function RootLayout({
         className="min-h-full flex flex-col bg-cream text-ink"
         suppressHydrationWarning={true}
       >
-        <SiteNav />
+        <SiteNav
+          signedIn={!!donor}
+          firstName={
+            donor?.first_name?.trim() ||
+            donor?.email?.split("@")[0] ||
+            null
+          }
+        />
         <main className="flex-1">{children}</main>
         <SiteFooter />
       </body>

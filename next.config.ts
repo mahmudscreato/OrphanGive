@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
   images: {
     qualities: [75, 85],
   },
+  async redirects() {
+    return [
+      {
+        source: "/dashboard/children",
+        destination: "/dashboard/sponsorships",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

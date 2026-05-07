@@ -95,18 +95,7 @@ export function RevealRequestsSection({ requests }: Props) {
 
   return (
     <section>
-      <div className="max-w-[640px]">
-        <div className="eyebrow-tag">Reveal requests</div>
-        <h2 className="font-display font-normal mt-3 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(1.75rem,3.25vw,2.5rem)]">
-          Your privacy requests.
-        </h2>
-        <p className="mt-2 text-[15px] text-slate leading-[1.6]">
-          Approvals last 90 days. We&apos;ll email you when a request is
-          reviewed.
-        </p>
-      </div>
-
-      <ul className="mt-7 space-y-3">
+      <ul className="space-y-3">
         {STATUS_ORDER.flatMap((status) => {
           const items = groups.get(status);
           if (!items || items.length === 0) return [];

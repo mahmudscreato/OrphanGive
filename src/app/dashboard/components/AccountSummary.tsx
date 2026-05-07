@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { COUNTRY_BY_CODE } from "@/lib/countries";
 import type { Donor } from "@/lib/donor-data";
 
 function formatDate(s: string | null): string {
@@ -14,7 +13,10 @@ function formatDate(s: string | null): string {
 }
 
 function fullName(donor: Pick<Donor, "first_name" | "last_name">): string {
-  return [donor.first_name, donor.last_name].filter(Boolean).join(" ").trim() || "—";
+  return (
+    [donor.first_name, donor.last_name].filter(Boolean).join(" ").trim() ||
+    "—"
+  );
 }
 
 function memberSince(donor: Donor): string {
@@ -23,43 +25,38 @@ function memberSince(donor: Donor): string {
   return formatDate(candidate);
 }
 
-function countryLabel(code: string | null): string {
-  if (!code) return "—";
-  const c = COUNTRY_BY_CODE[code];
-  return c ? c.name : code;
-}
-
-const Row = ({ label, value }: { label: string; value: string }) => (
-  <div className="grid grid-cols-[180px_1fr] gap-6 py-3.5 border-b border-ink/[0.06] last:border-b-0 max-md:grid-cols-1 max-md:gap-1 max-md:py-3">
-    <div className="font-mono text-[11px] text-slate-soft tracking-[0.14em] uppercase">
-      {label}
-    </div>
-    <div className="text-[15px] text-ink break-words">{value}</div>
-  </div>
-);
-
+// Minimal account block — sits at the very bottom of the dashboard so
+// it doesn't compete with the sponsorship cards or moments timeline.
+// No section heading; just three small fields and a link to manage.
 export function AccountSummary({ donor }: { donor: Donor }) {
   return (
-    <section className="rounded-[28px] bg-cream border border-ink/[0.06] px-7 py-6 max-md:px-5 max-md:py-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-[22px] text-ink font-medium">
-          Your account
-        </h2>
-        <Link
-          href="/dashboard/profile"
-          className="text-[13px] text-tangerine-deep border-b border-tangerine pb-0.5 transition-[gap] duration-[250ms]"
-        >
-          Edit profile
-        </Link>
+    <section
+      aria-label="Account"
+      className="rounded-[20px] bg-cream/40 border border-ink/[0.05] px-6 py-5 flex items-start justify-between gap-4 flex-wrap max-md:px-5 max-md:py-4"
+    >
+      <div className="grid grid-cols-3 gap-x-10 gap-y-2 max-md:grid-cols-1">
+        <Field label="Name" value={fullName(donor)} />
+        <Field label="Email" value={donor.email} />
+        <Field label="Member since" value={memberSince(donor)} />
       </div>
-      <div>
-        <Row label="Full name" value={fullName(donor)} />
-        <Row label="Email" value={donor.email} />
-        <Row label="Country" value={countryLabel(donor.og_country)} />
-        <Row label="Phone" value={donor.og_phone || "—"} />
-        <Row label="Member since" value={memberSince(donor)} />
-      </div>
+      <Link
+        href="/dashboard/profile"
+        className="text-[12.5px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
+      >
+        Manage account →
+      </Link>
     </section>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-slate-soft mb-0.5">
+        {label}
+      </div>
+      <div className="text-[13.5px] text-ink truncate">{value}</div>
+    </div>
   );
 }
 
