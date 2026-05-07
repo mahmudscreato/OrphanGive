@@ -6,16 +6,17 @@ import {
 } from "@/lib/donor-data";
 import { getRandomActiveChildren } from "@/lib/children-data";
 import { getAllDonorReveals } from "@/lib/reveal-data";
+import { getDonorSponsorships } from "@/lib/sponsorship-data";
 import { DonorWelcome } from "./components/DonorWelcome";
 import { AwaitingApprovalBanner } from "./components/AwaitingApprovalBanner";
 import { RecommendedChildren } from "./components/RecommendedChildren";
 import { EmptyDonorState } from "./components/EmptyDonorState";
-import {
-  SponsorshipHistorySection,
-  type SponsorshipRow,
-} from "./components/SponsorshipHistorySection";
 import { AccountSummary } from "./components/AccountSummary";
 import { RevealRequestsSection } from "./components/RevealRequestsSection";
+import {
+  SponsorshipsSection,
+  isDisplaySponsorship,
+} from "./components/SponsorshipsSection";
 
 export const dynamic = "force-dynamic";
 
@@ -64,15 +65,14 @@ function PendingApprovalDashboard({ donor }: { donor: Donor }) {
 }
 
 async function ApprovedDashboard({ donor }: { donor: Donor }) {
-  // For Session 9 there's no sponsorship table yet. Empty array.
-  const sponsorships: SponsorshipRow[] = [];
-
-  // Parallel fetch: recommended children + donor's reveal requests across
-  // all children. Both are cheap server-token reads.
-  const [recommended, revealRequests] = await Promise.all([
+  // Parallel fetch: recommended children, reveal requests, sponsorships.
+  const [recommended, revealRequests, sponsorships] = await Promise.all([
     getRandomActiveChildren("", 4),
     getAllDonorReveals(donor.id),
+    getDonorSponsorships(donor.id, { limit: 50 }),
   ]);
+
+  const hasDisplayable = sponsorships.some(isDisplaySponsorship);
 
   return (
     <main className="bg-cream">
@@ -80,10 +80,10 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
         <div className="max-w-[1100px] mx-auto space-y-12">
           <DonorWelcome donor={donor} approved={true} />
           <RecommendedChildren items={recommended} />
-          {sponsorships.length === 0 ? (
-            <EmptyDonorState />
+          {hasDisplayable ? (
+            <SponsorshipsSection items={sponsorships} />
           ) : (
-            <SponsorshipHistorySection sponsorships={sponsorships} />
+            <EmptyDonorState />
           )}
           <RevealRequestsSection requests={revealRequests} />
           <AccountSummary donor={donor} />
