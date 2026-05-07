@@ -225,21 +225,32 @@ export async function createPaymentIfMissing(opts: {
   failure_reason?: string | null;
   paid_at: string;
 }): Promise<boolean> {
-  // Look for an existing row with the same PI+invoice combo on this
-  // sponsorship — duplicates would only happen on retry/replay.
-  const filter: Record<string, unknown> = {
-    _and: [{ sponsorship: { _eq: opts.sponsorshipId } }],
-  };
+  // Look for an existing row on this sponsorship that matches EITHER
+  // the PI id or the invoice id. Either-match is important because the
+  // same paid invoice can arrive via two different Stripe event names
+  // (invoice.payment_succeeded, invoice.paid, invoice_payment.paid) and
+  // we don't want to double-insert. Each event carries its own event id
+  // so the per-event dedup can't catch this.
+  const matchClauses: Array<Record<string, unknown>> = [];
   if (opts.stripe_payment_intent_id) {
-    (filter._and as Array<Record<string, unknown>>).push({
+    matchClauses.push({
       stripe_payment_intent_id: { _eq: opts.stripe_payment_intent_id },
     });
   }
   if (opts.stripe_invoice_id) {
-    (filter._and as Array<Record<string, unknown>>).push({
+    matchClauses.push({
       stripe_invoice_id: { _eq: opts.stripe_invoice_id },
     });
   }
+  const filter: Record<string, unknown> =
+    matchClauses.length > 0
+      ? {
+          _and: [
+            { sponsorship: { _eq: opts.sponsorshipId } },
+            { _or: matchClauses },
+          ],
+        }
+      : { sponsorship: { _eq: opts.sponsorshipId } };
   try {
     const rows = (await directusServer().request(
       readItems("payment" as never, {

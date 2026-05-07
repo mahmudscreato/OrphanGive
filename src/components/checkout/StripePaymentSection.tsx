@@ -146,13 +146,14 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
           return;
         }
       }
+      // ── Post-confirm: navigate ──────────────────────────────────────
+      // We deliberately do NOT consult the `cancelled` ref here.
+      // In React 18+ StrictMode (Next.js dev default), every effect
+      // setup is preceded by an artificial cleanup that flips the ref
+      // permanently — which used to silently kill the redirect. The
+      // ref is still useful for guarding setState in async error
+      // paths, but a successful navigation must fire unconditionally.
       console.log("[checkout] All confirms loop completed");
-      if (cancelled.current) {
-        console.warn(
-          "[checkout] cancelled.current is true — bailing out before redirect",
-        );
-        return;
-      }
       console.log("[checkout] sponsorshipIds:", sponsorshipIds);
       console.log("[checkout] About to call router.push");
 
