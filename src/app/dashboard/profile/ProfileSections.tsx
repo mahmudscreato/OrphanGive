@@ -35,7 +35,6 @@ export type ProfileSectionsDonor = {
   og_country: string | null;
   og_phone: string | null;
   og_profile_photo_url: string | null;
-  date_created: string | null;
   og_agreed_to_terms_at: string | null;
 };
 
@@ -681,7 +680,7 @@ function ReadOnlyField({
 }
 
 function formatMemberSince(d: ProfileSectionsDonor): string {
-  const iso = d.og_agreed_to_terms_at ?? d.date_created;
+  const iso = d.og_agreed_to_terms_at;
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";

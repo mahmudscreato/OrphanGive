@@ -38,7 +38,6 @@ export default async function DashboardProfilePage() {
           og_country: donor.og_country,
           og_phone: donor.og_phone,
           og_profile_photo_url: donor.og_profile_photo_url,
-          date_created: donor.date_created,
           og_agreed_to_terms_at: donor.og_agreed_to_terms_at,
         }}
       />

@@ -4,6 +4,41 @@ import { readMe, readUser } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { ACCESS_COOKIE, getServerDirectus } from "./directus-server";
 
+// ─── Field sets for getCurrentDonor ──────────────────────────────────────────
+//
+// FULL_FIELDS: any field added here must ALSO be added to the
+// donor access policy in Directus admin, otherwise the primary
+// fetch will fail and the fallback will activate.
+const FULL_FIELDS = [
+  "id",
+  "email",
+  "first_name",
+  "last_name",
+  "status",
+  "og_country",
+  "og_phone",
+  "og_admin_approval_status",
+  "og_admin_approved_at",
+  "og_agreed_to_terms_at",
+  "last_access",
+  "og_stripe_customer_id",
+  "og_profile_photo_url",
+] as const;
+
+// SAFE_FALLBACK_FIELDS: must only contain fields known to be
+// permitted by the donor access policy. Adding a restricted
+// field here defeats the entire fallback mechanism.
+const SAFE_FALLBACK_FIELDS = [
+  "id",
+  "email",
+  "first_name",
+  "last_name",
+  "status",
+  "og_country",
+  "og_phone",
+  "og_admin_approval_status",
+] as const;
+
 // ─── Donor shape ─────────────────────────────────────────────────────────────
 export type Donor = {
   id: string;
@@ -23,9 +58,6 @@ export type Donor = {
   // Stripe Customer id, set on first checkout. Used by /dashboard/billing
   // to read saved payment methods and to gate the Customer Portal.
   og_stripe_customer_id: string | null;
-  // Account-creation timestamp from Directus's standard user metadata;
-  // used as the "Member since" line on the profile page.
-  date_created: string | null;
 };
 
 // ─── State machine ───────────────────────────────────────────────────────────
@@ -100,77 +132,90 @@ export async function getCurrentDonor(): Promise<Donor | null> {
     return null;
   }
 
-  // 2) Server-token fetch of full user row (Donor policy can't read og_*).
+  // 2) Server-token fetch of the full user row.
   //
-  // We split the fetch into two passes:
-  //   • Required fields — always fetchable, drives the auth state machine.
-  //   • Optional fields — added by post-launch migrations (e.g.
-  //     og_profile_photo_url from Session 13.5c Part B). If the running
-  //     Directus schema doesn't have those columns yet (migration not yet
-  //     applied in this environment), the secondary fetch is silently
-  //     dropped and the donor object reports those fields as null.
-  // This keeps auth working through forward-compatible deploys.
-  const REQUIRED_FIELDS = [
-    "id",
-    "email",
-    "first_name",
-    "last_name",
-    "status",
-    "og_country",
-    "og_phone",
-    "og_admin_approval_status",
-    "og_admin_approved_at",
-    "og_agreed_to_terms_at",
-    "last_access",
-    "og_stripe_customer_id",
-    "date_created",
-  ] as const;
-  const OPTIONAL_FIELDS = ["og_profile_photo_url"] as const;
-
+  // Primary path: FULL_FIELDS. If a single field in that list is rejected
+  // by the donor access policy (or doesn't exist in the schema yet for a
+  // mid-migration deploy), the WHOLE request 4xx's and we fall back to
+  // SAFE_FALLBACK_FIELDS — the minimal set known to be readable. Fields
+  // not in the fallback come back as null in the Donor object, which is
+  // fine for the auth state machine; downstream UIs (profile / billing)
+  // already render gracefully when their fields are null.
+  let row: Record<string, unknown> | null = null;
   try {
-    let row = (await directusServer().request(
-      readUser(userId, {
-        fields: [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS],
-      } as never),
-    ).catch(async () => {
-      // Likely cause: the optional column doesn't exist in this Directus
-      // schema yet. Fall back to the required fields only.
-      console.warn(
-        "[donor-data] full-field readUser failed; falling back to required-only set. Did you forget to run migrations/2026-05-08-add-og-profile-photo-url.sql?",
-      );
-      return (await directusServer().request(
-        readUser(userId, { fields: [...REQUIRED_FIELDS] } as never),
-      )) as Record<string, unknown> | null;
-    })) as Record<string, unknown> | null;
-    if (!row) row = null;
-
-    if (!row || typeof row !== "object") return null;
-
-    return {
-      id: String(row.id ?? userId),
-      email: String(row.email ?? ""),
-      first_name: (row.first_name as string | null) ?? null,
-      last_name: (row.last_name as string | null) ?? null,
-      status: String(row.status ?? ""),
-      og_country: (row.og_country as string | null) ?? null,
-      og_phone: (row.og_phone as string | null) ?? null,
-      og_admin_approval_status: String(row.og_admin_approval_status ?? "pending"),
-      og_admin_approved_at: (row.og_admin_approved_at as string | null) ?? null,
-      og_agreed_to_terms_at: (row.og_agreed_to_terms_at as string | null) ?? null,
-      last_access: (row.last_access as string | null) ?? null,
-      og_profile_photo_url:
-        (row.og_profile_photo_url as string | null) ?? null,
-      og_stripe_customer_id:
-        (row.og_stripe_customer_id as string | null) ?? null,
-      date_created: (row.date_created as string | null) ?? null,
-    };
+    row = (await directusServer().request(
+      readUser(userId, { fields: [...FULL_FIELDS] } as never),
+    )) as Record<string, unknown> | null;
   } catch (err) {
+    const { message, status } = describeDirectusError(err);
     console.warn(
-      "[donor-data] server-token fetch failed",
-      err instanceof Error ? err.message : err,
+      `[donor-data] full-field readUser failed for ${userId}: ${message} (status=${status})`,
     );
-    return null;
+    try {
+      row = (await directusServer().request(
+        readUser(userId, { fields: [...SAFE_FALLBACK_FIELDS] } as never),
+      )) as Record<string, unknown> | null;
+    } catch (err2) {
+      const { message: m2, status: s2 } = describeDirectusError(err2);
+      console.error(
+        `[donor-data] fallback readUser ALSO failed for ${userId}: ${m2} (status=${s2})`,
+      );
+      return null;
+    }
   }
+
+  if (!row || typeof row !== "object") return null;
+
+  return {
+    id: String(row.id ?? userId),
+    email: String(row.email ?? ""),
+    first_name: (row.first_name as string | null) ?? null,
+    last_name: (row.last_name as string | null) ?? null,
+    status: String(row.status ?? ""),
+    og_country: (row.og_country as string | null) ?? null,
+    og_phone: (row.og_phone as string | null) ?? null,
+    og_admin_approval_status: String(row.og_admin_approval_status ?? "pending"),
+    og_admin_approved_at: (row.og_admin_approved_at as string | null) ?? null,
+    og_agreed_to_terms_at: (row.og_agreed_to_terms_at as string | null) ?? null,
+    last_access: (row.last_access as string | null) ?? null,
+    og_profile_photo_url:
+      (row.og_profile_photo_url as string | null) ?? null,
+    og_stripe_customer_id:
+      (row.og_stripe_customer_id as string | null) ?? null,
+  };
+}
+
+// Best-effort extraction of human-readable error message + HTTP status
+// from whatever the Directus SDK throws. The SDK doesn't expose a
+// stable shape, so we look in the most likely places and fall back to
+// "unknown" for status when nothing matches.
+function describeDirectusError(err: unknown): {
+  message: string;
+  status: string;
+} {
+  let message = "(no message)";
+  let status = "unknown";
+
+  if (err && typeof err === "object") {
+    const errors = (err as { errors?: Array<{ message?: string }> }).errors;
+    if (Array.isArray(errors) && errors[0]?.message) {
+      message = errors[0].message;
+    } else if (err instanceof Error) {
+      message = err.message;
+    }
+
+    const response = (err as { response?: { status?: number } }).response;
+    if (response && typeof response.status === "number") {
+      status = String(response.status);
+    } else {
+      const direct = (err as { status?: number }).status;
+      if (typeof direct === "number") status = String(direct);
+    }
+  } else if (err instanceof Error) {
+    message = err.message;
+  }
+
+  return { message, status };
 }
 
 // ─── Guard for routes that require approval ──────────────────────────────────
