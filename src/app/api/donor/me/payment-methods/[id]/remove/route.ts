@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type Stripe from "stripe";
 import { authedDonor } from "@/lib/api-auth";
 import { getStripe } from "@/lib/stripe-client";
 import {
@@ -10,9 +11,15 @@ export const runtime = "nodejs";
 
 // POST /api/donor/me/payment-methods/[id]/remove
 // Detaches a PaymentMethod from the signed-in donor's customer.
-// Refuses to remove the default PM when there are other PMs available
-// (the donor must promote another to default first). When it IS the
-// only PM, detach is allowed — the customer simply has no saved cards.
+//
+// Guard: refuse to detach if (this PM is default) AND (other
+// PMs exist). The donor must promote a replacement first.
+// Allowed cases: removing a non-default PM, OR removing the
+// ONLY PM (default by definition, but no alternative exists).
+//
+// Source of truth for "default":
+//   customer.invoice_settings.default_payment_method
+// (NOT pm.metadata; PMs themselves carry no "is default" flag).
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -50,23 +57,9 @@ export async function POST(
 
   const stripe = getStripe();
 
-  // Compute "is this the default, and are there others?" up front so we
-  // can refuse cleanly before any mutation.
-  let isDefault = false;
-  let otherCount = 0;
+  let assessment: RemovalAssessment;
   try {
-    const [customer, pms] = await Promise.all([
-      stripe.customers.retrieve(customerId),
-      stripe.paymentMethods.list({ customer: customerId, type: "card" }),
-    ]);
-    const defaultPmId =
-      "deleted" in customer && customer.deleted === true
-        ? null
-        : typeof customer.invoice_settings?.default_payment_method === "string"
-          ? customer.invoice_settings.default_payment_method
-          : (customer.invoice_settings?.default_payment_method?.id ?? null);
-    isDefault = defaultPmId === pmId;
-    otherCount = pms.data.filter((p) => p.id !== pmId).length;
+    assessment = await assessRemoval(stripe, customerId, pmId);
   } catch (err) {
     console.error(
       "[/api/donor/me/payment-methods/[id]/remove] state check failed:",
@@ -78,7 +71,14 @@ export async function POST(
     );
   }
 
-  if (isDefault && otherCount > 0) {
+  // Apply the guard. Single source of truth: assessment.isDefault was
+  // derived from customer.invoice_settings.default_payment_method above.
+  if (assessment.isDefault && assessment.otherCount > 0) {
+    console.warn(
+      `[/api/donor/me/payment-methods/[id]/remove] BLOCKED removal of default pm ${pmId} ` +
+        `for customer ${customerId} (defaultPmId=${assessment.defaultPmId}, ` +
+        `otherCount=${assessment.otherCount}); donor must promote replacement first.`,
+    );
     return NextResponse.json(
       {
         error:
@@ -110,4 +110,46 @@ export async function POST(
   } catch {
     return NextResponse.json({ success: true });
   }
+}
+
+// ─── Removal assessment ──────────────────────────────────────────────────────
+
+type RemovalAssessment = {
+  isDefault: boolean;
+  otherCount: number;
+  defaultPmId: string | null;
+};
+
+// Computes whether `pmId` is the customer's default and how many OTHER
+// card PMs the customer has. Reads directly from
+// `customer.invoice_settings.default_payment_method` (the only Stripe-
+// supported source of truth for "default") and compares ids by string.
+async function assessRemoval(
+  stripe: Stripe,
+  customerId: string,
+  pmId: string,
+): Promise<RemovalAssessment> {
+  const [customer, pms] = await Promise.all([
+    stripe.customers.retrieve(customerId),
+    stripe.paymentMethods.list({ customer: customerId, type: "card" }),
+  ]);
+
+  // A DeletedCustomer has no invoice_settings; treat as "no default".
+  if ("deleted" in customer && customer.deleted === true) {
+    return { isDefault: false, otherCount: 0, defaultPmId: null };
+  }
+
+  // Without `expand`, Stripe returns default_payment_method as a string
+  // (the pm id) or null. If the caller used expand, it's a PaymentMethod
+  // object instead — we extract `.id` so we always end up with a string
+  // or null.
+  const dpm = customer.invoice_settings?.default_payment_method;
+  const defaultPmId: string | null =
+    typeof dpm === "string" ? dpm : (dpm?.id ?? null);
+
+  return {
+    isDefault: defaultPmId !== null && defaultPmId === pmId,
+    otherCount: pms.data.filter((p) => p.id !== pmId).length,
+    defaultPmId,
+  };
 }
