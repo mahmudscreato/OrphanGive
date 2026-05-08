@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import {
   CardElement,
@@ -77,21 +77,53 @@ function PaymentMethodsSection({
   const [pms, setPms] = useState<PublicPaymentMethod[]>(initial);
   const [showAdd, setShowAdd] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // `ready` gates user actions until the initial mount-fetch resolves.
+  // The page passed `initial` for fast first paint, but that list could
+  // be stale (other browser tab, earlier session, diagnostic spike, etc.)
+  // — we always re-sync from the server before letting the donor click
+  // anything that mutates state.
+  const [ready, setReady] = useState(false);
 
-  async function refresh() {
+  const refresh = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch("/api/donor/me/payment-methods");
       const json: {
         paymentMethods?: PublicPaymentMethod[];
         error?: string;
       } = await res.json().catch(() => ({}));
-      if (res.ok && json.paymentMethods) setPms(json.paymentMethods);
+      if (res.ok && json.paymentMethods) {
+        setPms(json.paymentMethods);
+        return true;
+      }
+      return false;
     } catch {
-      // Silent — UI keeps showing the previous list.
+      // Silent — UI keeps showing the previous list (initial server
+      // props or last known good).
+      return false;
     }
-  }
+  }, []);
+
+  // Mount-time canonical re-sync. Cancellation token guards against the
+  // tab being unmounted before the fetch resolves.
+  useEffect(() => {
+    if (!hasStripeCustomer) {
+      // Customer hasn't been created yet — nothing to fetch, ready
+      // immediately so the empty-state copy renders without delay.
+      setReady(true);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      await refresh();
+      if (!cancelled) setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasStripeCustomer, refresh]);
 
   async function setDefault(pmId: string) {
+    if (!ready) return;
     setBusyId(pmId);
     try {
       const res = await fetch(
@@ -118,6 +150,7 @@ function PaymentMethodsSection({
   }
 
   async function removePm(pmId: string) {
+    if (!ready) return;
     setBusyId(pmId);
     try {
       const res = await fetch(`/api/donor/me/payment-methods/${pmId}/remove`, {
@@ -145,14 +178,26 @@ function PaymentMethodsSection({
   return (
     <section className={cardClass}>
       <div className="flex items-baseline justify-between gap-4 flex-wrap mb-2">
-        <h2 className="font-display text-[20px] text-ink leading-tight m-0">
-          Saved payment methods
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-[20px] text-ink leading-tight m-0">
+            Saved payment methods
+          </h2>
+          {hasStripeCustomer && !ready ? (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.12em] text-slate-soft"
+              aria-live="polite"
+            >
+              <SyncSpinner />
+              Syncing
+            </span>
+          ) : null}
+        </div>
         {hasStripeCustomer ? (
           <button
             type="button"
             onClick={() => setShowAdd((v) => !v)}
-            className="font-body text-[12.5px] text-tangerine-deep underline-offset-4 hover:underline"
+            disabled={!ready}
+            className="font-body text-[12.5px] text-tangerine-deep underline-offset-4 hover:underline disabled:text-slate-soft disabled:cursor-not-allowed disabled:hover:no-underline"
           >
             {showAdd ? "Cancel" : "+ Add a payment method"}
           </button>
@@ -211,6 +256,7 @@ function PaymentMethodsSection({
                   <PmActions
                     pm={pm}
                     busy={busyId === pm.id}
+                    disabled={!ready}
                     canRemove={pm.isDefault ? pms.length === 1 : true}
                     onSetDefault={() => setDefault(pm.id)}
                     onRemove={() => removePm(pm.id)}
@@ -228,12 +274,14 @@ function PaymentMethodsSection({
 function PmActions({
   pm,
   busy,
+  disabled,
   canRemove,
   onSetDefault,
   onRemove,
 }: {
   pm: PublicPaymentMethod;
   busy: boolean;
+  disabled: boolean;
   canRemove: boolean;
   onSetDefault: () => void;
   onRemove: () => void;
@@ -256,9 +304,10 @@ function PmActions({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        disabled={busy}
+        disabled={busy || disabled}
         aria-label="Payment method actions"
-        className="inline-flex items-center justify-center w-8 h-8 rounded-full text-slate-soft hover:text-ink hover:bg-cream transition-colors disabled:opacity-50"
+        title={disabled && !busy ? "Syncing payment methods…" : undefined}
+        className="inline-flex items-center justify-center w-8 h-8 rounded-full text-slate-soft hover:text-ink hover:bg-cream transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {busy ? (
           <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -345,6 +394,35 @@ function BrandIcon({ brand }: { brand: string }) {
     >
       {p.short}
     </div>
+  );
+}
+
+// Tiny low-key spinner for the "Syncing" indicator next to the heading
+// while the mount-fetch resolves. Subtle by design — same colour as the
+// surrounding mono text.
+function SyncSpinner() {
+  return (
+    <svg
+      className="w-3 h-3 animate-spin text-slate-soft"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        stroke="currentColor"
+        strokeOpacity="0.25"
+        strokeWidth="3"
+      />
+      <path
+        d="M21 12a9 9 0 0 1-9 9"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
