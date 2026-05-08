@@ -310,6 +310,15 @@ export async function getRandomActiveChildren(
   }
 }
 
+// Total count of children currently awaiting a sponsor — same predicate
+// as the public /children list (status='active' = available to sponsor).
+// Used by the dashboard home's "More children you could support" section
+// to surface the actual size of the awaiting pool, not just the visible
+// preview cards.
+export async function getAwaitingChildrenCount(): Promise<number> {
+  return safeAggregateCount({ status: { _eq: "active" } });
+}
+
 export async function getActiveDistricts(): Promise<string[]> {
   try {
     const rows = (await directusServer().request(

@@ -1,6 +1,11 @@
-// Shared formatters, pill variants, and presentational atoms used by
-// both the horizontal SponsorshipCard (dashboard home preview, children
-// page) and the VertSponsorshipCard (children-page grid layout).
+// Shared formatters, status-badge palette, and presentational atoms used
+// by the horizontal SponsorshipCard, the VertSponsorshipCard, and the
+// detail page header. Single source of truth for:
+//   • SponsorshipStatusBadge (the corner pill)
+//   • coverageLine (subtle "Coverage ends Jan 6, 2027" beneath the
+//     config line — appears on every monthly card, omitted on one-time)
+//   • describeConfig (the "Monthly · $X/mo" headline beneath the name)
+//   • bottomInfo (the bottom-row meta grid: Started, Next charge, Contributed)
 
 import { formatUsd } from "@/lib/pricing";
 import type { Sponsorship } from "@/lib/sponsorship-data";
@@ -8,9 +13,8 @@ import { PendingCardActions } from "./PendingCardActions";
 
 type DisplayStatus = "active" | "completed" | "pending_payment" | "cancelled";
 
-// Filters sponsorships down to ones that should appear on the dashboard
-// (active, completed, awaiting payment, cancelled). Failed/paused rows
-// don't get rendered in any of the donor-facing groupings.
+// Filters sponsorships down to ones that should appear on the dashboard.
+// Failed/paused rows don't get rendered in any of the donor-facing groupings.
 export function isDisplaySponsorship(
   s: Sponsorship,
 ): s is Sponsorship & { status: DisplayStatus } {
@@ -21,6 +25,20 @@ export function isDisplaySponsorship(
     s.status === "cancelled"
   );
 }
+
+// ─── Pill variant + badge palette ────────────────────────────────────────────
+//
+// Variants compress (status, payment_mode, payment_schedule, cancellation_
+// scheduled_at) into one of these tags so every surface uses the same
+// classification. The palette below is the locked Part C palette:
+//
+//   ONE-TIME             — quiet moss
+//   ACTIVE indefinite    — tangerine soft (brand orange/amber)
+//   ACTIVE fixed-term    — tangerine soft + secondary "ends [Mon YYYY]"
+//   PREPAID              — deep moss
+//   COMPLETED            — moss-soft sage
+//   CANCELLED            — neutral grey
+//   PENDING              — tangerine-mist + animated dot (awaiting payment)
 
 export type PillVariant =
   | "active_indefinite"
@@ -67,37 +85,43 @@ export function Pill({
   );
 }
 
-export function StatusPill({ s }: { s: Sponsorship }) {
+// Tangerine palette for active recurring (indefinite + fixed-term) —
+// the brand "your support is alive" colour.
+const ACTIVE_PALETTE =
+  "bg-tangerine-mist text-tangerine-deep border-tangerine-soft";
+// Moss-soft palette for one-time gifts and completed sponsorships —
+// quiet sage tone (gift received / commitment fulfilled).
+const QUIET_MOSS_PALETTE = "bg-moss-soft text-moss border-moss/30";
+// Deep moss palette for prepaid — visually loudest "this is locked in".
+const DEEP_MOSS_PALETTE = "bg-moss text-cream border-moss";
+// Neutral grey palette for cancelled — present but de-emphasised.
+const CANCELLED_PALETTE = "bg-ink/[0.04] text-slate-soft border-ink/[0.08]";
+
+// The unified status badge. Every sponsorship surface (dashboard home
+// preview, /dashboard/sponsorships, sponsorship detail page header)
+// renders this — never a bespoke pill.
+export function SponsorshipStatusBadge({ s }: { s: Sponsorship }) {
   const variant = pillVariantFor(s);
   switch (variant) {
     case "active_indefinite":
-      return <Pill className="bg-moss-soft text-moss border-moss/30">Active</Pill>;
+      return <Pill className={ACTIVE_PALETTE}>Active</Pill>;
     case "active_fixed_term":
       return (
-        <Pill className="bg-moss-soft text-moss border-moss/30">
+        <Pill className={ACTIVE_PALETTE}>
           Active
           {s.scheduled_end_date ? (
-            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-moss/70">
-              ends {formatShortMonth(s.scheduled_end_date)}
+            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-tangerine-deep/75">
+              · ends {formatShortMonth(s.scheduled_end_date)}
             </span>
           ) : null}
         </Pill>
       );
     case "active_prepaid":
-      return <Pill className="bg-moss text-cream border-moss">Prepaid</Pill>;
+      return <Pill className={DEEP_MOSS_PALETTE}>Prepaid</Pill>;
     case "active_one_time":
-      return (
-        <Pill className="bg-moss-soft text-moss border-moss/30">One-time</Pill>
-      );
+      return <Pill className={QUIET_MOSS_PALETTE}>One-time</Pill>;
     case "completed":
-      return (
-        <Pill className="bg-moss-soft text-moss border-moss/30">
-          Completed
-          <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-moss/70">
-            fulfilled
-          </span>
-        </Pill>
-      );
+      return <Pill className={QUIET_MOSS_PALETTE}>Completed</Pill>;
     case "pending":
       return (
         <Pill className="bg-tangerine-mist text-tangerine-deep border-tangerine-soft">
@@ -108,29 +132,81 @@ export function StatusPill({ s }: { s: Sponsorship }) {
           Pending
         </Pill>
       );
-    case "cancellation_pending": {
-      const ends = formatShortMonth(s.cancellation_scheduled_at);
+    case "cancellation_pending":
+      // Coverage continues until the scheduled date — visually still ACTIVE,
+      // with the same "ends [date]" suffix as a fixed-term sponsorship.
       return (
-        <Pill className="bg-moss-soft text-moss border-moss/30">
-          Will end
-          {ends ? (
-            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-tangerine-deep">
-              {ends}
+        <Pill className={ACTIVE_PALETTE}>
+          Active
+          {s.cancellation_scheduled_at ? (
+            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-tangerine-deep/75">
+              · ends {formatShortMonth(s.cancellation_scheduled_at)}
             </span>
           ) : null}
         </Pill>
       );
-    }
     case "cancelled":
     default:
-      return (
-        <Pill className="bg-ink/[0.04] text-slate-soft border-ink/[0.08]">
-          Cancelled
-        </Pill>
-      );
+      return <Pill className={CANCELLED_PALETTE}>Cancelled</Pill>;
   }
 }
 
+// ─── Coverage line ───────────────────────────────────────────────────────────
+//
+// Subtle line shown beneath the config headline on every monthly card.
+// Maps each sponsorship state to a single sentence about coverage:
+//
+//   indefinite recurring     → "Until you cancel"
+//   fixed-term recurring     → "Coverage ends Jan 6, 2027"
+//   prepaid                  → "Coverage ends Jan 6, 2027"
+//   cancellation pending     → "Coverage ends Jan 6, 2027"
+//   cancelled                → "Coverage ended Jan 6, 2027"
+//   completed                → "Coverage completed Jan 6, 2027"
+//   one-time                 → null (no coverage line — single gift)
+//   pending payment          → null (not yet active)
+export function coverageLine(s: Sponsorship): string | null {
+  // One-time gifts and pending-payment rows have no coverage concept.
+  if (s.payment_mode === "one_time" || s.status === "pending_payment") {
+    return null;
+  }
+
+  if (s.status === "cancelled") {
+    const ended = formatLongDate(s.cancelled_at ?? s.ended_at);
+    return ended ? `Coverage ended ${ended}` : "Coverage ended";
+  }
+
+  if (s.status === "completed") {
+    const ended = formatLongDate(s.ended_at ?? s.scheduled_end_date);
+    return ended ? `Coverage completed ${ended}` : "Coverage completed";
+  }
+
+  if (s.status === "active") {
+    // Cancellation scheduled — coverage runs out on that date.
+    if (s.cancellation_scheduled_at) {
+      const ends = formatLongDate(s.cancellation_scheduled_at);
+      return ends ? `Coverage ends ${ends}` : "Coverage scheduled to end";
+    }
+    // Prepaid OR fixed-term recurring — coverage runs out on
+    // scheduled_end_date.
+    if (s.scheduled_end_date) {
+      const ends = formatLongDate(s.scheduled_end_date);
+      return ends ? `Coverage ends ${ends}` : "Coverage scheduled to end";
+    }
+    // Indefinite recurring — until the donor cancels.
+    return "Until you cancel";
+  }
+
+  return null;
+}
+
+// ─── Config line + bottom info ───────────────────────────────────────────────
+//
+// `describeConfig` is the headline beneath the child's name (Inter 14px),
+// e.g. "Monthly · $50/mo". It deliberately does NOT include end-date
+// information — that's the coverage line's job.
+//
+// `bottomInfo` is the structured grid at the bottom of each card:
+// label/value pairs for Started, Next charge, Contributed, etc.
 export function describeConfig(s: Sponsorship): string {
   const variant = pillVariantFor(s);
   const months = s.duration_months ?? 0;
@@ -144,14 +220,6 @@ export function describeConfig(s: Sponsorship): string {
     return `Sponsored for ${completedMonths} ${
       completedMonths === 1 ? "month" : "months"
     } · ${formatUsd(total)} total`;
-  }
-  if (variant === "cancellation_pending") {
-    const ends = formatLongDate(
-      s.cancellation_scheduled_at ?? s.scheduled_end_date,
-    );
-    return ends
-      ? `Coverage continues until ${ends}, then sponsorship ends`
-      : "Coverage continues, then sponsorship ends";
   }
   if (s.payment_schedule === "monthly_prepaid") {
     const total = s.prepaid_months_total ?? 0;
@@ -168,7 +236,8 @@ export function describeConfig(s: Sponsorship): string {
     } (${remaining} remaining)`;
   }
   if (months === 0 || s.duration_months == null) {
-    return `Monthly · ${formatUsd(s.amount_usd)}/mo · until I cancel`;
+    // Indefinite — "until I cancel" copy moved to coverageLine.
+    return `Monthly · ${formatUsd(s.amount_usd)}/mo`;
   }
   const remaining = monthsRemainingUntil(s.scheduled_end_date) ?? months;
   return `Monthly · ${formatUsd(s.amount_usd)}/mo · ${months} ${
@@ -189,6 +258,9 @@ export function Mono({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Bottom info row. End-date columns ("Coverage ends", "ends Aug 2027") have
+// been removed — that information lives in the coverage line above this row
+// now. Bottom info focuses on financial / activity facts.
 export function bottomInfo(s: Sponsorship): InfoCol[] {
   const v = pillVariantFor(s);
   const totalContributed = formatUsd(Number(s.total_paid_usd ?? 0));
@@ -211,10 +283,6 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
     const completedMonths = s.duration_months ?? s.prepaid_months_total ?? 0;
     return [
       {
-        label: "Completed",
-        value: <Mono>{formatLongDate(s.ended_at ?? s.scheduled_end_date) ?? "—"}</Mono>,
-      },
-      {
         label: "Total",
         value: (
           <Mono>
@@ -235,21 +303,12 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
   if (v === "cancelled") {
     const reason = (s.cancellation_reason ?? "").replace(/_/g, " ");
     return [
-      { label: "Cancelled", value: <Mono>{formatLongDate(s.cancelled_at ?? s.ended_at) ?? "—"}</Mono> },
       ...(reason ? [{ label: "Reason", value: <Mono>{reason}</Mono> }] : []),
       { label: "Contributed", value: <Mono>{totalContributed}</Mono> },
     ];
   }
   if (v === "cancellation_pending") {
     return [
-      {
-        label: "Cancellation pending",
-        value: (
-          <Mono>
-            Will end {formatLongDate(s.cancellation_scheduled_at) ?? "—"}
-          </Mono>
-        ),
-      },
       ...(s.prepaid_months_remaining != null
         ? [
             {
@@ -269,7 +328,6 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
   if (v === "active_prepaid") {
     return [
       { label: "Started", value: <Mono>{formatLongDate(s.started_at) ?? "—"}</Mono> },
-      { label: "Coverage ends", value: <Mono>{formatLongDate(s.scheduled_end_date) ?? "—"}</Mono> },
       { label: "Contributed", value: <Mono>{totalContributed}</Mono> },
     ];
   }
@@ -278,18 +336,12 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
       { label: "Started", value: <Mono>{formatShort(s.started_at) ?? "—"}</Mono> },
       {
         label: "Next charge",
-        value: (
-          <Mono>
-            {formatShort(s.next_billing_date) ?? "—"}
-            {s.scheduled_end_date ? (
-              <span className="text-slate-soft"> · ends {formatShort(s.scheduled_end_date)}</span>
-            ) : null}
-          </Mono>
-        ),
+        value: <Mono>{formatShort(s.next_billing_date) ?? "—"}</Mono>,
       },
       { label: "Contributed", value: <Mono>{totalContributed}</Mono> },
     ];
   }
+  // active_indefinite
   return [
     { label: "Started", value: <Mono>{formatLongDate(s.started_at) ?? "—"}</Mono> },
     { label: "Next charge", value: <Mono>{formatLongDate(s.next_billing_date) ?? "—"}</Mono> },

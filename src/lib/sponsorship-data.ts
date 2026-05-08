@@ -452,6 +452,56 @@ export type ChildUpdate = {
   published_at: string | null;
 };
 
+// ─── Sort comparators ────────────────────────────────────────────────────────
+//
+// `sortSponsorshipsByPriority` is used for the "Currently sponsoring" view
+// (dashboard home preview + /dashboard/sponsorships first section). The
+// rule, locked in 13.5c Part C: prepaid sponsorships first (donor pre-paid
+// for a fixed window — they're the most committed), then ongoing recurring
+// subscriptions, then one-time gifts. Within each tier, newest first.
+//
+// `sortSponsorshipsByEnded` powers "Previously supported": the most-
+// recently-ended row at the top, regardless of how it ended (completed /
+// cancelled). Falls back to date_created for safety.
+function priorityScore(s: Sponsorship): number {
+  if (s.payment_mode === "one_time") return 3;
+  if (s.payment_schedule === "monthly_prepaid") return 1;
+  if (s.payment_mode === "monthly" && s.payment_schedule === "monthly") return 2;
+  return 9; // unknown — sink to bottom rather than throwing
+}
+
+export function sortSponsorshipsByPriority<T extends Sponsorship>(
+  list: T[],
+): T[] {
+  return [...list].sort((a, b) => {
+    const pa = priorityScore(a);
+    const pb = priorityScore(b);
+    if (pa !== pb) return pa - pb;
+    const da = a.date_created ?? "";
+    const db = b.date_created ?? "";
+    // Newest first; localeCompare handles ISO strings correctly.
+    return db.localeCompare(da);
+  });
+}
+
+function endTimestamp(s: Sponsorship): number {
+  // Ordered fallback: ended_at (set by the cron when prepaid/fixed-term
+  // wraps up), cancelled_at (donor-initiated cancel), scheduled_end_date
+  // (still future-dated when status flipped via cron), date_created
+  // (last-resort tie-break).
+  const iso =
+    s.ended_at ?? s.cancelled_at ?? s.scheduled_end_date ?? s.date_created;
+  if (!iso) return 0;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+export function sortSponsorshipsByEnded<T extends Sponsorship>(
+  list: T[],
+): T[] {
+  return [...list].sort((a, b) => endTimestamp(b) - endTimestamp(a));
+}
+
 export async function getApprovedChildUpdates(
   childId: string,
   limit = 20,

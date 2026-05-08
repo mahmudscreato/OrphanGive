@@ -5,9 +5,13 @@ import {
   getDonorState,
   type Donor,
 } from "@/lib/donor-data";
-import { getRandomActiveChildren } from "@/lib/children-data";
+import {
+  getAwaitingChildrenCount,
+  getRandomActiveChildren,
+} from "@/lib/children-data";
 import {
   getDonorSponsorships,
+  sortSponsorshipsByPriority,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import {
@@ -65,16 +69,22 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
     moments,
     recommendedNormal,
     recommendedExpanded,
+    awaitingTotal,
   ] = await Promise.all([
     calculateDonorImpact(donor.id),
     getDonorSponsorships(donor.id, { limit: 50 }),
     getRecentMomentsForDonor(donor.id, 4),
     getRandomActiveChildren("", 3),
     getRandomActiveChildren("", 6),
+    getAwaitingChildrenCount(),
   ]);
 
   const activeChildBubbles = uniqueActiveChildren(sponsorships);
-  const activeSponsorships = sponsorships.filter((s) => s.status === "active");
+  // Active sponsorships sorted with the Part-C priority (prepaid first,
+  // then recurring, then one-time; newest within each tier).
+  const activeSponsorships = sortSponsorshipsByPriority(
+    sponsorships.filter((s) => s.status === "active"),
+  );
   const previewSponsorships = activeSponsorships.slice(0, 3);
   const hasDisplayable = sponsorships.some(isDisplaySponsorship);
   const isFirstTime = !hasDisplayable;
@@ -104,6 +114,7 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
       <RecommendedChildren
         items={isFirstTime ? recommendedExpanded : recommendedNormal}
         expanded={isFirstTime}
+        totalAwaiting={awaitingTotal}
       />
     </div>
   );

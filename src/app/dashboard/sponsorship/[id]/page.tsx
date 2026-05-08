@@ -12,6 +12,7 @@ import {
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { formatUsd } from "@/lib/pricing";
+import { SponsorshipStatusBadge } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { SponsorshipActions } from "./SponsorshipActions";
 
 export const dynamic = "force-dynamic";
@@ -28,23 +29,6 @@ type DisplayStatus =
   | "paused"
   | "completed"
   | "cancelled";
-
-const STATUS_PILL: Record<DisplayStatus, string> = {
-  active:    "bg-moss-soft text-moss border-moss/30",
-  // Distinct visual for prepaid: same moss family but a deeper saturation
-  // so it reads as "active and fully paid up".
-  prepaid:   "bg-moss text-cream border-moss",
-  paused:    "bg-sky/20 text-sky border-sky/30",
-  completed: "bg-moss-soft text-moss border-moss/30",
-  cancelled: "bg-ink/[0.04] text-slate-soft border-ink/[0.08]",
-};
-const STATUS_LABEL: Record<DisplayStatus, string> = {
-  active:    "Active",
-  prepaid:   "Prepaid",
-  paused:    "Paused",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
 
 export default async function SponsorshipDetailPage({
   params,
@@ -99,7 +83,7 @@ export default async function SponsorshipDetailPage({
         >
           ← Back to children
         </Link>
-        <StatusPill status={status} />
+        <SponsorshipStatusBadge s={sponsorship} />
       </div>
 
       {/* Child summary card */}
@@ -491,16 +475,6 @@ function UpdateItem({ u }: { u: ChildUpdate }) {
 }
 
 // ─── Atoms ──────────────────────────────────────────────────────────────────
-function StatusPill({ status }: { status: DisplayStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center px-3 py-1 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border ${STATUS_PILL[status]}`}
-    >
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
-
 function Field({
   label,
   value,

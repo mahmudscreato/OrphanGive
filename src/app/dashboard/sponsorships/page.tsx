@@ -5,6 +5,8 @@ import {
 } from "@/lib/donor-data";
 import {
   getDonorSponsorships,
+  sortSponsorshipsByEnded,
+  sortSponsorshipsByPriority,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { VertSponsorshipCard } from "../components/VertSponsorshipCard";
@@ -25,39 +27,28 @@ export default async function DashboardSponsorshipsPage() {
   const sponsorships = await getDonorSponsorships(donor.id, { limit: 200 });
   const displayable = sponsorships.filter(isDisplaySponsorship);
 
-  const active = displayable.filter((s) => s.status === "active");
-  const completed = displayable.filter((s) => s.status === "completed");
+  // Three buckets:
+  //   • Currently sponsoring — status='active' (includes prepaid in their
+  //     paid window). Sorted by Part-C priority: prepaid → recurring →
+  //     one-time, newest first within each tier.
+  //   • Awaiting payment — status='pending_payment'. Rendered as a small
+  //     transient block above "Currently sponsoring" so the donor can
+  //     finish or cancel the checkout. Not part of the two main sections
+  //     but kept for visibility.
+  //   • Previously supported — status IN ('completed', 'cancelled').
+  //     Sorted by most-recently-ended first.
+  const active = sortSponsorshipsByPriority(
+    displayable.filter((s) => s.status === "active"),
+  );
   const pending = displayable.filter((s) => s.status === "pending_payment");
-  const cancelled = displayable.filter((s) => s.status === "cancelled");
+  const previously = sortSponsorshipsByEnded(
+    displayable.filter(
+      (s) => s.status === "completed" || s.status === "cancelled",
+    ),
+  );
 
   return (
     <div className="space-y-12">
-      <header>
-        <h1 className="font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
-          Children you support
-        </h1>
-        {active.length > 0 ? (
-          <p className="mt-2 text-[15px] text-slate italic">
-            {active.length} active{" "}
-            {active.length === 1 ? "sponsorship" : "sponsorships"}
-          </p>
-        ) : null}
-      </header>
-
-      {active.length > 0 ? (
-        <Group items={active} />
-      ) : (
-        <p className="text-[14.5px] text-slate-soft leading-[1.6] max-w-[560px]">
-          You don&apos;t have any active sponsorships yet.{" "}
-          <a
-            href="/children"
-            className="text-tangerine-deep underline-offset-4 hover:underline"
-          >
-            Browse children →
-          </a>
-        </p>
-      )}
-
       {pending.length > 0 ? (
         <section>
           <h2 className="font-display text-[22px] text-tangerine-deep leading-tight tracking-[-0.01em] m-0 flex items-center gap-3">
@@ -71,27 +62,46 @@ export default async function DashboardSponsorshipsPage() {
         </section>
       ) : null}
 
-      {completed.length > 0 ? (
-        <section>
-          <h2 className="font-display text-[22px] text-moss leading-tight tracking-[-0.01em] m-0">
-            Completed sponsorships
-          </h2>
-          <Group items={completed} />
-        </section>
-      ) : null}
+      <section>
+        <header>
+          <h1 className="font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
+            Currently sponsoring
+          </h1>
+          {active.length > 0 ? (
+            <p className="mt-2 text-[15px] text-slate italic">
+              {active.length} active{" "}
+              {active.length === 1 ? "sponsorship" : "sponsorships"}
+            </p>
+          ) : null}
+        </header>
+        {active.length > 0 ? (
+          <Group items={active} />
+        ) : (
+          <p className="mt-6 text-[14.5px] text-slate-soft leading-[1.6] max-w-[560px]">
+            You aren&apos;t sponsoring anyone yet.{" "}
+            <a
+              href="/children"
+              className="text-tangerine-deep underline-offset-4 hover:underline"
+            >
+              Browse children awaiting a sponsor →
+            </a>
+          </p>
+        )}
+      </section>
 
-      {cancelled.length > 0 ? (
-        <details className="group">
-          <summary className="list-none cursor-pointer flex items-center gap-2 text-[12.5px] font-mono uppercase tracking-[0.12em] text-slate-soft hover:text-slate transition-colors">
-            <span className="inline-block w-2 transition-transform group-open:rotate-90">
-              ▸
-            </span>
-            <span>Cancelled sponsorships ({cancelled.length})</span>
-          </summary>
-          <div className="mt-5">
-            <Group items={cancelled} />
-          </div>
-        </details>
+      {previously.length > 0 ? (
+        <section>
+          <header>
+            <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
+              Previously supported
+            </h2>
+            <p className="mt-2 text-[14px] text-slate italic">
+              {previously.length}{" "}
+              {previously.length === 1 ? "child" : "children"}
+            </p>
+          </header>
+          <Group items={previously} />
+        </section>
       ) : null}
     </div>
   );

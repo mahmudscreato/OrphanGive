@@ -7,9 +7,10 @@ import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import type { Sponsorship } from "@/lib/sponsorship-data";
 import {
-  StatusPill,
+  SponsorshipStatusBadge,
   bottomInfo,
   childOf,
+  coverageLine,
   describeConfig,
   pillVariantFor,
 } from "./sponsorshipCardHelpers";
@@ -22,6 +23,7 @@ export function VertSponsorshipCard({ s }: Props) {
   const c = childOf(s);
   const photoSrc = directusAssetUrl(c.photoId);
   const config = describeConfig(s);
+  const coverage = coverageLine(s);
   const cols = bottomInfo(s);
   const variant = pillVariantFor(s);
 
@@ -43,7 +45,7 @@ export function VertSponsorshipCard({ s }: Props) {
           </div>
         )}
         <div className="absolute top-3 right-3">
-          <StatusPill s={s} />
+          <SponsorshipStatusBadge s={s} />
         </div>
       </div>
 
@@ -60,6 +62,11 @@ export function VertSponsorshipCard({ s }: Props) {
           <div className="mt-2.5 text-[13px] text-ink/80 leading-snug">
             {config}
           </div>
+          {coverage ? (
+            <div className="mt-1 text-[12px] text-slate italic leading-snug">
+              {coverage}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-4 pt-3 border-t border-ink/[0.06] flex flex-col gap-2">

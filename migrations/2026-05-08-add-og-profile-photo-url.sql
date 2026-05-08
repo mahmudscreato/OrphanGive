@@ -1,3 +1,8 @@
+-- ⚠ For Directus-managed collections, prefer adding fields via
+-- Directus Admin UI (Settings → Data Model). This SQL is kept
+-- as schema reference, not as the primary apply mechanism.
+-- See migrations/README.md.
+--
 -- Session 13.5c Part B — Profile photo URL
 --
 -- Adds one nullable text column to directus_users that stores the
