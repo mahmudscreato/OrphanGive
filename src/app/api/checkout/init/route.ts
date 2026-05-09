@@ -178,8 +178,33 @@ function extractClientSecret(inv: Stripe.Invoice): string | null {
 }
 
 // ─── Cancel path: kill stale pendings before creating new ones ──────────────
+//
+// Stale-checkout cleanup: when a donor's cart fingerprint changes
+// (e.g. they added/removed items, or the schema added a new
+// fingerprint contributor like `cause`), the previously-created
+// Stripe objects are stale. We cancel them best-effort. NEVER
+// cancel objects in a terminal state — succeeded PIs represent
+// real payments, canceled subs/PIs are already gone. Always
+// retrieve-then-check before cancel.
+//
+// Discovered the hard way in Session 14.5: adding `cause` to the
+// cart fingerprint reclassified pre-14.5 in-flight checkouts as
+// stale. Some of those PIs had already succeeded and tripped the
+// `payment_intent_unexpected_state` error from Stripe.
+//
 // Same dispatch as the reuse path: subscription_id → cancel sub,
 // payment_intent_id → cancel PI (deduped).
+
+// PaymentIntents in any of these states accept a cancel call.
+// Anything else (succeeded, canceled) is terminal — leave alone.
+const CANCELLABLE_PI_STATES: ReadonlySet<string> = new Set([
+  "requires_payment_method",
+  "requires_confirmation",
+  "requires_action",
+  "requires_capture",
+  "processing",
+]);
+
 async function cancelPendings(
   stripe: Stripe,
   pendings: Sponsorship[],
@@ -188,10 +213,21 @@ async function cancelPendings(
   for (const s of pendings) {
     if (s.stripe_subscription_id) {
       try {
-        await stripe.subscriptions.cancel(s.stripe_subscription_id);
+        // Retrieve first — Stripe rejects subscription cancel calls
+        // when the sub is already canceled. Skip in that case.
+        const sub = await stripe.subscriptions.retrieve(
+          s.stripe_subscription_id,
+        );
+        if (sub.status !== "canceled") {
+          await stripe.subscriptions.cancel(s.stripe_subscription_id);
+        } else {
+          console.warn(
+            `[checkout/init] skipping cancel of sub ${s.stripe_subscription_id} (status=${sub.status})`,
+          );
+        }
       } catch (e) {
         console.warn(
-          `[checkout/init] cancel sub ${s.stripe_subscription_id} failed:`,
+          `[checkout/init] cleanup error for sub ${s.stripe_subscription_id}:`,
           e instanceof Error ? e.message : e,
         );
       }
@@ -201,10 +237,23 @@ async function cancelPendings(
       if (!cancelledPIs.has(piId)) {
         cancelledPIs.add(piId);
         try {
-          await stripe.paymentIntents.cancel(piId);
+          // Retrieve first — Stripe rejects PI cancel calls when
+          // the PI is in a terminal state (succeeded, canceled).
+          // Succeeded PIs represent real charges; the donor has
+          // already paid and the resulting sponsorship can be
+          // claimed via the success page even if the row is
+          // stale.
+          const pi = await stripe.paymentIntents.retrieve(piId);
+          if (CANCELLABLE_PI_STATES.has(pi.status)) {
+            await stripe.paymentIntents.cancel(piId);
+          } else {
+            console.warn(
+              `[checkout/init] skipping cancel of pi ${piId} (status=${pi.status})`,
+            );
+          }
         } catch (e) {
           console.warn(
-            `[checkout/init] cancel pi ${piId} failed:`,
+            `[checkout/init] cleanup error for pi ${piId}:`,
             e instanceof Error ? e.message : e,
           );
         }
