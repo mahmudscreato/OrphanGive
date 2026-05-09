@@ -1,44 +1,71 @@
-// Public-page banner showing whether a child currently has an active
-// monthly sponsor (Session 14.6). Two visual states:
+// Public-page banner showing the current sponsor + queue (Sessions
+// 14.6 + 14.7). Visual states:
 //
-//   • Sponsored — banner reads "Sponsored by [first name]" or
-//     "Sponsored by anonymous donor", depending on the donor's
-//     visibility choice on their sponsorship row.
-//   • Open — banner is omitted entirely; the page surfaces the usual
-//     sponsor CTA elsewhere.
+//   • Sponsored, empty queue:
+//       "Sponsored monthly by Suaida until Jul 27. You can join the
+//        queue from the sponsor page."
+//   • Sponsored, queue depth 1:
+//       "Sponsored monthly until Mar 27 by Suaida, then by Anik
+//        until Jul 27. You can support Fahim from Jul 27 onward."
+//   • Sponsored, queue depth 2-3:
+//       "Sponsored monthly until Mar 27 by Suaida, then by Anik
+//        until Jul 27. N more sponsors are in queue. You can support
+//        Fahim from [final queued end date]."
+//   • Queue full (3 queued):
+//       "Sponsored monthly until [final queued end date]. Sponsor
+//        queue is full. You can still send a one-time gift today."
+//   • Open (no active sponsor): banner is omitted by the page;
+//       this component never receives that state.
 //
-// We intentionally never expose the donor's last name, email, donor id,
-// or any other identifier — only the donor-controlled first name when
-// they opted IN. labelForVisibility / effectiveVisibility apply the
-// privacy-preserving fallback (null/legacy → anonymous).
-//
-// This is a pure presentational component. Lock state + donor first
-// name are resolved server-side via getActiveMonthlySponsorForChild
-// and passed in as props.
+// Privacy: only the donor's first name is ever surfaced, and only
+// when they opted into visibility='named'. Anonymous donors render
+// as "an anonymous donor". labelForVisibility / effectiveVisibility
+// apply the privacy-preserving fallback (null/legacy → anonymous).
 
-import type { VisibilityEnum } from "@/lib/visibility";
-import { effectiveVisibility } from "@/lib/visibility";
+import type { QueueDisplaySlot } from "@/lib/queue";
 
 type Props = {
-  // The child's first name only — used in the headline copy ("X has a
-  // monthly sponsor"). Never exposes last name.
+  // The child's first name only — used in the headline copy ("X has
+  // a monthly sponsor"). Never exposes last name.
   childFirstName: string;
-  // The donor's chosen visibility on this active monthly sponsorship.
-  // null is treated as anonymous (legacy rows pre-14.6).
-  visibility: VisibilityEnum | string | null;
-  // Sponsor's first name. Only rendered when visibility==='named' AND
-  // a name is actually present. Even when present we only ever show
-  // the first name.
-  sponsorFirstName: string | null;
+  // The currently-supporting sponsor. When null (no active monthly),
+  // the page should not render this banner at all.
+  active: QueueDisplaySlot | null;
+  // Queued donors in position order (1, 2, 3). Empty if no queue.
+  queued: QueueDisplaySlot[];
+  // True when queue is at capacity; banner switches to "queue is
+  // full" copy.
+  isFull: boolean;
 };
+
+function fmtDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function nameOrAnonymous(slot: QueueDisplaySlot): string {
+  return slot.donorFirstName ?? "an anonymous donor";
+}
 
 export function ChildSponsorBanner({
   childFirstName,
-  visibility,
-  sponsorFirstName,
+  active,
+  queued,
+  isFull,
 }: Props) {
-  const v = effectiveVisibility(visibility);
-  const showName = v === "named" && Boolean(sponsorFirstName);
+  if (!active) return null;
+
+  const activeEnd = fmtDate(active.endDate);
+  const next = queued[0] ?? null;
+  const nextEnd = next ? fmtDate(next.endDate) : null;
+  const final = queued[queued.length - 1] ?? null;
+  const finalEnd = final ? fmtDate(final.endDate) : null;
 
   return (
     <section
@@ -52,18 +79,60 @@ export function ChildSponsorBanner({
         {childFirstName} has a monthly sponsor.
       </div>
       <p className="mt-2 text-[14px] text-slate leading-[1.6]">
-        {showName ? (
+        Sponsored monthly{activeEnd ? ` until ${activeEnd}` : ""} by{" "}
+        <NameOrAnon slot={active} />
+        {next ? (
           <>
-            Sponsored by{" "}
-            <span className="font-display text-ink">{sponsorFirstName}</span>.
+            , then by <NameOrAnon slot={next} accent />
+            {nextEnd ? ` until ${nextEnd}` : ""}
           </>
-        ) : (
-          <>Sponsored by an anonymous donor.</>
-        )}{" "}
-        You can still send a one-time gift to support {childFirstName}.
+        ) : null}
+        .
+        {queued.length > 1 ? (
+          <>
+            {" "}
+            <span className="text-moss-deep">
+              {queued.length - 1}{" "}
+              {queued.length - 1 === 1 ? "more sponsor is" : "more sponsors are"}{" "}
+              in queue.
+            </span>
+          </>
+        ) : null}
+        {isFull ? (
+          <>
+            {" "}
+            <span className="text-moss-deep">
+              Sponsor queue is full
+              {finalEnd ? ` through ${finalEnd}` : ""}. You can still send a
+              one-time gift today.
+            </span>
+          </>
+        ) : finalEnd ? (
+          <>
+            {" "}
+            You can support {childFirstName} from {finalEnd} onward.
+          </>
+        ) : null}
       </p>
     </section>
   );
+}
+
+function NameOrAnon({
+  slot,
+  accent = false,
+}: {
+  slot: QueueDisplaySlot;
+  accent?: boolean;
+}) {
+  const name = nameOrAnonymous(slot);
+  // Active sponsor renders in ink; queued renders in moss-deep so the
+  // forward-looking nature is visually distinct.
+  const cls = accent ? "text-moss-deep font-display" : "font-display text-ink";
+  if (slot.donorFirstName) {
+    return <span className={cls}>{slot.donorFirstName}</span>;
+  }
+  return <span className={cls}>{name}</span>;
 }
 
 export default ChildSponsorBanner;

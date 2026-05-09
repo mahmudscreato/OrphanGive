@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe-client";
 import { authedSponsorship } from "@/lib/sponsorship-actions";
 import { updateSponsorship } from "@/lib/sponsorship-data";
+import { promoteQueue } from "@/lib/queue";
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
@@ -222,6 +223,26 @@ export async function POST(
       "[sponsorship/cancel] email failed (non-fatal):",
       err instanceof Error ? err.message : err,
     );
+  }
+
+  // Session 14.7: if the cancelled row was the active sponsor (or a
+  // queued slot — promoteQueue is no-op when the head is still live),
+  // advance the child's queue. The webhook handler also fires on
+  // customer.subscription.deleted; either path is enough, both
+  // running is harmless (promoteQueue is idempotent).
+  const cancelledChildId =
+    typeof sponsorship.child === "string"
+      ? sponsorship.child
+      : sponsorship.child.id;
+  if (cancelledChildId) {
+    try {
+      await promoteQueue(cancelledChildId, { stripe: getStripe() });
+    } catch (err) {
+      console.warn(
+        `[sponsorship/cancel] promoteQueue ${cancelledChildId} failed (non-fatal):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   return NextResponse.json({ success: true });

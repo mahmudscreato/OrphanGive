@@ -13,6 +13,7 @@ import {
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { clearCartByDonor } from "@/lib/cart-data";
+import { promoteQueue } from "@/lib/queue";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -418,6 +419,12 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
     Math.abs(sub.canceled_at - sub.cancel_at) <= SCHEDULED_TOLERANCE_SEC;
 
   const nowIso = new Date().toISOString();
+  // Track the set of children whose active sponsor (queue_position=0)
+  // ended in this webhook so we can promote their queues afterward.
+  // We only promote ONCE per child even if multiple sponsorship rows
+  // for the same sub were affected (defensive).
+  const childrenToPromote = new Set<string>();
+
   for (const s of sponsorships) {
     if (s.status === "cancelled" || s.status === "completed") continue;
     // Donor scheduled cancellation during prepaid: their Stripe sub
@@ -443,6 +450,27 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
         cancelled_at: nowIso,
         cancellation_reason: "stripe_cancelled",
       });
+    }
+
+    // Session 14.7: if this row was the active sponsor (queue_position=0
+    // or null), the child's queue advances. Queue join rows
+    // (queue_position>0) ending here means a queued donor cancelled
+    // before activation — also a queue cascade. Either way, promote.
+    const childId = typeof s.child === "string" ? s.child : s.child?.id;
+    if (childId) childrenToPromote.add(childId);
+  }
+
+  // Promote queues after all row updates complete. promoteQueue is
+  // defensive — if there's nothing to promote (empty queue, or the
+  // active row hasn't actually ended) it no-ops.
+  for (const childId of childrenToPromote) {
+    try {
+      await promoteQueue(childId, { stripe: getStripe() });
+    } catch (err) {
+      console.warn(
+        `[stripe-webhook] promoteQueue ${childId} failed:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 }

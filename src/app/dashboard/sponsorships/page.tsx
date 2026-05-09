@@ -8,6 +8,7 @@ import {
   isCancelledSponsorship,
   isOngoingSponsorship,
   isPastGiftOrSponsorship,
+  isQueuedSponsorship,
   sortSponsorshipsByEnded,
   sortSponsorshipsByPriority,
   type Sponsorship,
@@ -50,6 +51,14 @@ export default async function DashboardSponsorshipsPage() {
   //                                     or-cancel block at top.
   const ongoing = sortSponsorshipsByPriority(
     sponsorships.filter(isOngoingSponsorship),
+  );
+  // Session 14.7: queued sponsorships go in their own "Upcoming
+  // sponsorships" section. queued rows are status='active' but
+  // queue_position>0; isOngoingSponsorship excludes them, so they
+  // can't double-render. Sort by queue_position ASC (1, 2, 3...) so
+  // the donor sees their next-to-activate at the top.
+  const upcoming = sortByQueuePositionAsc(
+    sponsorships.filter(isQueuedSponsorship),
   );
   const past = sortByDateCreatedDesc(
     sponsorships.filter(isPastGiftOrSponsorship),
@@ -101,6 +110,23 @@ export default async function DashboardSponsorshipsPage() {
         )}
       </section>
 
+      {upcoming.length > 0 ? (
+        <section>
+          <header>
+            <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
+              Upcoming sponsorships
+            </h2>
+            <p className="mt-2 text-[14px] text-slate italic">
+              {upcoming.length}{" "}
+              {upcoming.length === 1 ? "queued sponsorship" : "queued sponsorships"}{" "}
+              — paid up front, will activate when the current sponsor&rsquo;s
+              term ends.
+            </p>
+          </header>
+          <Group items={upcoming} />
+        </section>
+      ) : null}
+
       {past.length > 0 ? (
         <section>
           <header>
@@ -138,6 +164,21 @@ function sortByDateCreatedDesc<T extends Sponsorship>(list: T[]): T[] {
     const da = a.date_created ?? "";
     const db = b.date_created ?? "";
     return db.localeCompare(da);
+  });
+}
+
+// Position-ascending sort for the Upcoming sponsorships section.
+// Position 1 (next to activate) at the top; position 3 last. Within
+// the same position (shouldn't happen unless data integrity drift),
+// secondary sort by date_created ASC so first-paid wins.
+function sortByQueuePositionAsc<T extends Sponsorship>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const pa = a.queue_position ?? 0;
+    const pb = b.queue_position ?? 0;
+    if (pa !== pb) return pa - pb;
+    const da = a.date_created ?? "";
+    const db = b.date_created ?? "";
+    return da.localeCompare(db);
   });
 }
 

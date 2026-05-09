@@ -14,11 +14,11 @@ import { calculateScheduledEndDate } from "@/lib/pricing";
 import { getStripe, getStripePublishableKey } from "@/lib/stripe-client";
 import {
   createPendingSponsorship,
-  getActiveMonthlySponsorForChild,
   getRecentPendingForDonor,
   updateSponsorship,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
+import { computeNextQueueSlot, QUEUE_DEPTH_LIMIT } from "@/lib/queue";
 
 export const runtime = "nodejs";
 
@@ -486,28 +486,51 @@ export async function POST() {
     }
   }
 
-  // ── Child-lock race guard (Session 14.6) ─────────────────────────────
-  // At most ONE active monthly sponsorship per child. The /sponsor page
-  // already blocks the donor from picking 'monthly' on a locked child,
-  // but two donors clicking through simultaneously could both pass that
-  // gate before either's sub activates. Re-check here at checkout-init
-  // time (last point before we create Stripe Subscriptions) and reject
-  // if the slot is already taken by another donor. Same-donor reuse is
-  // allowed — the donor may legitimately be retrying their own checkout
-  // (resume-cart, refresh, etc.) and their own pending will be cleaned
-  // up by the stale-pending reconciliation below.
+  // ── Queue race guard (Session 14.7, replaces 14.6 child-lock) ───────
+  // Each monthly cart item resolves to a queue slot:
+  //   position = 0  → no active sponsor; this donor becomes active
+  //   position = 1..QUEUE_DEPTH_LIMIT → queued (pay upfront, activates later)
+  //   position > QUEUE_DEPTH_LIMIT    → queue is full; reject the checkout
+  //
+  // The /sponsor page renders state based on a snapshot of the queue
+  // depth, but two donors racing through simultaneously (or this
+  // donor pausing between sponsor-flow and checkout) can lead to
+  // the slot filling before this point. Re-check here as the
+  // canonical gate. The slot we compute is also threaded into sub +
+  // PI creation so the row carries queue_position / queued_starts_at
+  // / queued_ends_at and Stripe gets trial_end on the sub.
+  type QueueAssignment = {
+    position: number;
+    startsAt: Date | null;
+    endsAt: Date | null;
+  };
+  const queueByChild = new Map<string, QueueAssignment>();
   for (const item of cart.items) {
     if (item.paymentMode !== "monthly") continue;
-    const lock = await getActiveMonthlySponsorForChild(item.childId);
-    if (lock && lock.donorId !== donor.id) {
+    const slot = await computeNextQueueSlot(item.childId);
+    if (slot.position > QUEUE_DEPTH_LIMIT) {
       return NextResponse.json(
         {
-          error:
-            "This child already has an active monthly sponsor. You can still give a one-time gift instead.",
+          error: "queue_full",
+          message:
+            "This child's sponsor queue filled while you were checking out. Please remove this item or send a one-time gift instead.",
+          childIds: [item.childId],
         },
         { status: 409 },
       );
     }
+    // Compute this donor's end date from their committed duration.
+    // Indefinite subs (durationMonths=null) leave endsAt null.
+    let endsAt: Date | null = null;
+    const duration = item.durationMonths ?? null;
+    if (slot.startsAt && duration && duration > 0) {
+      endsAt = addMonthsCal(slot.startsAt, duration);
+    }
+    queueByChild.set(item.childId, {
+      position: slot.position,
+      startsAt: slot.startsAt,
+      endsAt,
+    });
   }
 
   const hydrated = await hydrateCart(cart);
@@ -576,7 +599,17 @@ export async function POST() {
     fingerprint,
     publishableKey,
     stripe,
+    queueByChild,
   });
+}
+
+// 30.44-day month convention shared with src/lib/queue.ts and
+// src/lib/pricing.ts. Used in the queue race-guard above to compute
+// each donor's queued_ends_at from their queued_starts_at + duration.
+const DAYS_PER_MONTH = 30.44;
+function addMonthsCal(base: Date, months: number): Date {
+  const ms = months * DAYS_PER_MONTH * 24 * 60 * 60 * 1000;
+  return new Date(base.getTime() + ms);
 }
 
 // 0 = subscription (recurring), 1 = prepaid PI, 2 = one-time PI bundle.
@@ -593,8 +626,19 @@ async function createFreshCheckout(opts: {
   fingerprint: string;
   publishableKey: string;
   stripe: Stripe;
+  // Session 14.7 — per-child queue assignments computed by the
+  // race-guard above. Keys are childIds present in the cart's
+  // monthly items. position=0 means this donor takes the active
+  // slot (no queue); position>0 means queue join (recurring subs
+  // get trial_end pinned to startsAt; prepaid PIs charge today
+  // and the row carries queued_*).
+  queueByChild: Map<
+    string,
+    { position: number; startsAt: Date | null; endsAt: Date | null }
+  >;
 }) {
-  const { donor, hydrated, fingerprint, publishableKey, stripe } = opts;
+  const { donor, hydrated, fingerprint, publishableKey, stripe, queueByChild } =
+    opts;
 
   const created: {
     subscriptionIds: string[];
@@ -628,23 +672,50 @@ async function createFreshCheckout(opts: {
         recurring: { interval: "month" },
       });
 
+      // Queue context (Session 14.7). When position>0, we pin
+      // trial_end to the donor's queued_starts_at — Stripe holds the
+      // sub in 'trialing' state with no charge until that date, then
+      // fires the first invoice. cancel_at (for fixed-term) shifts
+      // accordingly to queued_ends_at.
+      const slot = queueByChild.get(item.childId);
+      const isQueued = Boolean(slot && slot.position > 0);
+      const trialEndSec =
+        isQueued && slot!.startsAt
+          ? Math.floor(slot!.startsAt.getTime() / 1000)
+          : undefined;
+
       // For fixed-term: tell Stripe to auto-cancel at end of N months.
-      // The webhook customer.subscription.deleted will fire when this
-      // hits, and we differentiate scheduled vs manual cancel there.
+      // For an active (non-queued) sub: end = today + duration.
+      // For a queued sub: end = queued_starts_at + duration. The queue
+      // race-guard above pre-computed queued_ends_at into slot.endsAt.
       const isFixedTerm = item.durationMonths != null;
-      const cancelAt = isFixedTerm
-        ? Math.floor(
+      let cancelAt: number | undefined;
+      if (isFixedTerm) {
+        if (isQueued && slot!.endsAt) {
+          cancelAt = Math.floor(slot!.endsAt.getTime() / 1000);
+        } else if (!isQueued) {
+          cancelAt = Math.floor(
             calculateScheduledEndDate(item.durationMonths!)!.getTime() / 1000,
-          )
-        : undefined;
+          );
+        }
+      }
 
       const sub = await stripe.subscriptions.create({
         customer: customerId,
         items: [{ price: price.id }],
         payment_behavior: "default_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
-        expand: ["latest_invoice.confirmation_secret", "latest_invoice.payment_intent"],
+        // For queued subs (trial_end set), Stripe doesn't generate a
+        // latest_invoice until trial ends — instead it creates a
+        // pending_setup_intent that the donor confirms today to save
+        // their card. Expand both so we can pick the right one.
+        expand: [
+          "latest_invoice.confirmation_secret",
+          "latest_invoice.payment_intent",
+          "pending_setup_intent",
+        ],
         ...(cancelAt ? { cancel_at: cancelAt } : {}),
+        ...(trialEndSec ? { trial_end: trialEndSec } : {}),
         metadata: {
           donor_id: donor.id,
           child_id: item.childId,
@@ -654,12 +725,19 @@ async function createFreshCheckout(opts: {
           ...(isFixedTerm
             ? { duration_months: String(item.durationMonths) }
             : {}),
+          ...(isQueued ? { queue_position: String(slot!.position) } : {}),
         },
       });
       created.subscriptionIds.push(sub.id);
 
+      // For active subs, scheduled_end_date is set today (today + duration).
+      // For queued subs, we leave scheduled_end_date null — that field
+      // describes the CURRENT supporting period, which doesn't exist
+      // yet. Instead, queued_starts_at + queued_ends_at carry the
+      // future-window. promoteQueue copies queued_ends_at → scheduled_end_date
+      // when this row promotes to position=0.
       const scheduledEnd =
-        item.durationMonths != null
+        !isQueued && item.durationMonths != null
           ? calculateScheduledEndDate(item.durationMonths)?.toISOString() ?? null
           : null;
 
@@ -676,14 +754,45 @@ async function createFreshCheckout(opts: {
         scheduled_end_date: scheduledEnd,
         cause: item.cause,
         visibility: item.visibility,
+        ...(isQueued
+          ? {
+              queue_position: slot!.position,
+              queue_status: "queued",
+              queued_starts_at: slot!.startsAt
+                ? slot!.startsAt.toISOString()
+                : null,
+              queued_ends_at: slot!.endsAt
+                ? slot!.endsAt.toISOString()
+                : null,
+            }
+          : {}),
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);
 
-      const inv = sub.latest_invoice as Stripe.Invoice | string | null;
-      if (inv && typeof inv !== "string") {
-        const cs = extractClientSecret(inv);
+      // Pick the right clientSecret for this sub:
+      //   - Active (non-queued): confirm the first invoice's
+      //     PaymentIntent (existing behaviour). client_secret has
+      //     the `pi_…_secret_…` shape.
+      //   - Queued (trialing): confirm the SetupIntent that Stripe
+      //     auto-generated on the sub. client_secret has the
+      //     `seti_…_secret_…` shape. The client-side StripePaymentSection
+      //     dispatches confirm{Card}Setup vs confirm{Card}Payment by
+      //     prefix.
+      if (isQueued) {
+        const psi = sub.pending_setup_intent as
+          | Stripe.SetupIntent
+          | string
+          | null;
+        const cs =
+          psi && typeof psi !== "string" ? psi.client_secret ?? null : null;
         if (cs) clientSecrets.push(cs);
+      } else {
+        const inv = sub.latest_invoice as Stripe.Invoice | string | null;
+        if (inv && typeof inv !== "string") {
+          const cs = extractClientSecret(inv);
+          if (cs) clientSecrets.push(cs);
+        }
       }
     }
 
@@ -695,8 +804,17 @@ async function createFreshCheckout(opts: {
     for (const item of buckets.prepaidItems) {
       const months = item.durationMonths!;
       const totalCents = Math.round(item.amountUsd * months * 100);
-      const scheduledEnd =
-        calculateScheduledEndDate(months)?.toISOString() ?? null;
+
+      // Queue context for prepaid items: position>0 means the donor
+      // pays full upfront NOW (PI fires immediately) but the support
+      // window is the queued_starts_at..queued_ends_at range, not
+      // today..today+months. scheduled_end_date stays null until
+      // promoteQueue copies queued_ends_at over.
+      const slotPrep = queueByChild.get(item.childId);
+      const isQueuedPrep = Boolean(slotPrep && slotPrep.position > 0);
+      const scheduledEnd = !isQueuedPrep
+        ? calculateScheduledEndDate(months)?.toISOString() ?? null
+        : null;
 
       // Create the sponsorship row first so we can stamp its id into the
       // PaymentIntent metadata — the webhook uses that to find the row
@@ -717,6 +835,18 @@ async function createFreshCheckout(opts: {
         scheduled_end_date: scheduledEnd,
         cause: item.cause,
         visibility: item.visibility,
+        ...(isQueuedPrep
+          ? {
+              queue_position: slotPrep!.position,
+              queue_status: "queued",
+              queued_starts_at: slotPrep!.startsAt
+                ? slotPrep!.startsAt.toISOString()
+                : null,
+              queued_ends_at: slotPrep!.endsAt
+                ? slotPrep!.endsAt.toISOString()
+                : null,
+            }
+          : {}),
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);

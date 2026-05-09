@@ -85,24 +85,52 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
 
       // Step 2: confirm each clientSecret with the same payment_method id.
       // No `card:` field — that's only used at PaymentMethod creation.
+      //
+      // Two intent types appear in this list (Session 14.7):
+      //   - PaymentIntent  (`pi_…_secret_…`) — normal active checkout
+      //     and prepaid queue joins. Use stripe.confirmCardPayment.
+      //   - SetupIntent    (`seti_…_secret_…`) — recurring queue joins
+      //     where the sub is created with trial_end and Stripe wants
+      //     to capture the card today for off-session charge later.
+      //     Use stripe.confirmCardSetup.
+      // The terminal-status set is largely the same for both intent
+      // kinds; we just read .paymentIntent or .setupIntent based on
+      // which call we made.
       for (let i = 0; i < clientSecrets.length; i++) {
         const cs = clientSecrets[i]!;
-        const result = await stripe.confirmCardPayment(cs, {
-          payment_method: paymentMethodId,
-        });
-        const finalStatus = result.paymentIntent?.status;
+        const isSetup = cs.startsWith("seti_");
+        const result = isSetup
+          ? await stripe.confirmCardSetup(cs, {
+              payment_method: paymentMethodId,
+            })
+          : await stripe.confirmCardPayment(cs, {
+              payment_method: paymentMethodId,
+            });
         if (result.error) {
           console.warn(`[checkout] confirm ${i + 1} failed:`, result.error);
           setError(result.error.message ?? "Payment could not be completed.");
           setPending(false);
           return;
         }
+        const finalStatus = isSetup
+          ? (
+              result as {
+                setupIntent?: { status?: string };
+              }
+            ).setupIntent?.status
+          : (
+              result as {
+                paymentIntent?: { status?: string };
+              }
+            ).paymentIntent?.status;
         if (
           finalStatus === "succeeded" ||
           finalStatus === "processing" ||
           finalStatus === "requires_capture"
         ) {
-          // Payment captured (or in-flight to settlement) — continue.
+          // Captured or in-flight — continue. SetupIntent can also
+          // sit in 'succeeded' once the card is saved; the future
+          // trial_end charge then runs off-session.
         } else if (
           finalStatus === "requires_action" ||
           finalStatus === "requires_confirmation"

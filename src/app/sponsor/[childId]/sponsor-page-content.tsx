@@ -70,6 +70,21 @@ type Props = {
     sponsorshipId: string;
     scheduledEndDate: string | null;
   } | null;
+  // Session 14.7 — queue join: child has another donor's active
+  // monthly sponsor and the queue isn't full. Monthly tile stays
+  // enabled but shows "Get in line" framing; review surfaces
+  // estimated start + queue position. Null otherwise.
+  queueJoin: {
+    position: number;
+    estimatedStartsAt: string | null;
+    activeEndDate: string | null;
+    donorsAhead: number;
+  } | null;
+  // Session 14.7 — queue is full (3 donors already queued).
+  // monthlyLocked is true; this carries the date through which the
+  // queue is committed so the locked-state copy can show
+  // "come back after [date]".
+  queueFullThrough: string | null;
 };
 
 const OTHER_TIER_ID = "other" as const;
@@ -84,6 +99,20 @@ function pickFirstSentence(s: string | null): string | null {
   if (!s) return null;
   const m = s.trim().match(/^.+?[.!?](?=\s|$)/);
   return m ? m[0] : s.trim().slice(0, 160);
+}
+
+// Shared "Mar 27, 2026"-style formatter for queue-state banners and
+// the review card. Returns null on missing/invalid input so callers
+// can omit clauses gracefully.
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 // Derive the DurationSelection from a numeric months value (or null).
@@ -194,6 +223,8 @@ export function SponsorPageContent({
   monthlyLocked,
   donorFirstName,
   selfActiveMonthly,
+  queueJoin,
+  queueFullThrough,
 }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -461,20 +492,30 @@ export function SponsorPageContent({
                   scheduledEndDate={selfActiveMonthly.scheduledEndDate}
                 />
               ) : monthlyLocked ? (
-                <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3">
-                  <p className="text-[13.5px] text-ink leading-snug">
-                    <span className="font-display font-medium">
-                      {child.display_name.split(" ")[0]}
-                    </span>{" "}
-                    already has a monthly sponsor. You can still send a
-                    one-time gift to support them now.
-                  </p>
-                </div>
+                <QueueFullNote
+                  childFirstName={child.display_name.split(" ")[0]!}
+                  queueFullThrough={queueFullThrough}
+                />
+              ) : queueJoin ? (
+                <QueueJoinNote
+                  childFirstName={child.display_name.split(" ")[0]!}
+                  activeEndDate={queueJoin.activeEndDate}
+                  estimatedStartsAt={queueJoin.estimatedStartsAt}
+                  donorsAhead={queueJoin.donorsAhead}
+                />
               ) : null}
               <ModeSelector
                 value={mode}
                 onChange={pickMode}
                 monthlyLocked={monthlyLocked}
+                monthlyQueueJoin={
+                  queueJoin
+                    ? {
+                        position: queueJoin.position,
+                        donorsAhead: queueJoin.donorsAhead,
+                      }
+                    : null
+                }
               />
             </div>
           ) : null}
@@ -646,6 +687,18 @@ export function SponsorPageContent({
                 cause={cause}
                 visibility={visibility}
                 donorFirstName={donorFirstName}
+                queueJoin={
+                  // Queue-join framing only applies when this is a
+                  // monthly join. One-time gifts are unaffected by
+                  // the lock; surfacing a queue position there would
+                  // be confusing.
+                  mode === "monthly" && queueJoin
+                    ? {
+                        position: queueJoin.position,
+                        estimatedStartsAt: queueJoin.estimatedStartsAt,
+                      }
+                    : null
+                }
                 onEdit={editSelections}
                 onAddToCart={addToCart}
                 pending={pending}
@@ -707,6 +760,65 @@ function StepHeader({ n, title }: { n: number; title: string }) {
       </span>
       {title}
     </h2>
+  );
+}
+
+// Banner shown at step 1 when the viewing donor would be JOINING THE
+// QUEUE (Session 14.7). Active sponsor exists, queue isn't full, and
+// the viewing donor is not the active sponsor. Tone: forward-looking
+// — sets the expectation that the donor's support starts later and
+// the upfront payment is real money committed today.
+function QueueJoinNote({
+  childFirstName,
+  activeEndDate,
+  estimatedStartsAt,
+  donorsAhead,
+}: {
+  childFirstName: string;
+  activeEndDate: string | null;
+  estimatedStartsAt: string | null;
+  donorsAhead: number;
+}) {
+  const activeEndStr = formatDate(activeEndDate);
+  const startStr = formatDate(estimatedStartsAt);
+  return (
+    <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3.5">
+      <p className="text-[13.5px] text-ink leading-[1.6]">
+        <span className="font-display font-medium">{childFirstName}</span>{" "}
+        currently has a monthly sponsor
+        {activeEndStr ? ` through ${activeEndStr}` : ""}. You can pay
+        upfront now to claim a future slot — your sponsorship will begin
+        {startStr ? ` around ${startStr}` : " when the current sub ends"}.
+      </p>
+      <p className="mt-1.5 text-[12.5px] text-slate-soft italic leading-snug">
+        Donors ahead of you: {donorsAhead}. You can also send a
+        one-time gift to support {childFirstName} today.
+      </p>
+    </div>
+  );
+}
+
+// Banner shown at step 1 when the queue is FULL (3 donors already
+// queued). Monthly tile is locked; donor can still send a one-time
+// gift. Phrasing nudges them to come back later.
+function QueueFullNote({
+  childFirstName,
+  queueFullThrough,
+}: {
+  childFirstName: string;
+  queueFullThrough: string | null;
+}) {
+  const throughStr = formatDate(queueFullThrough);
+  return (
+    <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3">
+      <p className="text-[13.5px] text-ink leading-[1.6]">
+        <span className="font-display font-medium">{childFirstName}</span>
+        &rsquo;s sponsor queue is full
+        {throughStr ? ` through ${throughStr}` : ""}.
+        {throughStr ? ` Check back after ${throughStr}.` : ""} You can
+        still send a one-time gift today.
+      </p>
+    </div>
   );
 }
 

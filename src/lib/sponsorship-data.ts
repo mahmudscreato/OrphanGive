@@ -78,6 +78,19 @@ export type Sponsorship = {
   // Editable post-hoc by the donor. Nullable for legacy rows;
   // see src/lib/visibility.ts for null → anonymous fallback.
   visibility: string | null;
+  // Sponsor queue (Session 14.7). A row carries status='active'
+  // for both currently-supporting AND queued-but-paid donors.
+  // queue_position discriminates:
+  //   0 (or null) = currently supporting the child
+  //   1, 2, 3     = waiting; will activate when an earlier slot ends
+  // queue_status is 'queued' iff queue_position>0; null otherwise.
+  // Read-side filtering: every "currently supporting" query MUST
+  // include `(queue_position IS NULL OR queue_position = 0)`.
+  // See src/lib/queue.ts for the canonical helpers.
+  queue_position: number | null;
+  queued_starts_at: string | null;
+  queued_ends_at: string | null;
+  queue_status: string | null;
 };
 
 const FULL_FIELDS = [
@@ -92,6 +105,7 @@ const FULL_FIELDS = [
   "cancellation_scheduled_at",
   "cause",
   "visibility",
+  "queue_position", "queued_starts_at", "queued_ends_at", "queue_status",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
 ] as const;
@@ -183,6 +197,17 @@ export async function createPendingSponsorship(opts: {
   // Public visibility — 'named' or 'anonymous'. Caller validates via
   // isValidVisibility() before reaching here.
   visibility?: string | null;
+  // Queue fields (Session 14.7). When the sponsor flow detected the
+  // child already has an active monthly sponsor and the donor opted
+  // in to queue join, the checkout path passes these through. The
+  // sponsorship row is still created with status='pending_payment';
+  // the webhook flips it to 'active' on payment success and the
+  // queue helpers handle promotion to position=0 when its slot
+  // opens. Omitted on a normal (non-queued) join.
+  queue_position?: number | null;
+  queued_starts_at?: string | null;
+  queued_ends_at?: string | null;
+  queue_status?: string | null;
 }): Promise<{ id: string }> {
   const payload: Record<string, unknown> = {
     donor: opts.donor,
@@ -202,6 +227,10 @@ export async function createPendingSponsorship(opts: {
     scheduled_end_date: opts.scheduled_end_date ?? null,
     cause: opts.cause ?? null,
     visibility: opts.visibility ?? null,
+    queue_position: opts.queue_position ?? null,
+    queued_starts_at: opts.queued_starts_at ?? null,
+    queued_ends_at: opts.queued_ends_at ?? null,
+    queue_status: opts.queue_status ?? null,
   };
   const created = (await directusServer().request(
     createItem("sponsorship" as never, payload as never),
@@ -501,6 +530,13 @@ export type ActiveMonthlySponsor = {
 // monthly sponsorship row for a child, or null if none. If multiple
 // somehow exist (data integrity issue: two checkouts raced past the
 // guard), logs loudly and returns the most recent.
+//
+// CURRENTLY-SUPPORTING SEMANTICS (Session 14.7):
+// Filters `(queue_position IS NULL OR queue_position = 0)` so that
+// queued rows (status='active' but waiting) are excluded — they're
+// committed money, but they're not the donor whose name appears on
+// the public page right now. Use src/lib/queue.ts → getQueueForChild
+// when you need the full queue (active + queued).
 export async function getActiveMonthlySponsorForChild(
   childId: string,
 ): Promise<ActiveMonthlySponsor | null> {
@@ -513,6 +549,12 @@ export async function getActiveMonthlySponsorForChild(
             { child: { _eq: childId } },
             { status: { _eq: "active" } },
             { payment_mode: { _eq: "monthly" } },
+            {
+              _or: [
+                { queue_position: { _null: true } },
+                { queue_position: { _eq: 0 } },
+              ],
+            },
           ],
         },
         fields: [
@@ -581,6 +623,10 @@ export async function getActiveMonthlySponsorForChild(
 // that already have a monthly sponsor. Returns the set of child ids
 // (subset of the input) that currently have one. Empty input → empty
 // set, single Directus round-trip.
+//
+// Same currently-supporting semantics as getActiveMonthlySponsorForChild:
+// excludes queued rows (queue_position > 0) so a child whose only
+// 'active' rows are queued reads as unsponsored on the badge.
 export async function getMonthlySponsoredChildIds(
   childIds: ReadonlyArray<string>,
 ): Promise<Set<string>> {
@@ -594,6 +640,12 @@ export async function getMonthlySponsoredChildIds(
             { child: { _in: valid } },
             { status: { _eq: "active" } },
             { payment_mode: { _eq: "monthly" } },
+            {
+              _or: [
+                { queue_position: { _null: true } },
+                { queue_position: { _eq: 0 } },
+              ],
+            },
           ],
         },
         fields: ["child"],
@@ -630,8 +682,24 @@ export async function getMonthlySponsoredChildIds(
 // bucket) into three exclusive groups. Both the home preview and
 // /dashboard/sponsorships use them so the sectioning can never drift.
 
+// Session 14.7: queued rows carry status='active' but they're not yet
+// supporting the child. Use isQueuedSponsorship to bucket them into
+// the dashboard's "Upcoming sponsorships" surface; isOngoingSponsorship
+// excludes them so they don't double-render in "Currently sponsoring".
+function isQueued(s: Sponsorship): boolean {
+  return (s.queue_position ?? 0) > 0;
+}
+
 export function isOngoingSponsorship(s: Sponsorship): boolean {
-  return s.status === "active" && s.payment_mode === "monthly";
+  return (
+    s.status === "active" &&
+    s.payment_mode === "monthly" &&
+    !isQueued(s)
+  );
+}
+
+export function isQueuedSponsorship(s: Sponsorship): boolean {
+  return s.status === "active" && isQueued(s);
 }
 
 export function isPastGiftOrSponsorship(s: Sponsorship): boolean {

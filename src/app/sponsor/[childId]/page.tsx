@@ -4,6 +4,11 @@ import { getChildById } from "@/lib/child-profile-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { readCart } from "@/lib/cart-data";
 import { getActiveMonthlySponsorForChild } from "@/lib/sponsorship-data";
+import {
+  computeNextQueueSlot,
+  getQueueForChild,
+  QUEUE_DEPTH_LIMIT,
+} from "@/lib/queue";
 import { SponsorPageContent } from "./sponsor-page-content";
 
 export const dynamic = "force-dynamic";
@@ -34,21 +39,39 @@ export default async function SponsorPage({
   const cart = await readCart();
   const cartItemCount = cart?.items.length ?? 0;
 
-  // Session 14.6: child-lock — at most one active monthly sponsor per
-  // child. The flag is true unless the locked sponsor IS the current
-  // donor (in which case they're the holder). Re-checked at
-  // /api/checkout/init too as the race-condition guard.
+  // Session 14.6 + 14.7: child-lock branches. Three exclusive UI
+  // states relative to the viewing donor:
   //
-  // Same-donor exemption: when the active sponsor IS the viewing
-  // donor, monthlyLocked is false AND we surface a friendly note on
-  // the sponsor page that links them to /dashboard/sponsorship/[id]
-  // for managing the existing commitment, while still allowing them
-  // to add a one-time gift below.
+  //   selfActiveMonthly  — viewing donor IS the active monthly
+  //                        sponsor. Friendly informational banner
+  //                        with a link to /dashboard/sponsorship/[id].
+  //                        Monthly tile enabled; same-donor exemption.
+  //   queueJoin          — child has an active monthly sponsor (a
+  //                        different donor) AND queue isn't full.
+  //                        Monthly tile is enabled but renders
+  //                        "Get in line" copy; queueJoin carries
+  //                        position + estimated start date.
+  //   monthlyLocked      — child has an active monthly sponsor AND
+  //                        the queue is FULL (3 queued already).
+  //                        Monthly tile disabled with "Queue is full
+  //                        through [date]" copy.
+  //
+  // /api/checkout/init re-evaluates the queue depth at init time as
+  // the race-condition guard (sponsor flow can render stale slot
+  // info if the page was open while another donor checked out).
   const activeMonthly = await getActiveMonthlySponsorForChild(child.id);
   const isOwnActiveMonthly = Boolean(
     activeMonthly && activeMonthly.donorId === donor.id,
   );
-  const monthlyLocked = Boolean(activeMonthly) && !isOwnActiveMonthly;
+
+  let monthlyLocked = false;
+  let queueJoin: {
+    position: number;
+    estimatedStartsAt: string | null;
+    activeEndDate: string | null;
+    donorsAhead: number;
+  } | null = null;
+  let queueFullThrough: string | null = null;
   const selfActiveMonthly =
     isOwnActiveMonthly && activeMonthly
       ? {
@@ -56,6 +79,33 @@ export default async function SponsorPage({
           scheduledEndDate: activeMonthly.scheduledEndDate,
         }
       : null;
+
+  if (activeMonthly && !isOwnActiveMonthly) {
+    const slot = await computeNextQueueSlot(child.id);
+    if (slot.position > QUEUE_DEPTH_LIMIT) {
+      // Queue full — render the locked state with the final queued
+      // donor's end date as the "come back after" target.
+      const { queued } = await getQueueForChild(child.id);
+      const last = queued[queued.length - 1];
+      queueFullThrough = last?.queued_ends_at ?? null;
+      monthlyLocked = true;
+    } else {
+      // Queue join is available. donorsAhead = position - 1
+      // (donors already in the queue PLUS the current active sponsor
+      // ahead of you). For donor-facing copy we count "ahead of you"
+      // inclusive of the active sponsor: position 1 → 1 donor ahead.
+      queueJoin = {
+        position: slot.position,
+        estimatedStartsAt: slot.startsAt
+          ? slot.startsAt.toISOString()
+          : null,
+        activeEndDate: slot.activeEndDate
+          ? slot.activeEndDate.toISOString()
+          : null,
+        donorsAhead: slot.position,
+      };
+    }
+  }
 
   return (
     <main className="bg-cream">
@@ -87,6 +137,8 @@ export default async function SponsorPage({
         monthlyLocked={monthlyLocked}
         donorFirstName={donor.first_name ?? null}
         selfActiveMonthly={selfActiveMonthly}
+        queueJoin={queueJoin}
+        queueFullThrough={queueFullThrough}
       />
     </main>
   );

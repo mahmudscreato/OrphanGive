@@ -19,7 +19,7 @@ import {
 } from "@/lib/child-profile-data";
 import { getRandomActiveChildren } from "@/lib/children-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
-import { getActiveMonthlySponsorForChild } from "@/lib/sponsorship-data";
+import { getQueueDisplayForChild } from "@/lib/queue";
 import {
   ALLOWED_REVEAL_FIELDS,
   fetchRevealedFieldValues,
@@ -41,17 +41,18 @@ export default async function ChildProfilePage({
   const { tier } = await getViewerTier();
 
   // Fetch in parallel — all server-side via the admin token client.
-  // Active monthly sponsor (Session 14.6) drives the public banner
-  // between hero and story; null when the child is unsponsored or
-  // when only one-time gifts are present.
-  const [child, docs, updates, moments, related, activeMonthly] =
+  // Queue display (Sessions 14.6 + 14.7) drives the public banner
+  // between hero and story. queueDisplay.active === null when the
+  // child has no current monthly sponsor — banner is omitted in
+  // that case.
+  const [child, docs, updates, moments, related, queueDisplay] =
     await Promise.all([
       getChildById(id, tier),
       getChildDocumentsStatus(id),
       getChildUpdates(id),
       getChildMoments(id),
       getRandomActiveChildren(id, 4),
-      getActiveMonthlySponsorForChild(id),
+      getQueueDisplayForChild(id),
     ]);
 
   if (!child) notFound();
@@ -113,13 +114,14 @@ export default async function ChildProfilePage({
         </div>
       </div>
       <ProfileHero child={child} tier={tier} />
-      {activeMonthly ? (
+      {queueDisplay.active ? (
         <section className="px-6 pt-8 pb-2 bg-cream max-md:pt-6">
           <div className="max-w-[760px] mx-auto">
             <ChildSponsorBanner
               childFirstName={child.display_name.split(" ")[0]}
-              visibility={activeMonthly.visibility}
-              sponsorFirstName={activeMonthly.donorFirstName}
+              active={queueDisplay.active}
+              queued={queueDisplay.queued}
+              isFull={queueDisplay.isFull}
             />
           </div>
         </section>

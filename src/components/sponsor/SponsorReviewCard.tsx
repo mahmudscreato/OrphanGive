@@ -19,6 +19,16 @@ export type SponsorReviewProps = {
   // visibility='named' ("Shown publicly: Sponsored by Mahmud"). Null
   // for guests; the named-row falls back to a generic phrasing.
   donorFirstName?: string | null;
+  // Session 14.7 — when this sponsor flow is a queue join (the
+  // child has another donor's active monthly sponsor and the donor
+  // is paying upfront for a future slot), the review surfaces the
+  // estimated start date + queue position so the donor confirms
+  // BOTH "what I'm paying for" AND "when it starts" before adding
+  // to cart. Null for the normal (no-queue) path.
+  queueJoin?: {
+    position: number;
+    estimatedStartsAt: string | null;
+  } | null;
   // Action props
   onEdit: () => void;
   onAddToCart: () => void;
@@ -40,6 +50,7 @@ export function SponsorReviewCard({
   cause,
   visibility,
   donorFirstName,
+  queueJoin,
   onEdit,
   onAddToCart,
   pending,
@@ -117,7 +128,31 @@ export function SponsorReviewCard({
               : "Shown publicly with your first name"
             : "Anonymous"}
         </Row>
+        {queueJoin ? (
+          <>
+            <Row label="Begins">
+              {(() => {
+                const iso = queueJoin.estimatedStartsAt;
+                if (!iso) return "When the current sponsor's term ends";
+                const d = new Date(iso);
+                if (Number.isNaN(d.getTime())) return "—";
+                return `≈ ${d.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })}`;
+              })()}
+            </Row>
+            <Row label="Queue position">{queueJoin.position}</Row>
+          </>
+        ) : null}
       </dl>
+      {queueJoin ? (
+        <p className="mt-3 text-[12.5px] text-slate-soft italic leading-snug">
+          Payment is processed today. Your sponsorship begins when the
+          current sponsor&rsquo;s term ends. Refundable until then.
+        </p>
+      ) : null}
 
       <div className="mt-4 pt-4 border-t border-ink/[0.06] grid grid-cols-2 gap-4 max-md:grid-cols-1">
         <div>

@@ -48,7 +48,12 @@ export type PillVariant =
   | "completed"
   | "pending"
   | "cancelled"
-  | "cancellation_pending";
+  | "cancellation_pending"
+  // Session 14.7: status='active' AND queue_position>0 — paid up
+  // front, waiting for an earlier slot to end. Distinct from the
+  // active palettes; rendered with a moss tone to read as "future
+  // commitment" rather than "currently supporting".
+  | "queued";
 
 export function pillVariantFor(s: Sponsorship): PillVariant {
   if (s.cancellation_scheduled_at && s.status === "active") {
@@ -58,6 +63,12 @@ export function pillVariantFor(s: Sponsorship): PillVariant {
   if (s.status === "pending_payment") return "pending";
   if (s.status === "cancelled") return "cancelled";
   if (s.status === "active") {
+    // Session 14.7: queue-positioned active rows (queue_position>0)
+    // are paid + waiting; surface them with a distinct "Upcoming"
+    // pill rather than the standard active palette so the donor's
+    // dashboard reads honestly about WHICH commitment is currently
+    // supporting the child.
+    if ((s.queue_position ?? 0) > 0) return "queued";
     if (s.payment_mode === "one_time") return "active_one_time";
     if (s.payment_schedule === "monthly_prepaid") return "active_prepaid";
     if (s.duration_months != null) return "active_fixed_term";
@@ -104,6 +115,9 @@ const COMPLETED_PALETTE = "bg-slate text-white border-slate";
 const PREPAID_PALETTE = "bg-moss text-cream border-moss";
 // Neutral subtle for CANCELLED — unchanged; present but de-emphasised.
 const CANCELLED_PALETTE = "bg-ink/[0.04] text-slate-soft border-ink/[0.08]";
+// Soft moss for QUEUED (Session 14.7). Same family as the public
+// child banner's "in queue" accent so donors recognize the pairing.
+const QUEUED_PALETTE = "bg-moss-soft text-moss-deep border-moss/30";
 
 // The unified status badge. Every sponsorship surface (dashboard home
 // preview, /dashboard/sponsorships, sponsorship detail page header)
@@ -153,6 +167,17 @@ export function SponsorshipStatusBadge({ s }: { s: Sponsorship }) {
           ) : null}
         </Pill>
       );
+    case "queued":
+      return (
+        <Pill className={QUEUED_PALETTE}>
+          Upcoming
+          {s.queued_starts_at ? (
+            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-moss-deep/85">
+              · begins {formatShortMonth(s.queued_starts_at)}
+            </span>
+          ) : null}
+        </Pill>
+      );
     case "cancelled":
     default:
       return <Pill className={CANCELLED_PALETTE}>Cancelled</Pill>;
@@ -176,6 +201,16 @@ export function coverageLine(s: Sponsorship): string | null {
   // One-time gifts and pending-payment rows have no coverage concept.
   if (s.payment_mode === "one_time" || s.status === "pending_payment") {
     return null;
+  }
+
+  // Session 14.7: queued rows haven't started supporting yet —
+  // surface the future window instead of "Until you cancel".
+  if (s.status === "active" && (s.queue_position ?? 0) > 0) {
+    const begins = formatLongDate(s.queued_starts_at);
+    const ends = formatLongDate(s.queued_ends_at);
+    if (begins && ends) return `Coverage runs ${begins} → ${ends}`;
+    if (begins) return `Begins ${begins}`;
+    return "Begins when the current sponsor's term ends";
   }
 
   if (s.status === "cancelled") {
@@ -306,6 +341,37 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
         label: "Status",
         value: <PendingCardActions sponsorshipId={s.id} />,
       },
+    ];
+  }
+  if (v === "queued") {
+    // Queued rows: surface position + (for prepaid) the upfront
+    // amount paid, OR (for recurring trial_end) the per-month rate
+    // that will start charging on activation. "Started" is omitted
+    // — it hasn't started yet; the coverage line shows "Begins X".
+    const position = s.queue_position ?? 0;
+    const isPrepaid = s.payment_schedule === "monthly_prepaid";
+    const months = s.duration_months ?? s.prepaid_months_total ?? 0;
+    return [
+      { label: "Position", value: <Mono>{position} in queue</Mono> },
+      isPrepaid
+        ? {
+            label: "Paid up front",
+            value: (
+              <Mono>
+                {formatUsd(s.amount_usd * (months || 1))} · {months}{" "}
+                {months === 1 ? "month" : "months"}
+              </Mono>
+            ),
+          }
+        : {
+            label: "On activation",
+            value: (
+              <Mono>
+                {formatUsd(s.amount_usd)}/mo
+                {months ? ` · ${months} ${months === 1 ? "month" : "months"}` : ""}
+              </Mono>
+            ),
+          },
     ];
   }
   if (v === "cancelled") {
