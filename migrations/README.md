@@ -70,3 +70,9 @@ ordering, dash-separated description. Example:
 |---|---|---|
 | `2026-05-08-add-og-profile-photo-url.sql` | `directus_users` | Directus Admin UI |
 | `2026-05-09-add-sponsorship-cause.sql` | `sponsorship` | Directus Admin UI |
+
+## See also
+
+- [`docs/pre-launch-audit.md`](../docs/pre-launch-audit.md) —
+  architectural patterns to verify before each production
+  deploy, including the Stripe FK unique-constraint audit.
