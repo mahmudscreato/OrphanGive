@@ -335,6 +335,15 @@ export async function updateSponsorship(
 // Idempotent payment-row creation: refuses to insert duplicates keyed
 // by stripe_payment_intent_id+stripe_invoice_id. Returns true if a new
 // row was created, false if it already existed.
+// Returns:
+//   { created: true,  id: <new row id> }   first-time insert
+//   { created: false, id: <existing id> }  matched a prior row
+//   { created: false, id: null }           read failed; insert raced
+//
+// The `id` is what the inline-receipt email trigger (Session 14.5b)
+// passes to /api/internal/email/monthly-receipt. Existing webhook
+// callers that only care about the boolean still work — they can
+// destructure { created } and ignore id.
 export async function createPaymentIfMissing(opts: {
   sponsorshipId: string;
   amount_usd: number;
@@ -345,7 +354,7 @@ export async function createPaymentIfMissing(opts: {
   payment_method_type?: string | null;
   failure_reason?: string | null;
   paid_at: string;
-}): Promise<boolean> {
+}): Promise<{ created: boolean; id: string | null }> {
   // Look for an existing row on this sponsorship that matches EITHER
   // the PI id or the invoice id. Either-match is important because the
   // same paid invoice can arrive via two different Stripe event names
@@ -378,11 +387,13 @@ export async function createPaymentIfMissing(opts: {
         filter, fields: ["id"], limit: 1,
       } as never),
     )) as unknown as Array<{ id: string }>;
-    if (Array.isArray(rows) && rows.length > 0) return false;
+    if (Array.isArray(rows) && rows.length > 0) {
+      return { created: false, id: rows[0]!.id };
+    }
   } catch {
     // Read failure is non-fatal — we'd rather create a duplicate than miss.
   }
-  await directusServer().request(
+  const created = (await directusServer().request(
     createItem("payment" as never, {
       sponsorship: opts.sponsorshipId,
       amount_usd: opts.amount_usd,
@@ -395,8 +406,8 @@ export async function createPaymentIfMissing(opts: {
       failure_reason: opts.failure_reason ?? null,
       paid_at: opts.paid_at,
     } as never),
-  );
-  return true;
+  )) as unknown as { id?: string } | null;
+  return { created: true, id: created?.id ?? null };
 }
 
 // Idempotency for the webhook handler.

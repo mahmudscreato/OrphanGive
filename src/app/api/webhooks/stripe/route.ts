@@ -14,6 +14,10 @@ import {
 } from "@/lib/sponsorship-data";
 import { clearCartByDonor } from "@/lib/cart-data";
 import { promoteQueue } from "@/lib/queue";
+import {
+  fireMonthlyReceiptEmail,
+  fireWelcomeEmail,
+} from "@/lib/email-triggers";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -66,8 +70,9 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
   }
 
   let created = false;
+  let paymentId: string | null = null;
   try {
-    created = await createPaymentIfMissing({
+    const result = await createPaymentIfMissing({
       sponsorshipId: sponsorship.id,
       amount_usd: amountUsd,
       status: "succeeded",
@@ -77,6 +82,8 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
       payment_method_type: methodType,
       paid_at: ctx.paidAtIso,
     });
+    created = result.created;
+    paymentId = result.id;
   } catch (err) {
     console.error(
       `[webhook] createPaymentIfMissing(sponsorship=${sponsorship.id}) THREW:`,
@@ -87,8 +94,12 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
 
   // Activate the sponsorship + bump accumulators only if this is a
   // freshly recorded payment (idempotency: don't double-bump on replay).
+  // `wasFirstActivation` tracks whether this event flipped the row
+  // into its supporting state — drives the inline welcome-email
+  // trigger below (Session 14.5b).
+  const wasFirstActivation = !sponsorship.started_at;
   const patch: Partial<Sponsorship> = { status: "active" };
-  if (!sponsorship.started_at) {
+  if (wasFirstActivation) {
     patch.started_at = new Date().toISOString();
   }
   patch.next_billing_date = new Date(Date.now() + 30 * 86_400_000).toISOString();
@@ -99,6 +110,25 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
   await updateSponsorship(sponsorship.id, patch);
 
   await clearCartByDonor(sponsorship.donor).catch(() => {});
+
+  // ── Inline email triggers (Session 14.5b) ─────────────────────────
+  // Welcome: fires once on the FIRST activation of this row. The
+  // `!sponsorship.started_at` guard skips:
+  //   - subsequent recurring invoices (started_at already set)
+  //   - queue promotions (promoteQueue sets started_at + sends its own
+  //     SponsorshipActivatedEmail before Stripe's invoice.paid arrives)
+  // The internal route's own donor-level dedup (6h window) is the
+  // second line of defence against duplicate sends.
+  if (wasFirstActivation) {
+    await fireWelcomeEmail([sponsorship.id]);
+  }
+  // Monthly receipt: fires per FRESHLY recorded payment row. On
+  // replay (Stripe re-sends the same invoice event), createPayment
+  // returns created=false and we skip — the original delivery
+  // already sent the receipt.
+  if (created && paymentId) {
+    await fireMonthlyReceiptEmail(paymentId);
+  }
 }
 
 // Pulls the normalized context out of an Invoice object (legacy event names).
@@ -356,13 +386,17 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
   // For prepaid: one row per PI. The payment row carries the FULL PI
   // amount (months × monthly rate), not the per-month rate, since this
   // is what the donor was actually charged today.
+  // Track sponsorships that flipped from pending → active in THIS
+  // event so we can fan out a single welcome email summarising the
+  // bundle (Session 14.5b inline trigger).
+  const newlyActiveIds: string[] = [];
   for (const s of sponsorships) {
     const isPrepaid = s.payment_schedule === "monthly_prepaid";
     const paymentAmount = isPrepaid
       ? (pi.amount ?? 0) / 100 // full upfront sum
       : s.amount_usd;
 
-    const created = await createPaymentIfMissing({
+    const { created } = await createPaymentIfMissing({
       sponsorshipId: s.id,
       amount_usd: paymentAmount,
       status: "succeeded",
@@ -372,18 +406,34 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
       paid_at: new Date().toISOString(),
     });
 
+    const wasFirstActivation = !s.started_at;
     const patch: Partial<Sponsorship> = { status: "active" };
-    if (!s.started_at) patch.started_at = new Date().toISOString();
+    if (wasFirstActivation) patch.started_at = new Date().toISOString();
     if (created) {
       patch.payment_count = (s.payment_count ?? 0) + 1;
       patch.total_paid_usd = Number(s.total_paid_usd ?? 0) + paymentAmount;
     }
     await updateSponsorship(s.id, patch);
+
+    if (wasFirstActivation) newlyActiveIds.push(s.id);
   }
 
   // Convert cart for this donor.
   const donorId = pi.metadata?.donor_id;
   if (donorId) await clearCartByDonor(donorId).catch(() => {});
+
+  // Inline welcome email (Session 14.5b). One-time bundles → ONE
+  // welcome email summarising all newly-active sponsorships in the
+  // PI. Prepaid PIs → single ID. The internal route's own donor-
+  // level dedup ensures no duplicate fires if this event replays.
+  // Note: monthly-receipt email is NOT triggered here — receipts
+  // are for recurring invoice billing cycles, not for the upfront
+  // PI charge (one-time gifts and prepaid bundles get covered by
+  // the welcome email instead, which is the canonical "your
+  // sponsorship has begun" notification).
+  if (newlyActiveIds.length > 0) {
+    await fireWelcomeEmail(newlyActiveIds);
+  }
 }
 
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
