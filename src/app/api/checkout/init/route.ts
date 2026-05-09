@@ -229,9 +229,14 @@ const TERMINAL_SUB_STATES: ReadonlySet<string> = new Set([
 // The Directus field shape we patch onto a stale sponsorship row.
 // `status` is the only required key; the others are conditional
 // based on which Stripe object owned this row.
+//
+// cancelled_at can be `null` to OVERRIDE the seed timestamp from
+// cancelPendings — the paid-sub / succeeded-PI branches use this
+// to avoid leaving the row in a contradictory active+cancelled_at
+// state. See the docblock above cancelPendings for the full rule.
 type RowPatch = {
   status: "active" | "completed" | "cancelled";
-  cancelled_at?: string;
+  cancelled_at?: string | null;
   cancellation_reason?: string;
   stripe_payment_intent_id?: null;
   stripe_subscription_id?: null;
@@ -274,10 +279,17 @@ async function reconcilePaymentIntent(
     console.warn(
       `[checkout/init] PI ${piId} already succeeded; finalizing row as completed`,
     );
+    // KEEP stripe_payment_intent_id intact — the donor's payment
+    // is real and the row needs a permanent audit-trail link to
+    // the Stripe PI. Clearing it (the pre-fix behaviour) severed
+    // future webhook matching and broke dashboard cancellation.
+    // cancelled_at is set to null to override the seed timestamp
+    // from cancelPendings — this row is finalising as completed,
+    // not cancelled.
     return {
       status: "completed",
       cancellation_reason: "orphaned_succeeded_pre_finalization",
-      stripe_payment_intent_id: null,
+      cancelled_at: null,
     };
   }
 
@@ -349,10 +361,17 @@ async function reconcileSubscription(
     console.warn(
       `[checkout/init] sub ${subId} is ${sub.status} (donor paid); finalizing row as active`,
     );
+    // KEEP stripe_subscription_id intact — the sub is real and
+    // running on Stripe; the row needs the link for the eventual
+    // customer.subscription.deleted webhook to match it back, and
+    // for the dashboard cancel button to function. Clearing it
+    // (the pre-fix behaviour) created status='active' rows with
+    // no Stripe link that broke both paths. cancelled_at is set
+    // to null to override the seed timestamp from cancelPendings.
     return {
       status: "active",
       cancellation_reason: "orphaned_active_pre_finalization",
-      stripe_subscription_id: null,
+      cancelled_at: null,
     };
   }
 
@@ -384,6 +403,36 @@ async function reconcileSubscription(
   };
 }
 
+// RECONCILE BRANCHES — return shapes by Stripe object state:
+//
+//   paid sub (active/trialing) — return { status: 'active',
+//     cancellation_reason: 'orphaned_active_pre_finalization',
+//     cancelled_at: null }. KEEP stripe_subscription_id intact;
+//     the sub is real and webhook will fire on natural end.
+//
+//   succeeded PI — return { status: 'completed',
+//     cancellation_reason: 'orphaned_succeeded_pre_finalization',
+//     cancelled_at: null }. KEEP stripe_payment_intent_id intact.
+//
+//   terminal sub/PI (canceled, expired) — clear refs, set
+//     status='cancelled', set cancelled_at to current time.
+//
+//   Stripe object not found — clear refs, set status='cancelled',
+//     set reason='orphaned_pi_not_found' or '_sub_not_found'.
+//
+// The original motivation to clear refs in the paid/succeeded
+// branches was a unique constraint on stripe_subscription_id /
+// stripe_payment_intent_id. Both constraints were dropped in
+// 9e10a23 (see docs/pre-launch-audit.md). Clearing refs is no
+// longer needed and is actively harmful — it severs the link
+// we need for cancellation, webhook matching, and audit trails.
+//
+// History: clearing refs in the paid/succeeded branches created
+// "zombie" rows (status='active' AND stripe_subscription_id=null
+// AND cancelled_at=<current time>) that broke dashboard
+// cancellation with "Sponsorship has no Stripe subscription."
+// Diagnosis + fix shipped together with a one-shot repair script
+// at scripts/repair/2026-05-09-relink-or-cancel-zombies.ts.
 async function cancelPendings(
   stripe: Stripe,
   pendings: Sponsorship[],
