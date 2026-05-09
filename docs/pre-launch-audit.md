@@ -12,7 +12,7 @@ intentionally make some 1-to-N.
 
 | Stripe ID                | Sponsorship    | Payment           | Cardinality                                |
 | ------------------------ | -------------- | ----------------- | ------------------------------------------ |
-| `stripe_subscription_id`  | 1 sub → 1      | 1 sub → 1         | 1-to-1: OK to be unique                    |
+| `stripe_subscription_id`  | 1 sub → N (reconcile) | 1 sub → 1   | 1-to-N: MUST NOT be unique                 |
 | `stripe_payment_intent_id` | bundle PI → N  | bundle PI → N     | 1-to-N: MUST NOT be unique                 |
 | `stripe_invoice_id`       | TBD per-charge | 1 invoice → 1 payment | review per case                        |
 
@@ -31,3 +31,14 @@ Today's removed constraints:
 
 - `sponsorship.stripe_payment_intent_id` (was unique)
 - `payment.stripe_payment_intent_id` (was unique)
+- `sponsorship.stripe_subscription_id` (was unique — surfaced by
+  the `f1f2b29` zombie-repair: legitimate cases exist where
+  multiple sponsorship rows reference the same Stripe sub
+  during/after a `cancelPendings` reconciliation, e.g. when a
+  fingerprint-changing checkout produced duplicate rows. The
+  application-layer pattern owns dedup; the constraint blocked
+  the relink-to-active branch in the repair script.)
+
+All Stripe FK constraints are now application-layer-enforced.
+The webhook handler's per-event + per-resource dedup pattern
+(Session 11) is the canonical source of truth.
