@@ -41,6 +41,9 @@ import {
   shiftQueueDates,
   sendQueueShiftEmail,
 } from "@/lib/queue";
+import { sendEmail, siteUrl } from "@/lib/email";
+import { fetchChildById, fetchDonorById, formatTo } from "@/lib/email-data";
+import { SponsorshipQueueShiftEmail } from "@/emails/SponsorshipQueueShiftEmail";
 
 export const runtime = "nodejs";
 
@@ -178,6 +181,47 @@ export async function POST(req: NextRequest) {
         stats.errors++;
         console.warn(
           `[cron/promote-queue] auto-accept ${s.id} failed:`,
+          err instanceof Error ? err.message : err,
+        );
+        continue;
+      }
+
+      // Notice email — confirms the silent acceptance (autoAccepted
+      // variant of SponsorshipQueueShiftEmail removes the action
+      // buttons since the decision is already locked in). Best-effort:
+      // a mail-server hiccup shouldn't undo the row update.
+      try {
+        const donorId = typeof s.donor === "string" ? s.donor : "";
+        const childIdRef =
+          typeof s.child === "string" ? s.child : s.child?.id ?? null;
+        if (!donorId || !childIdRef) continue;
+        const donor = await fetchDonorById(donorId);
+        const child = await fetchChildById(childIdRef);
+        if (!donor || !donor.email) continue;
+        const firstName =
+          donor.first_name?.trim() || donor.email.split("@")[0]!;
+        const childName = child?.display_name ?? "your sponsored child";
+        await sendEmail({
+          to: formatTo(donor.email, firstName),
+          subject: `Your sponsorship of ${childName} is set to begin on the new start date`,
+          template: SponsorshipQueueShiftEmail({
+            firstName,
+            childName,
+            activeSponsorFirstName: null,
+            oldStartDate: null,
+            newStartDate: s.queued_starts_at ?? null,
+            decisionUrl: siteUrl(
+              `/dashboard/sponsorship/${s.id}/queue-shift-decision`,
+            ),
+            autoAccepted: true,
+          }),
+        });
+        console.log(
+          `[cron/promote-queue] auto-accept notice email sent for sponsorship=${s.id}`,
+        );
+      } catch (err) {
+        console.warn(
+          `[cron/promote-queue] auto-accept notice email for ${s.id} failed (non-fatal):`,
           err instanceof Error ? err.message : err,
         );
       }
