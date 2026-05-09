@@ -32,6 +32,12 @@ export type Sponsorship = {
         Photo?: string | null;
         date_of_birth?: string | null;
         bd_district?: { name?: string | null } | null;
+        // Child's lifecycle status. Surfaced on the dashboard
+        // sponsorship detail page (Session 14.7c) so that the
+        // re-support buttons can fall back to a "child no longer
+        // in our active program" message instead of routing the
+        // donor to a /sponsor page that would 404 on them.
+        status?: string | null;
       };
   payment_mode: "monthly" | "one_time";
   amount_usd: number;
@@ -108,6 +114,7 @@ const FULL_FIELDS = [
   "queue_position", "queued_starts_at", "queued_ends_at", "queue_status",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
+  "child.status",
 ] as const;
 
 const UUID_RE =

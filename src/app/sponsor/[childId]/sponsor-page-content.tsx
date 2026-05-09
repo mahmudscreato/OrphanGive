@@ -127,6 +127,23 @@ function durationSelectionFromMonths(
   return { optionId: "d_custom", months };
 }
 
+// Read just the mode= URL param when the caller wants to pre-select
+// step 1 without prefilling the rest. Used by the dashboard's
+// re-support buttons (Session 14.7c): the donor clicks "Sponsor again
+// monthly" or "Send a one-time gift" and lands on step 2 (amount)
+// with the mode chosen for them. Returns null if the param is absent
+// or invalid.
+function readModeOnlyParam(
+  searchParams: URLSearchParams,
+): PaymentMode | null {
+  const m = searchParams.get("mode");
+  if (!m || !isPaymentMode(m)) return null;
+  // If amount is also present, the FULL prefill path (readPrefilledState)
+  // owns this URL — defer to it.
+  if (searchParams.get("amount")) return null;
+  return m;
+}
+
 // Pull a prefilled state out of search params if all-required-keys are
 // present and valid. Returns null if the URL is a plain visit.
 function readPrefilledState(searchParams: URLSearchParams): {
@@ -235,9 +252,19 @@ export function SponsorPageContent({
     () => readPrefilledState(new URLSearchParams(search.toString())),
     [search],
   );
+  // Session 14.7c: when only ?mode= is present (no amount), the
+  // dashboard re-support buttons want to skip step 1 and land the
+  // donor on step 2 (amount picker) with the chosen mode locked in.
+  // The full-prefill path above takes precedence when both are set.
+  const modeOnly = useMemo(
+    () => readModeOnlyParam(new URLSearchParams(search.toString())),
+    [search],
+  );
   const isEditing = search.get("edit") === "1";
 
-  const [mode, setMode] = useState<PaymentMode | null>(prefill?.mode ?? null);
+  const [mode, setMode] = useState<PaymentMode | null>(
+    prefill?.mode ?? modeOnly ?? null,
+  );
   const [tierId, setTierId] = useState<string | null>(() => {
     if (!prefill) return null;
     const tier = SPONSORSHIP_TIERS[prefill.mode].find(
@@ -266,9 +293,20 @@ export function SponsorPageContent({
   const [visibility, setVisibility] = useState<VisibilityEnum>(
     prefill?.visibility ?? DEFAULT_VISIBILITY,
   );
-  // Start at the review step if URL prefilled enough state to be valid.
-  // Review is now step 7 after the visibility step inserted at 6.
-  const [step, setStep] = useState<Step>(prefill ? 7 : 1);
+  // Initial step:
+  //   - Full URL prefill (mode + amount + …) → step 7 review
+  //   - Mode-only URL prefill (?mode=monthly|one_time) → step 2 amount,
+  //     EXCEPT when mode='monthly' AND the child's monthly slot has a
+  //     queue affordance (queue-join or queue-full) — those banners live
+  //     in step 1 and we force the donor through it so they see the
+  //     context (committed start date, position N, queue-full message).
+  //     mode='one_time' always goes straight to step 2 (queue doesn't
+  //     affect one-time gifts).
+  const skipModeOnly =
+    modeOnly === "monthly" && (monthlyLocked || queueJoin !== null);
+  const [step, setStep] = useState<Step>(
+    prefill ? 7 : modeOnly && !skipModeOnly ? 2 : 1,
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);

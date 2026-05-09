@@ -16,6 +16,9 @@ import { labelForCause } from "@/lib/cause";
 import { SponsorshipStatusBadge } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { SponsorshipActions } from "./SponsorshipActions";
 import { VisibilityEditor } from "./VisibilityEditor";
+import { ReSupportButtons } from "./ReSupportButtons";
+import { GiveMoreCTA } from "./GiveMoreCTA";
+import { InactiveChildNotice } from "./InactiveChildNotice";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -68,6 +71,16 @@ export default async function SponsorshipDetailPage({
   const childPhoto = childObj?.Photo ?? null;
   const district = childObj?.bd_district?.name?.trim() ?? null;
   const age = ageFromDob(childObj?.date_of_birth ?? null);
+  // Session 14.7c: child.status drives the inactive-child fallback.
+  // When the row is no longer 'active' in Directus, the re-support
+  // buttons would route to a /sponsor/[childId] that 404s — instead
+  // we render an off-ramp to /children. status defaults to 'active'
+  // when the field is missing (legacy rows, public-tier responses).
+  const childIsActive = (childObj?.status ?? "active") === "active";
+  // Queued row (status='active' AND queue_position>0): existing
+  // cancel-queued surface only; no re-support / give-more affordance
+  // since the donor is already queued to start supporting.
+  const isQueuedRow = (sponsorship.queue_position ?? 0) > 0;
 
   const status = normalizeStatus(sponsorship);
 
@@ -138,6 +151,40 @@ export default async function SponsorshipDetailPage({
             scheduledEndDate={sponsorship.scheduled_end_date}
           />
         </section>
+      ) : null}
+
+      {/* Session 14.7c re-support paths.
+          Branch by row state + child state:
+            • Queued (queue_position > 0)  → no re-support / give-more
+              affordance. The existing cancel-queued lives in
+              SponsorshipActions above; the donor is already paid up
+              and waiting, no need to nudge them to give more.
+            • Child inactive in Directus    → kind off-ramp to /children.
+              Skips the re-support buttons entirely because routing to
+              /sponsor/[childId] would 404.
+            • Active (non-queued)           → "Want to give more?" CTA
+              for an additional one-time gift to the same child. Sits
+              below the management cluster with a moss separator so
+              the two intents read distinctly.
+            • Completed / Cancelled         → primary "Sponsor again"
+              + secondary "the other mode" buttons. Both route through
+              /sponsor/[childId]?mode=… */}
+      {!isQueuedRow ? (
+        !childIsActive ? (
+          <InactiveChildNotice childName={childName} />
+        ) : status === "completed" || status === "cancelled" ? (
+          <ReSupportButtons
+            childId={childId}
+            childName={childName}
+            originalPaymentMode={sponsorship.payment_mode}
+          />
+        ) : (
+          <GiveMoreCTA
+            childId={childId}
+            childName={childName}
+            alreadyOneTime={sponsorship.payment_mode === "one_time"}
+          />
+        )
       ) : null}
 
       {/* Editable visibility — only meaningful while the sponsorship
