@@ -11,6 +11,7 @@ import {
 } from "@/lib/children-data";
 import {
   getDonorSponsorships,
+  isOngoingSponsorship,
   sortSponsorshipsByPriority,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
@@ -80,12 +81,14 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
   ]);
 
   const activeChildBubbles = uniqueActiveChildren(sponsorships);
-  // Active sponsorships sorted with the Part-C priority (prepaid first,
-  // then recurring, then one-time; newest within each tier).
-  const activeSponsorships = sortSponsorshipsByPriority(
-    sponsorships.filter((s) => s.status === "active"),
+  // The home preview surfaces ONLY ongoing sponsorships — active
+  // monthly + prepaid. One-time gifts live in "Past gifts and
+  // sponsorships" on /dashboard/sponsorships, never in the preview.
+  // (Same predicate used by Section 1 there, via shared helper.)
+  const ongoingSponsorships = sortSponsorshipsByPriority(
+    sponsorships.filter(isOngoingSponsorship),
   );
-  const previewSponsorships = activeSponsorships.slice(0, 3);
+  const previewSponsorships = ongoingSponsorships.slice(0, 3);
   const hasDisplayable = sponsorships.some(isDisplaySponsorship);
   const isFirstTime = !hasDisplayable;
 
@@ -100,7 +103,7 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
       {previewSponsorships.length > 0 ? (
         <ChildrenPreview
           previewSponsorships={previewSponsorships}
-          totalActive={activeSponsorships.length}
+          totalActive={ongoingSponsorships.length}
         />
       ) : null}
 

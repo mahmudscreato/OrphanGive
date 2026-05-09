@@ -452,6 +452,36 @@ export type ChildUpdate = {
   published_at: string | null;
 };
 
+// ─── Partition helpers ───────────────────────────────────────────────────────
+//
+// Locked in 13.5c Part C revision #2: the dashboard sectioning is
+// relationship-based, not status-based. A one-time gift's row is
+// status='active' in the DB (the gift was successfully made and isn't
+// scheduled to recur), but it's not an ongoing sponsorship — there's no
+// future commitment. Treat one-times as "past gifts" alongside
+// completed subscriptions; "Currently sponsoring" surfaces only ongoing
+// monthly relationships.
+//
+// These three predicates partition the donor's displayable sponsorships
+// (active, completed, cancelled — pending is a separate transient
+// bucket) into three exclusive groups. Both the home preview and
+// /dashboard/sponsorships use them so the sectioning can never drift.
+
+export function isOngoingSponsorship(s: Sponsorship): boolean {
+  return s.status === "active" && s.payment_mode === "monthly";
+}
+
+export function isPastGiftOrSponsorship(s: Sponsorship): boolean {
+  return (
+    (s.status === "active" && s.payment_mode === "one_time") ||
+    s.status === "completed"
+  );
+}
+
+export function isCancelledSponsorship(s: Sponsorship): boolean {
+  return s.status === "cancelled";
+}
+
 // ─── Sort comparators ────────────────────────────────────────────────────────
 //
 // `sortSponsorshipsByPriority` is used for the "Currently sponsoring" view

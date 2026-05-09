@@ -5,12 +5,15 @@ import {
 } from "@/lib/donor-data";
 import {
   getDonorSponsorships,
+  isCancelledSponsorship,
+  isOngoingSponsorship,
+  isPastGiftOrSponsorship,
   sortSponsorshipsByEnded,
   sortSponsorshipsByPriority,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { VertSponsorshipCard } from "../components/VertSponsorshipCard";
-import { isDisplaySponsorship } from "../components/sponsorshipCardHelpers";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 export const dynamic = "force-dynamic";
 
@@ -25,30 +28,36 @@ export default async function DashboardSponsorshipsPage() {
   if (state !== "approved") redirect("/dashboard");
 
   const sponsorships = await getDonorSponsorships(donor.id, { limit: 200 });
-  const displayable = sponsorships.filter(isDisplaySponsorship);
 
-  // Four buckets:
-  //   • Currently sponsoring  — status='active' (includes prepaid). Sorted
-  //     by priority: prepaid → recurring → one-time, newest within tier.
-  //   • Awaiting payment      — status='pending_payment'. Small transient
-  //     block above the main sections so the donor can finish or cancel
-  //     the checkout.
-  //   • Previously supported  — status='completed' only. Sorted most-
-  //     recently-ended first.
-  //   • Cancelled             — status='cancelled' only. Same sort.
-  // Completed and cancelled used to share a section in early Part C; the
-  // revision splits them so the failure state isn't conflated with the
-  // success state in the editorial heading.
-  const active = sortSponsorshipsByPriority(
-    displayable.filter((s) => s.status === "active"),
+  // Partition into the four buckets the page surfaces. The three
+  // long-lived buckets are mutually exclusive (per the helpers in
+  // sponsorship-data.ts); pending_payment is the transient bucket
+  // surfaced separately above the main sections.
+  //
+  //   • Currently sponsoring         — active monthly + prepaid only.
+  //                                     One-time gifts intentionally
+  //                                     excluded — a one-time row is
+  //                                     status='active' in the DB but
+  //                                     not an ongoing relationship.
+  //   • Past gifts and sponsorships  — one-time gifts + completed
+  //                                     subscriptions, sorted by
+  //                                     date_created DESC so a recent
+  //                                     gift floats to the top.
+  //   • Cancelled                    — collapsed by default behind a
+  //                                     toggle; shown via
+  //                                     CollapsibleSection.
+  //   • Awaiting payment             — pending_payment rows, finish-
+  //                                     or-cancel block at top.
+  const ongoing = sortSponsorshipsByPriority(
+    sponsorships.filter(isOngoingSponsorship),
   );
-  const pending = displayable.filter((s) => s.status === "pending_payment");
-  const completed = sortSponsorshipsByEnded(
-    displayable.filter((s) => s.status === "completed"),
+  const past = sortByDateCreatedDesc(
+    sponsorships.filter(isPastGiftOrSponsorship),
   );
   const cancelled = sortSponsorshipsByEnded(
-    displayable.filter((s) => s.status === "cancelled"),
+    sponsorships.filter(isCancelledSponsorship),
   );
+  const pending = sponsorships.filter((s) => s.status === "pending_payment");
 
   return (
     <div className="space-y-12">
@@ -70,15 +79,15 @@ export default async function DashboardSponsorshipsPage() {
           <h1 className="font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
             Currently sponsoring
           </h1>
-          {active.length > 0 ? (
+          {ongoing.length > 0 ? (
             <p className="mt-2 text-[15px] text-slate italic">
-              {active.length} active{" "}
-              {active.length === 1 ? "sponsorship" : "sponsorships"}
+              {ongoing.length} active{" "}
+              {ongoing.length === 1 ? "sponsorship" : "sponsorships"}
             </p>
           ) : null}
         </header>
-        {active.length > 0 ? (
-          <Group items={active} />
+        {ongoing.length > 0 ? (
+          <Group items={ongoing} />
         ) : (
           <p className="mt-6 text-[14.5px] text-slate-soft leading-[1.6] max-w-[560px]">
             You aren&apos;t sponsoring anyone yet.{" "}
@@ -92,41 +101,44 @@ export default async function DashboardSponsorshipsPage() {
         )}
       </section>
 
-      {completed.length > 0 ? (
+      {past.length > 0 ? (
         <section>
           <header>
             <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
-              Previously supported
+              Past gifts and sponsorships
             </h2>
             <p className="mt-2 text-[14px] text-slate italic">
-              {completed.length}{" "}
-              {completed.length === 1
-                ? "completed sponsorship"
-                : "completed sponsorships"}
+              {past.length}{" "}
+              {past.length === 1
+                ? "gift or sponsorship"
+                : "gifts and sponsorships"}
             </p>
           </header>
-          <Group items={completed} />
+          <Group items={past} />
         </section>
       ) : null}
 
-      {cancelled.length > 0 ? (
-        <section>
-          <header>
-            <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
-              Cancelled
-            </h2>
-            <p className="mt-2 text-[14px] text-slate italic">
-              {cancelled.length}{" "}
-              {cancelled.length === 1
-                ? "cancelled sponsorship"
-                : "cancelled sponsorships"}
-            </p>
-          </header>
-          <Group items={cancelled} />
-        </section>
-      ) : null}
+      <CollapsibleSection
+        count={cancelled.length}
+        showLabel="Show cancelled"
+        hideLabel="Hide cancelled"
+      >
+        <Group items={cancelled} />
+      </CollapsibleSection>
     </div>
   );
+}
+
+// Most-recent-first by created date. Used only for the "Past gifts and
+// sponsorships" section, where the donor cares about chronology of
+// what they've given/finished — not the priority shape used for the
+// "Currently sponsoring" tier ordering.
+function sortByDateCreatedDesc<T extends Sponsorship>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const da = a.date_created ?? "";
+    const db = b.date_created ?? "";
+    return db.localeCompare(da);
+  });
 }
 
 function Group({ items }: { items: Sponsorship[] }) {
