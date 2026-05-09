@@ -1,0 +1,31 @@
+-- ⚠ For Directus-managed collections, prefer adding fields via
+-- Directus Admin UI (Settings → Data Model). This SQL is kept
+-- as schema reference, not as the primary apply mechanism.
+-- See migrations/README.md.
+--
+-- Session 14.6 — Sponsor visibility (named / anonymous)
+--
+-- Adds one nullable text column to the sponsorship collection
+-- capturing the donor's chosen public visibility for that
+-- sponsorship: 'named' (first name visible on the child's
+-- public page) or 'anonymous' (default; no public name).
+-- Validation lives at the application layer so adding new
+-- visibility values later doesn't require schema migration.
+--
+-- DEFAULT 'anonymous' is faith-conscious: hidden sadaqah is the
+-- baseline, donors opt INTO recognition. Idempotent.
+--
+-- Apply via Directus Admin UI:
+--   1. Open https://admin.orphangive.org/admin/settings/data-model/sponsorship
+--   2. + Create Field → Input → Dropdown
+--   3. Key: visibility
+--      Type: string
+--      Required: no, Allow null: yes
+--      Default: anonymous
+--   4. Choices (Display Label : Stored Value):
+--        Anonymous : anonymous
+--        Show name : named
+--   5. Save
+
+ALTER TABLE sponsorship
+  ADD COLUMN IF NOT EXISTS visibility TEXT NULL DEFAULT 'anonymous';

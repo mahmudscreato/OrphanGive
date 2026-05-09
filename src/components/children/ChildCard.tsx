@@ -46,9 +46,15 @@ function ChildPhoto({
 export function ChildCard({
   child,
   preload = false,
+  monthlySponsored = false,
 }: {
   child: ChildSummary;
   preload?: boolean;
+  // Session 14.6: when true, this child has an active monthly sponsor.
+  // The corner badge swaps from the tangerine "Awaiting" pip to a
+  // moss-soft "Sponsored monthly" pip. The card stays clickable —
+  // donors can still send one-time gifts.
+  monthlySponsored?: boolean;
 }) {
   const name = child.display_name ?? "A child awaiting sponsorship";
   const districtLine = child.district ?? child.region ?? null;
@@ -60,10 +66,17 @@ export function ChildCard({
     >
       <div className="relative aspect-square overflow-hidden">
         <ChildPhoto photo={child.photo} name={name} preload={preload} />
-        <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[10px] tracking-[0.1em] uppercase text-ink font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
-          Awaiting
-        </div>
+        {monthlySponsored ? (
+          <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-moss-soft/95 backdrop-blur-md font-mono text-[10px] tracking-[0.1em] uppercase text-moss-deep font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-moss" />
+            Sponsored monthly
+          </div>
+        ) : (
+          <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[10px] tracking-[0.1em] uppercase text-ink font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
+            Awaiting
+          </div>
+        )}
       </div>
       <div className="p-6">
         <div className="flex justify-between items-center font-mono text-[11px] text-slate tracking-[0.1em] uppercase">

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import { labelForCause } from "@/lib/cause";
+import { effectiveVisibility } from "@/lib/visibility";
 import type { Sponsorship } from "@/lib/sponsorship-data";
 import {
   SponsorshipStatusBadge,
@@ -71,6 +72,12 @@ export function SponsorshipCard({ s }: Props) {
           {coverage ? (
             <div className="mt-1.5 text-[12.5px] text-slate italic leading-snug">
               {coverage}
+            </div>
+          ) : null}
+          {effectiveVisibility(s.visibility) === "named" ? (
+            <div className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.12em] uppercase text-moss-deep">
+              <span aria-hidden="true">●</span>
+              Shown publicly
             </div>
           ) : null}
         </div>

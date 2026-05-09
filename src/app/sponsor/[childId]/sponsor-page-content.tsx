@@ -26,8 +26,14 @@ import {
 } from "@/components/sponsor/DurationPicker";
 import { PaymentSchedulePicker } from "@/components/sponsor/PaymentSchedulePicker";
 import { CausePicker } from "@/components/sponsor/CausePicker";
+import { VisibilityPicker } from "@/components/sponsor/VisibilityPicker";
 import { SponsorReviewCard } from "@/components/sponsor/SponsorReviewCard";
 import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "@/lib/cause";
+import {
+  DEFAULT_VISIBILITY,
+  isValidVisibility,
+  type VisibilityEnum,
+} from "@/lib/visibility";
 
 type ChildProps = {
   id: string;
@@ -44,15 +50,24 @@ type Props = {
   signedIn: boolean;
   donorState: DonorState;
   initialCartItemCount: number;
+  // Session 14.6: when true, this child already has an active monthly
+  // sponsor (any donor). The 'monthly' tile in step 1 renders disabled
+  // and the donor can only build a one-time gift here. The /sponsor
+  // server page sets this from getActiveMonthlySponsorForChild.
+  monthlyLocked: boolean;
+  // Donor's first name (when signed in). Surfaced as a preview in the
+  // step 6 'Show my name' option so the donor sees what's about to go
+  // public. Null for guests.
+  donorFirstName: string | null;
 };
 
 const OTHER_TIER_ID = "other" as const;
 
 // Step machine.
-//   Step 1 mode  → 2 amount → 3 duration → 4 schedule → 5 cause → 6 review
-// One-time skips 3 and 4. Indefinite monthly skips 4. Cause (step 5)
-// always renders — including for one-time gifts.
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+//   1 mode → 2 amount → 3 duration → 4 schedule → 5 cause → 6 visibility → 7 review
+// One-time skips 3 and 4. Indefinite monthly skips 4. Cause (5) and
+// visibility (6) always render — including for one-time gifts.
+type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 function pickFirstSentence(s: string | null): string | null {
   if (!s) return null;
@@ -80,12 +95,14 @@ function readPrefilledState(searchParams: URLSearchParams): {
   duration: DurationSelection;
   schedule: PaymentSchedule | null;
   cause: CauseEnum;
+  visibility: VisibilityEnum;
 } | null {
   const m = searchParams.get("mode");
   const a = searchParams.get("amount");
   const d = searchParams.get("duration"); // "indef" or integer string
   const s = searchParams.get("schedule"); // optional for one_time / indef
   const cRaw = searchParams.get("cause"); // optional; defaults to general_care
+  const vRaw = searchParams.get("visibility"); // optional; defaults to anonymous
 
   if (!m || !a) return null;
   if (!isPaymentMode(m)) return null;
@@ -104,6 +121,17 @@ function readPrefilledState(searchParams: URLSearchParams): {
     return null;
   }
 
+  // Same shape for visibility (Session 14.6) — optional, validated
+  // strictly when present, defaults to anonymous (privacy-preserving).
+  let visibility: VisibilityEnum;
+  if (vRaw === null) {
+    visibility = DEFAULT_VISIBILITY;
+  } else if (isValidVisibility(vRaw)) {
+    visibility = vRaw;
+  } else {
+    return null;
+  }
+
   if (m === "one_time") {
     return {
       mode: "one_time",
@@ -111,6 +139,7 @@ function readPrefilledState(searchParams: URLSearchParams): {
       duration: { optionId: "d_indef", months: null },
       schedule: null,
       cause,
+      visibility,
     };
   }
 
@@ -142,6 +171,7 @@ function readPrefilledState(searchParams: URLSearchParams): {
     duration: durationSelectionFromMonths(months),
     schedule,
     cause,
+    visibility,
   };
 }
 
@@ -150,6 +180,8 @@ export function SponsorPageContent({
   signedIn,
   donorState,
   initialCartItemCount,
+  monthlyLocked,
+  donorFirstName,
 }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -186,8 +218,14 @@ export function SponsorPageContent({
   // Cause defaults to general_care so a donor who doesn't engage the
   // picker still produces a valid value.
   const [cause, setCause] = useState<CauseEnum>(prefill?.cause ?? DEFAULT_CAUSE);
+  // Visibility defaults to anonymous (faith-conscious / hidden-sadaqah
+  // baseline). Donors opt INTO 'named'.
+  const [visibility, setVisibility] = useState<VisibilityEnum>(
+    prefill?.visibility ?? DEFAULT_VISIBILITY,
+  );
   // Start at the review step if URL prefilled enough state to be valid.
-  const [step, setStep] = useState<Step>(prefill ? 6 : 1);
+  // Review is now step 7 after the visibility step inserted at 6.
+  const [step, setStep] = useState<Step>(prefill ? 7 : 1);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -219,6 +257,7 @@ export function SponsorPageContent({
     setDuration({ optionId: "d_indef", months: null });
     setSchedule(null);
     setCause(DEFAULT_CAUSE);
+    setVisibility(DEFAULT_VISIBILITY);
     setStep(1);
     setError(null);
     setSuccess(false);
@@ -271,6 +310,10 @@ export function SponsorPageContent({
     setStep(6);
   }
 
+  function confirmVisibility() {
+    setStep(7);
+  }
+
   // Edit selections from review screen → restart at step 1 but preserve
   // the existing values so the donor can quickly pivot.
   function editSelections() {
@@ -295,6 +338,7 @@ export function SponsorPageContent({
                 durationMonths: null,
                 paymentSchedule: null,
                 cause,
+                visibility,
               }
             : {
                 childId: child.id,
@@ -304,6 +348,7 @@ export function SponsorPageContent({
                 paymentSchedule:
                   duration.months === null ? "monthly" : schedule,
                 cause,
+                visibility,
               };
         const res = await fetch("/api/cart/add", {
           method: "POST",
@@ -397,7 +442,22 @@ export function SponsorPageContent({
           {step === 1 ? (
             <div className="mb-7">
               <StepHeader n={1} title="How would you like to give?" />
-              <ModeSelector value={mode} onChange={pickMode} />
+              {monthlyLocked ? (
+                <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3">
+                  <p className="text-[13.5px] text-ink leading-snug">
+                    <span className="font-display font-medium">
+                      {child.display_name.split(" ")[0]}
+                    </span>{" "}
+                    already has a monthly sponsor. You can still send a
+                    one-time gift to support them now.
+                  </p>
+                </div>
+              ) : null}
+              <ModeSelector
+                value={mode}
+                onChange={pickMode}
+                monthlyLocked={monthlyLocked}
+              />
             </div>
           ) : null}
 
@@ -522,10 +582,38 @@ export function SponsorPageContent({
             </div>
           ) : null}
 
-          {/* Step 6: review */}
+          {/* Step 6: visibility (named / anonymous). Always renders for
+              every mode — Islamic hidden-charity preference applies
+              equally to one-time and monthly. Default state is
+              'anonymous'. */}
           {step === 6 && mode && amount !== null ? (
+            <div className="mb-7">
+              <StepHeader
+                n={6}
+                title="Should your name appear publicly?"
+              />
+              <BackLink onClick={() => setStep(5)} label="Back to cause" />
+              <VisibilityPicker
+                value={visibility}
+                onChange={setVisibility}
+                donorFirstName={donorFirstName}
+              />
+              <div className="mt-5">
+                <button
+                  type="button"
+                  onClick={confirmVisibility}
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+                >
+                  Continue →
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Step 7: review */}
+          {step === 7 && mode && amount !== null ? (
             <div className="mb-5">
-              <StepHeader n={6} title="Review" />
+              <StepHeader n={7} title="Review" />
               <SponsorReviewCard
                 paymentMode={mode}
                 amountUsd={amount}
@@ -538,6 +626,8 @@ export function SponsorPageContent({
                     : null
                 }
                 cause={cause}
+                visibility={visibility}
+                donorFirstName={donorFirstName}
                 onEdit={editSelections}
                 onAddToCart={addToCart}
                 pending={pending}

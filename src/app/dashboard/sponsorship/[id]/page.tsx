@@ -15,6 +15,7 @@ import { formatUsd } from "@/lib/pricing";
 import { labelForCause } from "@/lib/cause";
 import { SponsorshipStatusBadge } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { SponsorshipActions } from "./SponsorshipActions";
+import { VisibilityEditor } from "./VisibilityEditor";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -137,6 +138,17 @@ export default async function SponsorshipDetailPage({
             scheduledEndDate={sponsorship.scheduled_end_date}
           />
         </section>
+      ) : null}
+
+      {/* Editable visibility — only meaningful while the sponsorship
+          can affect a public surface. Hidden for completed/cancelled
+          rows where the row is finalized. */}
+      {status !== "completed" && status !== "cancelled" ? (
+        <VisibilityEditor
+          sponsorshipId={sponsorship.id}
+          initialVisibility={sponsorship.visibility}
+          donorFirstName={donor!.first_name?.trim() ?? null}
+        />
       ) : null}
 
       {/* Payments */}

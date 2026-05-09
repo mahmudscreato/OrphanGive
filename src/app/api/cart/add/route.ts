@@ -14,6 +14,11 @@ import {
 } from "@/lib/pricing";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "@/lib/cause";
+import {
+  DEFAULT_VISIBILITY,
+  isValidVisibility,
+  type VisibilityEnum,
+} from "@/lib/visibility";
 
 export const runtime = "nodejs";
 
@@ -31,6 +36,7 @@ export async function POST(req: NextRequest) {
     durationMonths: durationRaw,
     paymentSchedule: scheduleRaw,
     cause: causeRaw,
+    visibility: visibilityRaw,
   } = body as Record<string, unknown>;
 
   if (typeof childId !== "string") {
@@ -138,6 +144,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Visibility defaults to 'anonymous' (faith-conscious / hidden-sadaqah
+  // baseline). Same shape as cause: present-but-unknown rejected, missing
+  // takes the privacy-preserving default. Donors opt INTO 'named'.
+  let visibility: VisibilityEnum;
+  if (visibilityRaw === undefined || visibilityRaw === null) {
+    visibility = DEFAULT_VISIBILITY;
+  } else if (isValidVisibility(visibilityRaw)) {
+    visibility = visibilityRaw;
+  } else {
+    return NextResponse.json(
+      { error: "Invalid visibility." },
+      { status: 400 },
+    );
+  }
+
   // Block signed-in but suspended/rejected donors. Pending-approval donors
   // CAN build a cart per spec — checkout enforces approval at pay time.
   const donor = await getCurrentDonor();
@@ -164,6 +185,7 @@ export async function POST(req: NextRequest) {
       durationMonths,
       paymentSchedule,
       cause,
+      visibility,
     },
   });
   const hydrated = await hydrateCart(cart);

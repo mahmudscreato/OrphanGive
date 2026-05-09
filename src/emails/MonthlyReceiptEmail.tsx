@@ -17,6 +17,9 @@ export type MonthlyReceiptEmailProps = {
   // for back-compat — old callers that haven't been updated still send
   // a valid receipt; the new line just won't appear.
   causeLabel?: string;
+  // Pre-resolved visibility label (Session 14.6). Same back-compat
+  // shape as causeLabel — absent → row is omitted.
+  visibilityLabel?: string;
 };
 
 function formatUsd(n: number): string {
@@ -53,6 +56,7 @@ export function MonthlyReceiptEmail({
   nextBillingDate,
   dashboardUrl,
   causeLabel,
+  visibilityLabel,
 }: MonthlyReceiptEmailProps) {
   const paidAtFmt = formatDate(paidAt) ?? paidAt;
   const nextFmt = formatDate(nextBillingDate);
@@ -112,6 +116,9 @@ export function MonthlyReceiptEmail({
         <MetadataRow label="Payment method" value={methodLine} />
         {causeLabel ? (
           <MetadataRow label="Supporting" value={causeLabel} />
+        ) : null}
+        {visibilityLabel ? (
+          <MetadataRow label="Visibility" value={visibilityLabel} />
         ) : null}
         {stripeReceiptUrl ? (
           <Text

@@ -9,6 +9,7 @@ import { UpdatesSection } from "@/components/profile/UpdatesSection";
 import { EducationSection } from "@/components/profile/EducationSection";
 import { SponsorCTA } from "@/components/profile/SponsorCTA";
 import { RelatedChildren } from "@/components/profile/RelatedChildren";
+import { ChildSponsorBanner } from "@/components/children/ChildSponsorBanner";
 import {
   getChildById,
   getChildDocumentsStatus,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/child-profile-data";
 import { getRandomActiveChildren } from "@/lib/children-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
+import { getActiveMonthlySponsorForChild } from "@/lib/sponsorship-data";
 import {
   ALLOWED_REVEAL_FIELDS,
   fetchRevealedFieldValues,
@@ -39,13 +41,18 @@ export default async function ChildProfilePage({
   const { tier } = await getViewerTier();
 
   // Fetch in parallel — all server-side via the admin token client.
-  const [child, docs, updates, moments, related] = await Promise.all([
-    getChildById(id, tier),
-    getChildDocumentsStatus(id),
-    getChildUpdates(id),
-    getChildMoments(id),
-    getRandomActiveChildren(id, 4),
-  ]);
+  // Active monthly sponsor (Session 14.6) drives the public banner
+  // between hero and story; null when the child is unsponsored or
+  // when only one-time gifts are present.
+  const [child, docs, updates, moments, related, activeMonthly] =
+    await Promise.all([
+      getChildById(id, tier),
+      getChildDocumentsStatus(id),
+      getChildUpdates(id),
+      getChildMoments(id),
+      getRandomActiveChildren(id, 4),
+      getActiveMonthlySponsorForChild(id),
+    ]);
 
   if (!child) notFound();
 
@@ -106,6 +113,17 @@ export default async function ChildProfilePage({
         </div>
       </div>
       <ProfileHero child={child} tier={tier} />
+      {activeMonthly ? (
+        <section className="px-6 pt-8 pb-2 bg-cream max-md:pt-6">
+          <div className="max-w-[760px] mx-auto">
+            <ChildSponsorBanner
+              childFirstName={child.display_name.split(" ")[0]}
+              visibility={activeMonthly.visibility}
+              sponsorFirstName={activeMonthly.donorFirstName}
+            />
+          </div>
+        </section>
+      ) : null}
       <StorySection child={child} tier={tier} />
       <MomentsGallery childName={child.display_name} moments={moments} />
       <LockedFieldsBand

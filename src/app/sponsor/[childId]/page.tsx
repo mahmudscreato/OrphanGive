@@ -3,6 +3,7 @@ import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { getChildById } from "@/lib/child-profile-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { readCart } from "@/lib/cart-data";
+import { getActiveMonthlySponsorForChild } from "@/lib/sponsorship-data";
 import { SponsorPageContent } from "./sponsor-page-content";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,16 @@ export default async function SponsorPage({
   const cart = await readCart();
   const cartItemCount = cart?.items.length ?? 0;
 
+  // Session 14.6: child-lock — at most one active monthly sponsor per
+  // child. The flag is true unless the locked sponsor IS the current
+  // donor (in which case they're the holder; they can still re-edit
+  // their own commitment via the sponsorship detail page, not here).
+  // Re-checked at /api/checkout/init too as the race-condition guard.
+  const activeMonthly = await getActiveMonthlySponsorForChild(child.id);
+  const monthlyLocked = Boolean(
+    activeMonthly && activeMonthly.donorId !== donor.id,
+  );
+
   return (
     <main className="bg-cream">
       <div className="px-6 pt-32 max-md:pt-28">
@@ -60,6 +71,8 @@ export default async function SponsorPage({
         signedIn={Boolean(donor)}
         donorState={donorState}
         initialCartItemCount={cartItemCount}
+        monthlyLocked={monthlyLocked}
+        donorFirstName={donor.first_name ?? null}
       />
     </main>
   );

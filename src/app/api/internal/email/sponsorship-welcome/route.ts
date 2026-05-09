@@ -14,6 +14,7 @@ import {
   type SponsorshipWelcomeItem,
 } from "@/emails/SponsorshipWelcomeEmail";
 import { labelForCause } from "@/lib/cause";
+import { labelForVisibility } from "@/lib/visibility";
 
 export const runtime = "nodejs";
 
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
       amountUsd: s.amount_usd,
       nextBillingDate: s.payment_mode === "monthly" ? s.next_billing_date : null,
       causeLabel: labelForCause(s.cause),
+      visibilityLabel: labelForVisibility(s.visibility),
     };
   });
 

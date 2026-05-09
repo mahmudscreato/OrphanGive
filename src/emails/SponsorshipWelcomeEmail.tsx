@@ -15,6 +15,10 @@ export type SponsorshipWelcomeItem = {
   // Pre-resolved by the route handler via labelForCause() so the email
   // template doesn't import application code.
   causeLabel?: string;
+  // Donor-facing label for the visibility choice (Session 14.6).
+  // Pre-resolved via labelForVisibility(). Optional — older callers
+  // still send the email shape without it; absent → row is omitted.
+  visibilityLabel?: string;
 };
 
 export type SponsorshipWelcomeEmailProps = {
@@ -167,6 +171,9 @@ export function SponsorshipWelcomeEmail({
             ) : null}
             {s.causeLabel ? (
               <MetadataRow label="Supporting" value={s.causeLabel} />
+            ) : null}
+            {s.visibilityLabel ? (
+              <MetadataRow label="Visibility" value={s.visibilityLabel} />
             ) : null}
           </MetadataCard>
         );

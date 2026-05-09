@@ -16,6 +16,11 @@ import {
   type PaymentSchedule,
 } from "./pricing";
 import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "./cause";
+import {
+  DEFAULT_VISIBILITY,
+  isValidVisibility,
+  type VisibilityEnum,
+} from "./visibility";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export const CART_COOKIE = "og_cart_token";
@@ -35,6 +40,11 @@ export type CartItem = {
   // Donor's stated allocation intent (Session 14.5). Defaults to
   // general_care when the donor doesn't explicitly choose.
   cause: CauseEnum;
+  // Donor-controlled public visibility (Session 14.6). Defaults to
+  // 'anonymous' (faith-conscious / hidden-sadaqah baseline). Donors
+  // opt INTO 'named' to surface their first name on the child's
+  // public page.
+  visibility: VisibilityEnum;
 };
 
 export type HydratedCartItem = CartItem & {
@@ -141,6 +151,14 @@ function isPlainCartItem(v: unknown): v is CartItem {
     if (!isValidCause(o.cause)) return false;
   } else {
     o.cause = DEFAULT_CAUSE;
+  }
+  // `visibility` was added in Session 14.6. Same legacy-tolerant
+  // rule as cause: missing/null defaults to anonymous (the privacy-
+  // preserving baseline), present-but-unknown is rejected.
+  if ("visibility" in o && o.visibility !== undefined && o.visibility !== null) {
+    if (!isValidVisibility(o.visibility)) return false;
+  } else {
+    o.visibility = DEFAULT_VISIBILITY;
   }
   return true;
 }
@@ -463,6 +481,10 @@ export async function clearCart(): Promise<void> {
 // Cause defaults to general_care when the row pre-dates the Session 14.5
 // migration (`null` cause). Same fallback as labelForCause().
 //
+// Visibility defaults to 'anonymous' when the row pre-dates Session 14.6
+// (`null` visibility). Privacy-preserving baseline so legacy data never
+// accidentally surfaces a donor name when reconstructed into a cart.
+//
 // TODO (Session 16): if the original cart was a multi-child bundle, this
 // helper only reconstructs the SINGLE item the donor clicked. Resuming
 // the full bundle would require persisting the original cart_session id
@@ -475,6 +497,10 @@ export function cartItemFromSponsorship(
     s.cause && (CAUSE_VALUES as ReadonlySet<string>).has(s.cause)
       ? (s.cause as CauseEnum)
       : DEFAULT_CAUSE;
+  const visibility: VisibilityEnum =
+    s.visibility && (VISIBILITY_VALUES as ReadonlySet<string>).has(s.visibility)
+      ? (s.visibility as VisibilityEnum)
+      : DEFAULT_VISIBILITY;
   return {
     childId,
     paymentMode: s.payment_mode,
@@ -482,6 +508,7 @@ export function cartItemFromSponsorship(
     durationMonths: s.duration_months,
     paymentSchedule: s.payment_schedule,
     cause,
+    visibility,
   };
 }
 
@@ -495,6 +522,15 @@ const CAUSE_VALUES: ReadonlySet<string> = new Set([
   "healthcare",
   "food",
   "eid_gift",
+]);
+
+// Same pattern as CAUSE_VALUES — local Set for the
+// cartItemFromSponsorship guard. visibility.ts is a leaf module too,
+// but matching the existing local-Set convention here keeps the file's
+// import surface consistent.
+const VISIBILITY_VALUES: ReadonlySet<string> = new Set([
+  "anonymous",
+  "named",
 ]);
 
 // Verify a child exists and is currently active. Used at /api/cart/add to

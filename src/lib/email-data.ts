@@ -209,6 +209,11 @@ export type EmailSponsorship = {
   // Coverage package / cause — used by welcome/extended/receipt
   // emails to show "Supporting: [label]". Nullable for legacy rows.
   cause: string | null;
+  // Sponsor visibility (Session 14.6) — used by welcome/extended/
+  // receipt emails to show "Visibility: Keep anonymous" /
+  // "Show my name". Nullable for legacy rows; resolved through
+  // labelForVisibility() which treats null as anonymous.
+  visibility: string | null;
 };
 
 export async function fetchSponsorshipsByIds(
@@ -229,6 +234,7 @@ export async function fetchSponsorshipsByIds(
           "next_billing_date",
           "status",
           "cause",
+          "visibility",
         ],
         limit: -1,
       } as never),
@@ -245,6 +251,7 @@ export async function fetchSponsorshipsByIds(
       next_billing_date: (r.next_billing_date as string | null) ?? null,
       status: String(r.status ?? ""),
       cause: (r.cause as string | null) ?? null,
+      visibility: (r.visibility as string | null) ?? null,
     }));
   } catch (err) {
     console.warn(

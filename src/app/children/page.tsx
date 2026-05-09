@@ -8,6 +8,7 @@ import {
   getChildrenPage,
   parseFilters,
 } from "@/lib/children-data";
+import { getMonthlySponsoredChildIds } from "@/lib/sponsorship-data";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,13 @@ export default async function BrowseChildrenPage({
     getChildrenPage(filters),
     getActiveDistricts(),
   ]);
+
+  // Session 14.6: bulk-resolve which children currently have an
+  // active monthly sponsor so each card can show the corner badge.
+  // Single round-trip against the visible page IDs.
+  const monthlySponsoredIds = await getMonthlySponsoredChildIds(
+    page.children.map((c) => c.id),
+  );
 
   const fmt = new Intl.NumberFormat("en-US");
 
@@ -81,7 +89,12 @@ export default async function BrowseChildrenPage({
           ) : (
             <div className="grid grid-cols-3 gap-7 max-lg:grid-cols-2 max-md:grid-cols-1">
               {page.children.map((c, i) => (
-                <ChildCard key={c.id} child={c} preload={i < 3} />
+                <ChildCard
+                  key={c.id}
+                  child={c}
+                  preload={i < 3}
+                  monthlySponsored={monthlySponsoredIds.has(c.id)}
+                />
               ))}
             </div>
           )}

@@ -73,6 +73,11 @@ export type Sponsorship = {
   // Nullable for legacy rows that pre-date Session 14.5; display
   // helpers fall back to "Where most needed" via labelForCause().
   cause: string | null;
+  // Public visibility — 'named' shows donor's first name on the
+  // child's public page; 'anonymous' (default) keeps it hidden.
+  // Editable post-hoc by the donor. Nullable for legacy rows;
+  // see src/lib/visibility.ts for null → anonymous fallback.
+  visibility: string | null;
 };
 
 const FULL_FIELDS = [
@@ -86,6 +91,7 @@ const FULL_FIELDS = [
   "prepaid_months_total", "prepaid_months_remaining", "scheduled_end_date",
   "cancellation_scheduled_at",
   "cause",
+  "visibility",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
 ] as const;
@@ -174,6 +180,9 @@ export async function createPendingSponsorship(opts: {
   // here; we forward whatever string is supplied (so an admin override
   // path could pass any value the Directus dropdown allows).
   cause?: string | null;
+  // Public visibility — 'named' or 'anonymous'. Caller validates via
+  // isValidVisibility() before reaching here.
+  visibility?: string | null;
 }): Promise<{ id: string }> {
   const payload: Record<string, unknown> = {
     donor: opts.donor,
@@ -192,6 +201,7 @@ export async function createPendingSponsorship(opts: {
     prepaid_months_remaining: opts.prepaid_months_remaining ?? null,
     scheduled_end_date: opts.scheduled_end_date ?? null,
     cause: opts.cause ?? null,
+    visibility: opts.visibility ?? null,
   };
   const created = (await directusServer().request(
     createItem("sponsorship" as never, payload as never),
@@ -464,6 +474,138 @@ export type ChildUpdate = {
   photo: string | null;
   published_at: string | null;
 };
+
+// ─── Child-lock lookups (Session 14.6) ───────────────────────────────────────
+//
+// Rule 1 — Monthly exclusivity: a child can have AT MOST ONE active
+// monthly subscription at a time. The sponsor flow blocks `monthly`
+// mode when one already exists; checkout/init re-checks before
+// creating Stripe objects to defend against simultaneous-tab races.
+//
+// "Active monthly" means `status='active' AND payment_mode='monthly'`.
+// `payment_schedule` doesn't matter — recurring (monthly), prepaid
+// (monthly_prepaid), and fixed-term recurring all count. One-time
+// gifts are NOT subject to this lock.
+
+export type ActiveMonthlySponsor = {
+  sponsorshipId: string;
+  donorId: string;
+  visibility: string | null;
+  scheduledEndDate: string | null;
+  cancellationScheduledAt: string | null;
+  donorFirstName: string | null;
+};
+
+// Single-child lookup. Used by /sponsor/[childId] (server-side lock
+// check) and /children/[id] (banner data). Returns the single active
+// monthly sponsorship row for a child, or null if none. If multiple
+// somehow exist (data integrity issue: two checkouts raced past the
+// guard), logs loudly and returns the most recent.
+export async function getActiveMonthlySponsorForChild(
+  childId: string,
+): Promise<ActiveMonthlySponsor | null> {
+  if (!UUID_RE.test(childId)) return null;
+  try {
+    const rows = (await directusServer().request(
+      readItems("sponsorship" as never, {
+        filter: {
+          _and: [
+            { child: { _eq: childId } },
+            { status: { _eq: "active" } },
+            { payment_mode: { _eq: "monthly" } },
+          ],
+        },
+        fields: [
+          "id",
+          "donor",
+          "visibility",
+          "scheduled_end_date",
+          "cancellation_scheduled_at",
+          "date_created",
+          "donor.first_name",
+        ],
+        sort: ["-date_created"],
+        limit: 5,
+      } as never),
+    )) as unknown as Array<{
+      id: string;
+      donor:
+        | string
+        | { id?: string; first_name?: string | null }
+        | null;
+      visibility?: string | null;
+      scheduled_end_date?: string | null;
+      cancellation_scheduled_at?: string | null;
+      date_created?: string | null;
+    }>;
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    if (rows.length > 1) {
+      console.warn(
+        `[sponsorship-data] getActiveMonthlySponsorForChild: ${rows.length} active monthly rows for child ${childId} — data-integrity issue. Returning most recent.`,
+      );
+    }
+    const row = rows[0]!;
+    const donorObj = typeof row.donor === "object" && row.donor !== null
+      ? row.donor
+      : null;
+    const donorId =
+      typeof row.donor === "string"
+        ? row.donor
+        : donorObj?.id ?? "";
+    return {
+      sponsorshipId: String(row.id),
+      donorId: String(donorId),
+      visibility: row.visibility ?? null,
+      scheduledEndDate: row.scheduled_end_date ?? null,
+      cancellationScheduledAt: row.cancellation_scheduled_at ?? null,
+      donorFirstName: donorObj?.first_name ?? null,
+    };
+  } catch (err) {
+    console.warn(
+      "[sponsorship-data] getActiveMonthlySponsorForChild failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+// Bulk lookup. Used by /children (the public list) to badge cards
+// that already have a monthly sponsor. Returns the set of child ids
+// (subset of the input) that currently have one. Empty input → empty
+// set, single Directus round-trip.
+export async function getMonthlySponsoredChildIds(
+  childIds: ReadonlyArray<string>,
+): Promise<Set<string>> {
+  const valid = childIds.filter((id) => UUID_RE.test(id));
+  if (valid.length === 0) return new Set();
+  try {
+    const rows = (await directusServer().request(
+      readItems("sponsorship" as never, {
+        filter: {
+          _and: [
+            { child: { _in: valid } },
+            { status: { _eq: "active" } },
+            { payment_mode: { _eq: "monthly" } },
+          ],
+        },
+        fields: ["child"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ child: string | { id: string } }>;
+    const out = new Set<string>();
+    for (const r of rows ?? []) {
+      const id = typeof r.child === "string" ? r.child : r.child?.id;
+      if (id) out.add(id);
+    }
+    return out;
+  } catch (err) {
+    console.warn(
+      "[sponsorship-data] getMonthlySponsoredChildIds failed",
+      err instanceof Error ? err.message : err,
+    );
+    return new Set();
+  }
+}
 
 // ─── Partition helpers ───────────────────────────────────────────────────────
 //

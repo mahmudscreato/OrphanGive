@@ -2,6 +2,7 @@
 
 import { formatUsd, type PaymentMode, type PaymentSchedule } from "@/lib/pricing";
 import { labelForCause, type CauseEnum } from "@/lib/cause";
+import type { VisibilityEnum } from "@/lib/visibility";
 
 export type SponsorReviewProps = {
   paymentMode: PaymentMode;
@@ -11,6 +12,13 @@ export type SponsorReviewProps = {
   paymentSchedule: PaymentSchedule | null;
   // Donor's chosen allocation intent.
   cause: CauseEnum;
+  // Donor's public-visibility choice. Surfaced in review so they can
+  // double-check before checkout.
+  visibility: VisibilityEnum;
+  // Donor's first name — used to render a concrete preview when
+  // visibility='named' ("Shown publicly: Sponsored by Mahmud"). Null
+  // for guests; the named-row falls back to a generic phrasing.
+  donorFirstName?: string | null;
   // Action props
   onEdit: () => void;
   onAddToCart: () => void;
@@ -30,6 +38,8 @@ export function SponsorReviewCard({
   durationMonths,
   paymentSchedule,
   cause,
+  visibility,
+  donorFirstName,
   onEdit,
   onAddToCart,
   pending,
@@ -100,6 +110,13 @@ export function SponsorReviewCard({
           </Row>
         ) : null}
         <Row label="Supporting">{labelForCause(cause)}</Row>
+        <Row label="Visibility">
+          {visibility === "named"
+            ? donorFirstName
+              ? `Shown publicly as "${donorFirstName}"`
+              : "Shown publicly with your first name"
+            : "Anonymous"}
+        </Row>
       </dl>
 
       <div className="mt-4 pt-4 border-t border-ink/[0.06] grid grid-cols-2 gap-4 max-md:grid-cols-1">

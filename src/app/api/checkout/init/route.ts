@@ -14,6 +14,7 @@ import { calculateScheduledEndDate } from "@/lib/pricing";
 import { getStripe, getStripePublishableKey } from "@/lib/stripe-client";
 import {
   createPendingSponsorship,
+  getActiveMonthlySponsorForChild,
   getRecentPendingForDonor,
   updateSponsorship,
   type Sponsorship,
@@ -43,6 +44,12 @@ function fingerprintCart(items: ReadonlyArray<HydratedCartItem>): string {
       // checkout attempts forces a fresh sponsorship row (the old
       // pending row gets cancelled with reason='abandoned').
       cause: i.cause,
+      // Visibility (Session 14.6) is also part of the fingerprint —
+      // a donor toggling named ↔ anonymous mid-checkout should
+      // produce a fresh row whose Stripe metadata reflects the new
+      // choice. Otherwise the donor name on activation emails could
+      // disagree with what's stored on the sponsorship row.
+      visibility: i.visibility,
     }))
     .sort((a, b) => {
       if (a.childId !== b.childId) return a.childId < b.childId ? -1 : 1;
@@ -54,6 +61,7 @@ function fingerprintCart(items: ReadonlyArray<HydratedCartItem>): string {
         return (a.paymentSchedule ?? "") < (b.paymentSchedule ?? "") ? -1 : 1;
       }
       if (a.cause !== b.cause) return a.cause < b.cause ? -1 : 1;
+      if (a.visibility !== b.visibility) return a.visibility < b.visibility ? -1 : 1;
       return a.amountUsd - b.amountUsd;
     });
   return createHash("sha256")
@@ -477,6 +485,31 @@ export async function POST() {
       );
     }
   }
+
+  // ── Child-lock race guard (Session 14.6) ─────────────────────────────
+  // At most ONE active monthly sponsorship per child. The /sponsor page
+  // already blocks the donor from picking 'monthly' on a locked child,
+  // but two donors clicking through simultaneously could both pass that
+  // gate before either's sub activates. Re-check here at checkout-init
+  // time (last point before we create Stripe Subscriptions) and reject
+  // if the slot is already taken by another donor. Same-donor reuse is
+  // allowed — the donor may legitimately be retrying their own checkout
+  // (resume-cart, refresh, etc.) and their own pending will be cleaned
+  // up by the stale-pending reconciliation below.
+  for (const item of cart.items) {
+    if (item.paymentMode !== "monthly") continue;
+    const lock = await getActiveMonthlySponsorForChild(item.childId);
+    if (lock && lock.donorId !== donor.id) {
+      return NextResponse.json(
+        {
+          error:
+            "This child already has an active monthly sponsor. You can still give a one-time gift instead.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const hydrated = await hydrateCart(cart);
 
   const publishableKey = getStripePublishableKey();
@@ -617,6 +650,7 @@ async function createFreshCheckout(opts: {
           child_id: item.childId,
           sponsorship_pending: "true",
           cause: item.cause,
+          visibility: item.visibility,
           ...(isFixedTerm
             ? { duration_months: String(item.durationMonths) }
             : {}),
@@ -641,6 +675,7 @@ async function createFreshCheckout(opts: {
         payment_schedule: "monthly",
         scheduled_end_date: scheduledEnd,
         cause: item.cause,
+        visibility: item.visibility,
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);
@@ -681,6 +716,7 @@ async function createFreshCheckout(opts: {
         prepaid_months_remaining: months,
         scheduled_end_date: scheduledEnd,
         cause: item.cause,
+        visibility: item.visibility,
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);
@@ -702,6 +738,7 @@ async function createFreshCheckout(opts: {
           duration_months: String(months),
           monthly_amount_usd: String(item.amountUsd),
           cause: item.cause,
+          visibility: item.visibility,
         },
       });
       created.paymentIntentIds.push(pi.id);
@@ -737,6 +774,9 @@ async function createFreshCheckout(opts: {
           // belongs to items[i].childId. Per-row cause is also written
           // to each sponsorship row below.
           causes: buckets.oneTimeItems.map((i) => i.cause).join(","),
+          // Same parallel-array pattern for visibility (Session 14.6).
+          // items[i].visibility belongs to items[i].childId.
+          visibilities: buckets.oneTimeItems.map((i) => i.visibility).join(","),
         },
       });
       created.paymentIntentIds.push(pi.id);
@@ -751,6 +791,7 @@ async function createFreshCheckout(opts: {
           stripe_customer_id: customerId,
           checkout_fingerprint: fingerprint,
           cause: item.cause,
+          visibility: item.visibility,
           // No duration / schedule fields for one-time.
         });
         created.sponsorshipIds.push(sponsorshipId);

@@ -11,6 +11,7 @@ import {
 import { getStripe } from "@/lib/stripe-client";
 import { MonthlyReceiptEmail } from "@/emails/MonthlyReceiptEmail";
 import { labelForCause } from "@/lib/cause";
+import { labelForVisibility } from "@/lib/visibility";
 
 export const runtime = "nodejs";
 
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
       firstName,
       childName,
       causeLabel: labelForCause(sponsorship.cause),
+      visibilityLabel: labelForVisibility(sponsorship.visibility),
       amountUsd: payment.amount_usd,
       paidAt: payment.paid_at,
       paymentMethodLast4: last4,
