@@ -25,12 +25,22 @@
 // webhook handler call into here.
 
 import type Stripe from "stripe";
-import { readItems, updateItem } from "@directus/sdk";
+import { readItem, readItems, updateItem } from "@directus/sdk";
 import { directusServer } from "./directus";
 import {
   type Sponsorship,
   updateSponsorship,
 } from "./sponsorship-data";
+import { sendEmail, siteUrl } from "./email";
+import {
+  fetchChildById,
+  fetchDonorById,
+  formatTo,
+} from "./email-data";
+import { labelForCause } from "./cause";
+import { labelForVisibility } from "./visibility";
+import { SponsorshipActivatedEmail } from "@/emails/SponsorshipActivatedEmail";
+import { SponsorshipQueueShiftEmail } from "@/emails/SponsorshipQueueShiftEmail";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -385,7 +395,247 @@ export async function promoteQueue(
     cursor = endsAt;
   }
 
+  // Send the activation email — best-effort, swallow on error so a
+  // mail-server hiccup doesn't unwind the row promotion. The
+  // post-promotion getQueueForChild + sendActivationEmail look up
+  // donor + child fresh; the head row's status/dates we already
+  // updated above are reflected in the message body via this fetch.
+  try {
+    await sendActivationEmail(head.id);
+  } catch (err) {
+    console.warn(
+      `[queue] activation email for ${head.id} failed (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
   return { promoted: true, newActiveSponsorshipId: head.id };
+}
+
+// Looks up donor + child + the just-updated sponsorship row, renders
+// SponsorshipActivatedEmail, and sends. Used by promoteQueue's success
+// path. Failures are logged but not thrown — the row update is the
+// source of truth, the email is an over-the-wire courtesy.
+async function sendActivationEmail(sponsorshipId: string): Promise<void> {
+  const ds = directusServer();
+  const row = (await ds.request(
+    readItem("sponsorship" as never, sponsorshipId as never, {
+      fields: [
+        "id",
+        "donor",
+        "child",
+        "amount_usd",
+        "duration_months",
+        "scheduled_end_date",
+        "payment_schedule",
+        "cause",
+        "visibility",
+      ],
+    } as never),
+  )) as unknown as {
+    id: string;
+    donor: string;
+    child: string;
+    amount_usd: number;
+    duration_months: number | null;
+    scheduled_end_date: string | null;
+    payment_schedule: "monthly" | "monthly_prepaid" | null;
+    cause: string | null;
+    visibility: string | null;
+  };
+  if (!row) return;
+  const donor = await fetchDonorById(String(row.donor));
+  const child = await fetchChildById(String(row.child));
+  if (!donor || !donor.email) return;
+  const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
+  const childName = child?.display_name ?? "your sponsored child";
+  await sendEmail({
+    to: formatTo(donor.email, firstName),
+    subject: `Your sponsorship of ${childName} has begun`,
+    template: SponsorshipActivatedEmail({
+      firstName,
+      childName,
+      childDistrict: child?.district ?? null,
+      childAge: child?.age ?? null,
+      amountUsd: Number(row.amount_usd ?? 0),
+      durationMonths: row.duration_months ?? null,
+      scheduledEndDate: row.scheduled_end_date ?? null,
+      paymentScheduleLabel:
+        row.payment_schedule === "monthly_prepaid" ? "monthly_prepaid" : "monthly",
+      causeLabel: labelForCause(row.cause),
+      visibilityLabel: labelForVisibility(row.visibility),
+      sponsorshipUrl: siteUrl(`/dashboard/sponsorship/${row.id}`),
+    }),
+  });
+}
+
+// ─── Shift queue dates ──────────────────────────────────────────────────────
+//
+// Called by /api/sponsorship/[id]/extend after the active sponsor's
+// scheduled_end_date moves forward, and by /api/sponsorship/[id]/cancel-queued
+// after a queued donor cancels (their slot empties; later positions
+// move up). Recomputes queued_starts_at + queued_ends_at for every
+// queued row on the child, propagates the new dates to Stripe (for
+// recurring trial_end subs), and flags shift_decision_required so the
+// donor's dashboard surfaces the 3-option decision card.
+//
+// Edge case: if newActiveEndDate has already passed (active sub
+// cancelled retroactively, or extension shortens into the past),
+// we delegate to promoteQueue — at-most-one slot can be promoted
+// per call, but the cron will catch up subsequent ones.
+//
+// Returns the rows whose dates ACTUALLY moved so the caller can
+// fan out shift emails. Idempotent: a no-op shift returns an empty
+// array.
+
+const TRIVIAL_SHIFT_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 day
+
+export type ShiftedSponsorship = {
+  sponsorship: Sponsorship;
+  oldStartsAt: string | null;
+  newStartsAt: string | null;
+};
+
+export async function shiftQueueDates(
+  childId: string,
+  newActiveEndDate: Date,
+  opts: { stripe: Stripe },
+): Promise<{ shifted: ShiftedSponsorship[] }> {
+  if (!UUID_RE.test(childId)) return { shifted: [] };
+
+  // If the new end date is already in the past, the active sub has
+  // effectively ended — promote the queue head instead of just
+  // shifting dates.
+  if (newActiveEndDate.getTime() <= Date.now()) {
+    await promoteQueue(childId, { stripe: opts.stripe });
+    return { shifted: [] };
+  }
+
+  const { queued } = await getQueueForChild(childId);
+  if (queued.length === 0) return { shifted: [] };
+
+  // Cascade: pos=1 starts at newActiveEndDate; subsequent positions
+  // start where their predecessor ends.
+  const shifted: ShiftedSponsorship[] = [];
+  let cursor: Date = newActiveEndDate;
+
+  for (const q of queued) {
+    const newStarts = cursor;
+    const months = q.duration_months ?? 0;
+    const newEnds = months > 0 ? addMonths(newStarts, months) : null;
+
+    const oldStartsIso = q.queued_starts_at ?? null;
+    const oldStartMs = oldStartsIso
+      ? new Date(oldStartsIso).getTime()
+      : null;
+    const trivial =
+      oldStartMs !== null &&
+      Math.abs(newStarts.getTime() - oldStartMs) < TRIVIAL_SHIFT_THRESHOLD_MS;
+
+    // Advance cursor for next iteration regardless of skip.
+    cursor = newEnds ?? newStarts;
+
+    if (trivial) continue;
+
+    // Update Stripe sub if recurring trial_end. Prepaid rows have no
+    // Stripe-side date concept beyond the original PI; the row's
+    // queued_* fields carry the future window.
+    if (
+      q.payment_schedule === "monthly" &&
+      q.stripe_subscription_id
+    ) {
+      const trialEndSec = Math.floor(newStarts.getTime() / 1000);
+      const cancelAtSec = newEnds
+        ? Math.floor(newEnds.getTime() / 1000)
+        : undefined;
+      try {
+        await opts.stripe.subscriptions.update(q.stripe_subscription_id, {
+          trial_end: trialEndSec,
+          ...(cancelAtSec ? { cancel_at: cancelAtSec } : {}),
+        });
+      } catch (err) {
+        console.warn(
+          `[queue] shiftQueueDates: Stripe trial_end update for ${q.stripe_subscription_id} failed:`,
+          err instanceof Error ? err.message : err,
+        );
+        // Non-fatal: record the row update anyway so the dashboard
+        // is consistent. The cron's cleanup branch can reconcile if
+        // Stripe state drifts.
+      }
+    }
+
+    // Update the Directus row with the new dates AND raise the
+    // shift_decision_required flag so the dashboard surfaces the
+    // 3-option card. shift_decision and shift_decision_at are NOT
+    // cleared here — if the donor previously made a decision on a
+    // PRIOR shift, this raises a fresh round of decision-required
+    // tracking with the new timestamp.
+    const nowIso = new Date().toISOString();
+    try {
+      await updateSponsorship(q.id, {
+        queued_starts_at: newStarts.toISOString(),
+        queued_ends_at: newEnds ? newEnds.toISOString() : null,
+        shift_decision_required: true,
+        shift_decision_required_at: nowIso,
+        shift_decision: null,
+        shift_decision_at: null,
+      });
+    } catch (err) {
+      console.warn(
+        `[queue] shiftQueueDates: Directus update for ${q.id} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+      continue;
+    }
+
+    shifted.push({
+      sponsorship: q,
+      oldStartsAt: oldStartsIso,
+      newStartsAt: newStarts.toISOString(),
+    });
+  }
+
+  return { shifted };
+}
+
+// Renders + sends SponsorshipQueueShiftEmail for one shifted row.
+// Best-effort — failures logged, not thrown. Caller (extend route,
+// cancel-queued route) iterates the `shifted` array from
+// shiftQueueDates and calls this once per affected donor.
+export async function sendQueueShiftEmail(
+  shifted: ShiftedSponsorship,
+  opts: { activeSponsorFirstName: string | null },
+): Promise<void> {
+  const s = shifted.sponsorship;
+  try {
+    const childIdRef = typeof s.child === "string" ? s.child : s.child?.id;
+    const donor = await fetchDonorById(
+      typeof s.donor === "string" ? s.donor : "",
+    );
+    const child = childIdRef ? await fetchChildById(childIdRef) : null;
+    if (!donor || !donor.email) return;
+    const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
+    const childName = child?.display_name ?? "your sponsored child";
+    await sendEmail({
+      to: formatTo(donor.email, firstName),
+      subject: `Your sponsorship of ${childName} has a new start date`,
+      template: SponsorshipQueueShiftEmail({
+        firstName,
+        childName,
+        activeSponsorFirstName: opts.activeSponsorFirstName,
+        oldStartDate: shifted.oldStartsAt,
+        newStartDate: shifted.newStartsAt,
+        decisionUrl: siteUrl(
+          `/dashboard/sponsorship/${s.id}/queue-shift-decision`,
+        ),
+      }),
+    });
+  } catch (err) {
+    console.warn(
+      `[queue] sendQueueShiftEmail for ${s.id} failed (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 // ─── Date math (calendar-month convention) ──────────────────────────────────

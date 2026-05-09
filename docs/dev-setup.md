@@ -65,6 +65,10 @@ INTERNAL_API_TOKEN
 CLOUDINARY_CLOUD_NAME       # required for profile photo uploads
 CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
+CRON_SECRET                 # auth for /api/cron/* routes; any string
+                            # in dev (e.g. 'dev-cron-secret-abc123').
+                            # Generate prod with `openssl rand -hex 32`.
+                            # See docs/cron-setup.md.
 ```
 
 `NEXT_PUBLIC_SITE_URL` MUST point at `http://localhost:3000` for the

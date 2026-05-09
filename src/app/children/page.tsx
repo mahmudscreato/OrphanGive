@@ -8,7 +8,7 @@ import {
   getChildrenPage,
   parseFilters,
 } from "@/lib/children-data";
-import { getMonthlySponsoredChildIds } from "@/lib/sponsorship-data";
+import { getMonthlyQueueStateByChild } from "@/lib/sponsorship-data";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +27,11 @@ export default async function BrowseChildrenPage({
     getActiveDistricts(),
   ]);
 
-  // Session 14.6: bulk-resolve which children currently have an
-  // active monthly sponsor so each card can show the corner badge.
-  // Single round-trip against the visible page IDs.
-  const monthlySponsoredIds = await getMonthlySponsoredChildIds(
+  // Session 14.6 + 14.7 Phase 2: bulk-resolve queue state per child
+  // so cards can render three badge variants (no badge / "Sponsored
+  // monthly" / "Queue full"). Single round-trip against the visible
+  // page IDs.
+  const queueStateByChild = await getMonthlyQueueStateByChild(
     page.children.map((c) => c.id),
   );
 
@@ -88,14 +89,18 @@ export default async function BrowseChildrenPage({
             <EmptyState />
           ) : (
             <div className="grid grid-cols-3 gap-7 max-lg:grid-cols-2 max-md:grid-cols-1">
-              {page.children.map((c, i) => (
-                <ChildCard
-                  key={c.id}
-                  child={c}
-                  preload={i < 3}
-                  monthlySponsored={monthlySponsoredIds.has(c.id)}
-                />
-              ))}
+              {page.children.map((c, i) => {
+                const q = queueStateByChild.get(c.id);
+                return (
+                  <ChildCard
+                    key={c.id}
+                    child={c}
+                    preload={i < 3}
+                    monthlySponsored={Boolean(q?.hasActiveSponsor)}
+                    queueFull={Boolean(q?.hasActiveSponsor && q.isFull)}
+                  />
+                );
+              })}
             </div>
           )}
 

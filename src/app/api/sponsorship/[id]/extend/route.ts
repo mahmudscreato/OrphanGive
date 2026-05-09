@@ -16,12 +16,46 @@ import {
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipExtendedEmail } from "@/emails/SponsorshipExtendedEmail";
+import { shiftQueueDates, sendQueueShiftEmail } from "@/lib/queue";
+import { getActiveMonthlySponsorForChild } from "@/lib/sponsorship-data";
 
 export const runtime = "nodejs";
 
 // Pushes the existing scheduled_end_date out by N months (calendar-ish:
 // 30.44 days/month). Used by both extension paths so they agree on the
 // end-date math regardless of which Stripe operation we run.
+// Session 14.7 Phase 2 — after the active sponsor's extension lands,
+// every queued donor's start date moves forward. Call this once per
+// successful extension path to recompute the queue and send shift
+// emails to the affected donors. Best-effort: failures here log but
+// don't unwind the extension itself.
+async function shiftQueuedDonorsAfterExtend(opts: {
+  childId: string;
+  newEnd: Date;
+  stripe: Stripe;
+}): Promise<void> {
+  try {
+    // Resolve the active sponsor's first name once, so each shift
+    // email can credit them by name (when their visibility='named').
+    const active = await getActiveMonthlySponsorForChild(opts.childId);
+    const activeFirstName =
+      active?.visibility === "named" ? active.donorFirstName ?? null : null;
+    const { shifted } = await shiftQueueDates(opts.childId, opts.newEnd, {
+      stripe: opts.stripe,
+    });
+    for (const s of shifted) {
+      await sendQueueShiftEmail(s, {
+        activeSponsorFirstName: activeFirstName,
+      });
+    }
+  } catch (err) {
+    console.warn(
+      `[sponsorship/extend] shiftQueueDates fan-out failed (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 function newScheduledEnd(
   currentEnd: string | null,
   additionalMonths: number,
@@ -175,6 +209,20 @@ export async function POST(
       donorFirstName:
         donor.first_name?.trim() || donor.email.split("@")[0]!,
     });
+    // Session 14.7 Phase 2: queued donors' start dates shift forward.
+    {
+      const childIdRef =
+        typeof sponsorship.child === "string"
+          ? sponsorship.child
+          : sponsorship.child?.id ?? null;
+      if (childIdRef) {
+        await shiftQueuedDonorsAfterExtend({
+          childId: childIdRef,
+          newEnd,
+          stripe: getStripe(),
+        });
+      }
+    }
     return NextResponse.json({
       success: true,
       mode: "added_to_schedule",
@@ -335,6 +383,21 @@ export async function POST(
       monthlyAmountUsd: sponsorship.amount_usd,
     });
 
+    // Session 14.7 Phase 2: queued donors' start dates shift forward.
+    {
+      const childIdRef =
+        typeof sponsorship.child === "string"
+          ? sponsorship.child
+          : sponsorship.child?.id ?? null;
+      if (childIdRef) {
+        await shiftQueuedDonorsAfterExtend({
+          childId: childIdRef,
+          newEnd,
+          stripe: getStripe(),
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       mode: "monthly_after_prepaid",
@@ -492,6 +555,21 @@ export async function POST(
       donorFirstName:
         donor.first_name?.trim() || donor.email.split("@")[0]!,
     });
+
+    // Session 14.7 Phase 2: queued donors' start dates shift forward.
+    {
+      const childIdRef =
+        typeof sponsorship.child === "string"
+          ? sponsorship.child
+          : sponsorship.child?.id ?? null;
+      if (childIdRef) {
+        await shiftQueuedDonorsAfterExtend({
+          childId: childIdRef,
+          newEnd,
+          stripe: getStripe(),
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,

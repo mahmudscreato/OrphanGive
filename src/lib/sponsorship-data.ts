@@ -97,6 +97,18 @@ export type Sponsorship = {
   queued_starts_at: string | null;
   queued_ends_at: string | null;
   queue_status: string | null;
+  // Session 14.7 Phase 2: shift-decision lifecycle. When the active
+  // sponsor extends their commitment, every queued donor's slot
+  // moves forward and shift_decision_required flips to true. The
+  // donor's dashboard surfaces a card with three options (accept /
+  // transfer / refund). Once they decide (or the 14-day cron
+  // auto-accepts), shift_decision records the resolution and
+  // shift_decision_at marks when. shift_decision_required_at is the
+  // anchor for the 14-day auto-accept timer.
+  shift_decision_required: boolean | null;
+  shift_decision_required_at: string | null;
+  shift_decision: string | null;
+  shift_decision_at: string | null;
 };
 
 const FULL_FIELDS = [
@@ -112,6 +124,8 @@ const FULL_FIELDS = [
   "cause",
   "visibility",
   "queue_position", "queued_starts_at", "queued_ends_at", "queue_status",
+  "shift_decision_required", "shift_decision_required_at",
+  "shift_decision", "shift_decision_at",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
   "child.status",
@@ -624,6 +638,70 @@ export async function getActiveMonthlySponsorForChild(
     );
     return null;
   }
+}
+
+// Bulk lookup of monthly queue state for /children (Session 14.7
+// Phase 2). For each child id in the input, returns whether it has
+// an active monthly sponsor AND how full its queue is. The card
+// renders three states based on this:
+//   - no active sponsor      → no badge ("Awaiting" pip)
+//   - active + queue 0..2    → "Sponsored monthly" moss badge
+//   - active + queue 3 (full) → "Queue full" muted slate badge
+//
+// Single Directus round-trip — counts both queue_position=0 and
+// queue_position>0 rows in one query, then groups in memory.
+const QUEUE_DEPTH_LIMIT_LOCAL = 3;
+
+export type ChildQueueBadge = {
+  hasActiveSponsor: boolean;
+  queuedCount: number;
+  isFull: boolean;
+};
+
+export async function getMonthlyQueueStateByChild(
+  childIds: ReadonlyArray<string>,
+): Promise<Map<string, ChildQueueBadge>> {
+  const out = new Map<string, ChildQueueBadge>();
+  const valid = childIds.filter((id) => UUID_RE.test(id));
+  if (valid.length === 0) return out;
+  try {
+    const rows = (await directusServer().request(
+      readItems("sponsorship" as never, {
+        filter: {
+          _and: [
+            { child: { _in: valid } },
+            { status: { _eq: "active" } },
+            { payment_mode: { _eq: "monthly" } },
+          ],
+        },
+        fields: ["child", "queue_position"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{
+      child: string | { id: string };
+      queue_position: number | null;
+    }>;
+    for (const r of rows ?? []) {
+      const id = typeof r.child === "string" ? r.child : r.child?.id;
+      if (!id) continue;
+      const pos = r.queue_position ?? 0;
+      const cur = out.get(id) ?? {
+        hasActiveSponsor: false,
+        queuedCount: 0,
+        isFull: false,
+      };
+      if (pos === 0) cur.hasActiveSponsor = true;
+      else cur.queuedCount += 1;
+      cur.isFull = cur.queuedCount >= QUEUE_DEPTH_LIMIT_LOCAL;
+      out.set(id, cur);
+    }
+  } catch (err) {
+    console.warn(
+      "[sponsorship-data] getMonthlyQueueStateByChild failed",
+      err instanceof Error ? err.message : err,
+    );
+  }
+  return out;
 }
 
 // Bulk lookup. Used by /children (the public list) to badge cards

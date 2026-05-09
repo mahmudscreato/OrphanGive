@@ -15,6 +15,7 @@ import { formatUsd } from "@/lib/pricing";
 import { labelForCause } from "@/lib/cause";
 import { SponsorshipStatusBadge } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { SponsorshipActions } from "./SponsorshipActions";
+import { QueuedActions } from "./QueuedActions";
 import { VisibilityEditor } from "./VisibilityEditor";
 import { ReSupportButtons } from "./ReSupportButtons";
 import { GiveMoreCTA } from "./GiveMoreCTA";
@@ -133,24 +134,43 @@ export default async function SponsorshipDetailPage({
       {/* Actions — hidden entirely for completed/cancelled. The
           SponsorshipActions client component itself decides which
           modal to surface for "Add more months" based on the
-          sponsorship's type (recurring / prepaid / indefinite). */}
+          sponsorship's type (recurring / prepaid / indefinite).
+          Session 14.7 Phase 2: queued rows (queue_position > 0) get
+          QueuedActions instead — only "Cancel & refund" (and optional
+          "Review change" CTA when shift_decision_required) make sense
+          before the slot activates. SponsorshipActions' Add-more-
+          months / Cancel modals would call routes that don't know
+          about the queue lifecycle and leave the queue unwound. */}
       {status !== "completed" && status !== "cancelled" ? (
-        <section className="mt-10">
-          <SponsorshipActions
+        isQueuedRow ? (
+          <QueuedActions
             sponsorshipId={sponsorship.id}
-            paymentMode={sponsorship.payment_mode}
-            status={status}
-            amountUsd={sponsorship.amount_usd}
-            childId={childId}
             childName={childName}
-            nextBillingDate={sponsorship.next_billing_date}
-            durationMonths={sponsorship.duration_months}
             paymentSchedule={sponsorship.payment_schedule}
-            prepaidMonthsTotal={sponsorship.prepaid_months_total}
-            prepaidMonthsRemaining={sponsorship.prepaid_months_remaining}
-            scheduledEndDate={sponsorship.scheduled_end_date}
+            amountUsd={sponsorship.amount_usd}
+            durationMonths={sponsorship.duration_months}
+            shiftDecisionRequired={Boolean(
+              sponsorship.shift_decision_required,
+            )}
           />
-        </section>
+        ) : (
+          <section className="mt-10">
+            <SponsorshipActions
+              sponsorshipId={sponsorship.id}
+              paymentMode={sponsorship.payment_mode}
+              status={status}
+              amountUsd={sponsorship.amount_usd}
+              childId={childId}
+              childName={childName}
+              nextBillingDate={sponsorship.next_billing_date}
+              durationMonths={sponsorship.duration_months}
+              paymentSchedule={sponsorship.payment_schedule}
+              prepaidMonthsTotal={sponsorship.prepaid_months_total}
+              prepaidMonthsRemaining={sponsorship.prepaid_months_remaining}
+              scheduledEndDate={sponsorship.scheduled_end_date}
+            />
+          </section>
+        )
       ) : null}
 
       {/* Session 14.7c re-support paths.

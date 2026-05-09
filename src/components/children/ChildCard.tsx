@@ -47,6 +47,7 @@ export function ChildCard({
   child,
   preload = false,
   monthlySponsored = false,
+  queueFull = false,
 }: {
   child: ChildSummary;
   preload?: boolean;
@@ -55,6 +56,11 @@ export function ChildCard({
   // moss-soft "Sponsored monthly" pip. The card stays clickable —
   // donors can still send one-time gifts.
   monthlySponsored?: boolean;
+  // Session 14.7 Phase 2: when true, this child has an active monthly
+  // sponsor AND a full queue (3 donors waiting). Badge swaps to a
+  // muted "Queue full" tone — communicates "come back later" without
+  // hiding the card (donors can still send one-time gifts).
+  queueFull?: boolean;
 }) {
   const name = child.display_name ?? "A child awaiting sponsorship";
   const districtLine = child.district ?? child.region ?? null;
@@ -66,7 +72,15 @@ export function ChildCard({
     >
       <div className="relative aspect-square overflow-hidden">
         <ChildPhoto photo={child.photo} name={name} preload={preload} />
-        {monthlySponsored ? (
+        {queueFull ? (
+          <div
+            className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-ink/[0.08] backdrop-blur-md font-mono text-[10px] tracking-[0.1em] uppercase text-slate-soft font-medium"
+            title="Sponsor queue is full. One-time gifts welcome anytime."
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-soft" />
+            Queue full
+          </div>
+        ) : monthlySponsored ? (
           <div className="absolute top-4 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-moss-soft/95 backdrop-blur-md font-mono text-[10px] tracking-[0.1em] uppercase text-moss-deep font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-moss" />
             Sponsored monthly

@@ -19,6 +19,11 @@ import {
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { computeNextQueueSlot, QUEUE_DEPTH_LIMIT } from "@/lib/queue";
+import { sendEmail, siteUrl } from "@/lib/email";
+import { fetchChildById, formatTo } from "@/lib/email-data";
+import { labelForCause } from "@/lib/cause";
+import { labelForVisibility } from "@/lib/visibility";
+import { SponsorshipQueueJoinedEmail } from "@/emails/SponsorshipQueueJoinedEmail";
 
 export const runtime = "nodejs";
 
@@ -661,6 +666,47 @@ function addMonthsCal(base: Date, months: number): Date {
   return new Date(base.getTime() + ms);
 }
 
+// Queue-joined email helper. Fetches child info and renders the
+// SponsorshipQueueJoinedEmail template. Caller wraps in try/catch
+// — failure here doesn't unwind the checkout.
+async function sendQueueJoinedEmail(opts: {
+  donorEmail: string;
+  donorFirstName: string | null;
+  childId: string;
+  amountUsd: number;
+  durationMonths: number | null;
+  paymentSchedule: "monthly" | "monthly_prepaid";
+  cause: string;
+  visibility: string;
+  queuePosition: number;
+  estimatedStartDate: string | null;
+  sponsorshipUrl: string;
+}): Promise<void> {
+  const child = await fetchChildById(opts.childId);
+  const firstName =
+    opts.donorFirstName?.trim() || opts.donorEmail.split("@")[0]!;
+  const childName = child?.display_name ?? "your sponsored child";
+  await sendEmail({
+    to: formatTo(opts.donorEmail, firstName),
+    subject: `You're in line to sponsor ${childName}`,
+    template: SponsorshipQueueJoinedEmail({
+      firstName,
+      childName,
+      childDistrict: child?.district ?? null,
+      childAge: child?.age ?? null,
+      queuePosition: opts.queuePosition,
+      estimatedStartDate: opts.estimatedStartDate,
+      amountUsd: opts.amountUsd,
+      durationMonths: opts.durationMonths,
+      paymentScheduleLabel:
+        opts.paymentSchedule === "monthly_prepaid" ? "prepaid" : "monthly_trial",
+      causeLabel: labelForCause(opts.cause),
+      visibilityLabel: labelForVisibility(opts.visibility),
+      sponsorshipUrl: opts.sponsorshipUrl,
+    }),
+  });
+}
+
 // 0 = subscription (recurring), 1 = prepaid PI, 2 = one-time PI bundle.
 function sortKey(s: Sponsorship): number {
   if (s.stripe_subscription_id) return 0;
@@ -978,6 +1024,53 @@ async function createFreshCheckout(opts: {
       }
 
       if (pi.client_secret) clientSecrets.push(pi.client_secret);
+    }
+
+    // ── Queue-joined emails (Session 14.7 Phase 2) ─────────────────────
+    // For every sponsorship row that landed in a queued slot
+    // (queue_position > 0), fire a confirmation email. Spec calls for
+    // this at /api/checkout/init time — fires optimistically before
+    // the donor's clientSecret confirmation completes, on the
+    // judgement that the donor has already committed to checkout.
+    // If the confirmation later fails, the standard payment-failed
+    // path covers them; a stray queue-joined email is preferable to
+    // a missing one.
+    for (const item of [
+      ...buckets.recurringSubItems,
+      ...buckets.prepaidItems,
+    ]) {
+      const slot = queueByChild.get(item.childId);
+      if (!slot || slot.position <= 0) continue;
+      try {
+        await sendQueueJoinedEmail({
+          donorEmail: donor.email,
+          donorFirstName: donor.first_name?.trim() ?? null,
+          childId: item.childId,
+          amountUsd: item.amountUsd,
+          durationMonths: item.durationMonths ?? null,
+          paymentSchedule:
+            item.paymentSchedule === "monthly_prepaid"
+              ? "monthly_prepaid"
+              : "monthly",
+          cause: item.cause,
+          visibility: item.visibility,
+          queuePosition: slot.position,
+          estimatedStartDate: slot.startsAt
+            ? slot.startsAt.toISOString()
+            : null,
+          // Find the just-created sponsorship row id for the link.
+          // We tagged it onto the sponsorshipIds array in creation
+          // order; matching back here is approximate but sufficient
+          // for the email link (donor lands on their dashboard with
+          // the right row visible regardless).
+          sponsorshipUrl: siteUrl(`/dashboard/sponsorships`),
+        });
+      } catch (err) {
+        console.warn(
+          `[checkout/init] queue-joined email for child=${item.childId} failed (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
 
     return NextResponse.json({
