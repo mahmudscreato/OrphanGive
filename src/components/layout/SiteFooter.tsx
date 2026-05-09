@@ -7,53 +7,65 @@ import { usePathname } from "next/navigation";
 type FooterLink = { href: string; label: string };
 type FooterColumn = { heading: string; links: FooterLink[] };
 
+// Session 15a — link wiring. Items WITH a real route resolve to
+// that route. Items still in the backlog (governance, annual
+// reports, press, volunteer, corporate, zakat-sadaqah, every
+// /legal/* page) are kept aliased to /about or /for-charities or
+// /faq for v1; intentional "Coming soon" pages can replace those
+// aliases as content lands.
+//
+// LEGAL pages (privacy, cookies, terms, safeguarding, refunds)
+// remain on this list because the footer needs them visible
+// before launch — but they currently alias to /about pending the
+// real legal copy from Mahmud's lawyer. This is a launch blocker
+// flagged in the 15a session report.
 const COLUMNS: FooterColumn[] = [
   {
     heading: "About",
     links: [
-      { href: "/about/mission", label: "Mission" },
-      { href: "/about/team", label: "The team" },
-      { href: "/about/governance", label: "Governance" },
-      { href: "/about/annual-reports", label: "Annual reports" },
-      { href: "/about/press", label: "Press" },
+      { href: "/about", label: "Mission" },
+      { href: "/about", label: "The team" },
+      { href: "/about", label: "Governance" },
+      { href: "/about", label: "Annual reports" },
+      { href: "/about", label: "Press" },
     ],
   },
   {
     heading: "Get involved",
     links: [
-      { href: "/sponsor", label: "Sponsor a child" },
-      { href: "/donate", label: "One-time donation" },
+      { href: "/children", label: "Sponsor a child" },
+      { href: "/children", label: "One-time donation" },
       { href: "/for-charities", label: "For charities" },
-      { href: "/volunteer", label: "Volunteer" },
-      { href: "/corporate", label: "Corporate giving" },
+      { href: "/for-charities", label: "Volunteer" },
+      { href: "/for-charities", label: "Corporate giving" },
     ],
   },
   {
     heading: "Resources",
     links: [
       { href: "/stories", label: "Stories" },
-      { href: "/zakat-sadaqah", label: "Zakat & Sadaqah" },
+      { href: "/faq", label: "Zakat & Sadaqah" },
       { href: "/faq", label: "FAQ" },
-      { href: "/help", label: "Help centre" },
-      { href: "/contact", label: "Contact" },
+      { href: "/faq", label: "Help centre" },
+      { href: "mailto:hello@orphangive.org", label: "Contact" },
     ],
   },
   {
     heading: "Legal",
     links: [
-      { href: "/legal/privacy", label: "Privacy policy" },
-      { href: "/legal/cookies", label: "Cookie policy" },
-      { href: "/legal/terms", label: "Terms of use" },
-      { href: "/legal/safeguarding", label: "Safeguarding" },
-      { href: "/legal/refunds", label: "Refund policy" },
+      { href: "/about", label: "Privacy policy" },
+      { href: "/about", label: "Cookie policy" },
+      { href: "/about", label: "Terms of use" },
+      { href: "/about", label: "Safeguarding" },
+      { href: "/about", label: "Refund policy" },
     ],
   },
 ];
 
 const BOTTOM_LINKS: FooterLink[] = [
-  { href: "/cookie-settings", label: "Cookie settings" },
-  { href: "/sitemap", label: "Sitemap" },
-  { href: "/status", label: "Status" },
+  { href: "/about", label: "Cookie settings" },
+  { href: "/children", label: "Sitemap" },
+  { href: "/about", label: "Status" },
 ];
 
 export function SiteFooter() {

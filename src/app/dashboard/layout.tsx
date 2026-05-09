@@ -46,8 +46,8 @@ export default async function DashboardLayout({
         <ToastProvider>
           <div className="bg-cream min-h-screen">
             <DashboardSidebar donor={donor!} />
-            <div className="lg:ml-60">
-              <div className="px-10 pt-12 pb-24 max-lg:px-6 max-lg:pt-20 max-lg:pb-16">
+            <div className="md:ml-60">
+              <div className="px-10 pt-12 pb-24 max-md:px-6 max-md:pt-20 max-md:pb-16">
                 <div className="max-w-[1080px] mx-auto">{children}</div>
               </div>
             </div>

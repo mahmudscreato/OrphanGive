@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { signInAction, type AuthFormState } from "../(auth)/actions";
 
@@ -21,7 +22,15 @@ export function SignInForm({ next }: { next?: string }) {
         />
       </label>
       <label className="flex flex-col gap-1 text-sm">
-        <span>Password</span>
+        <div className="flex items-center justify-between">
+          <span>Password</span>
+          <Link
+            href="/forgot-password"
+            className="text-xs text-slate-soft hover:text-tangerine-deep transition-colors"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <input
           name="password"
           type="password"

@@ -68,7 +68,7 @@ export function DashboardSidebar({ donor }: { donor: Donor }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-40 inline-flex items-center justify-center w-10 h-10 rounded-full bg-white border border-ink/[0.08] text-ink shadow-sm hover:bg-cream transition-colors"
+        className="md:hidden fixed top-4 left-4 z-40 inline-flex items-center justify-center w-10 h-10 rounded-full bg-white border border-ink/[0.08] text-ink shadow-sm hover:bg-cream transition-colors"
         aria-label="Open menu"
       >
         <Menu className="w-5 h-5" />
@@ -79,14 +79,14 @@ export function DashboardSidebar({ donor }: { donor: Donor }) {
           type="button"
           onClick={closeMobile}
           aria-label="Close menu"
-          className="lg:hidden fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-40 bg-ink/30 backdrop-blur-sm"
         />
       ) : null}
 
       <aside
         className={
           "fixed top-0 left-0 bottom-0 z-50 w-60 bg-white border-r border-ink/[0.06] flex flex-col transition-transform duration-300 ease-out " +
-          (open ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
+          (open ? "translate-x-0" : "-translate-x-full md:translate-x-0")
         }
       >
         <div className="px-6 pt-6 pb-2 flex items-center justify-between">
@@ -108,7 +108,7 @@ export function DashboardSidebar({ donor }: { donor: Donor }) {
           <button
             type="button"
             onClick={closeMobile}
-            className="lg:hidden inline-flex items-center justify-center w-8 h-8 rounded-full text-slate-soft hover:text-ink hover:bg-cream transition-colors"
+            className="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-full text-slate-soft hover:text-ink hover:bg-cream transition-colors"
             aria-label="Close menu"
           >
             <X className="w-4 h-4" />
