@@ -16,6 +16,7 @@
   --moss: #6B8E5A;
   --moss-soft: #D4E0CC;
   --sky: #9FBFD9;
+  --sky-deep: #075985;
   --white: #FFFFFF;
 
   --shadow-card: 0 1px 2px rgba(42, 42, 44, 0.04), 0 8px 24px -8px rgba(42, 42, 44, 0.08);
@@ -42,6 +43,7 @@
   --color-moss: var(--moss);
   --color-moss-soft: var(--moss-soft);
   --color-sky: var(--sky);
+  --color-sky-deep: var(--sky-deep);
 
   --font-display: var(--font-fraunces);
   --font-body: var(--font-inter);

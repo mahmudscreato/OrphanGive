@@ -464,10 +464,18 @@ export type ChildUpdate = {
 // recently-ended row at the top, regardless of how it ended (completed /
 // cancelled). Falls back to date_created for safety.
 function priorityScore(s: Sponsorship): number {
+  // Monthly recurring is the primary commitment shape; indefinite rows
+  // have payment_schedule=null in this codebase (only fixed-term sets
+  // payment_schedule='monthly'), so we key off payment_mode='monthly'
+  // and only special-case the prepaid sub-shape. Earlier this branch
+  // required `payment_schedule === 'monthly'`, which mis-scored
+  // indefinite recurring rows to the unknown sentinel and let them
+  // sort AFTER one-time gifts (Part C revision diagnosis).
+  if (s.payment_mode === "monthly") {
+    return s.payment_schedule === "monthly_prepaid" ? 1 : 2;
+  }
   if (s.payment_mode === "one_time") return 3;
-  if (s.payment_schedule === "monthly_prepaid") return 1;
-  if (s.payment_mode === "monthly" && s.payment_schedule === "monthly") return 2;
-  return 9; // unknown — sink to bottom rather than throwing
+  return 99; // genuine unknown — sink to bottom rather than throwing
 }
 
 export function sortSponsorshipsByPriority<T extends Sponsorship>(

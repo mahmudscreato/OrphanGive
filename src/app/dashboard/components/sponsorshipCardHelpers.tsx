@@ -85,16 +85,24 @@ export function Pill({
   );
 }
 
-// Tangerine palette for active recurring (indefinite + fixed-term) —
-// the brand "your support is alive" colour.
-const ACTIVE_PALETTE =
-  "bg-tangerine-mist text-tangerine-deep border-tangerine-soft";
-// Moss-soft palette for one-time gifts and completed sponsorships —
-// quiet sage tone (gift received / commitment fulfilled).
-const QUIET_MOSS_PALETTE = "bg-moss-soft text-moss border-moss/30";
-// Deep moss palette for prepaid — visually loudest "this is locked in".
-const DEEP_MOSS_PALETTE = "bg-moss text-cream border-moss";
-// Neutral grey palette for cancelled — present but de-emphasised.
+// Solid-fill palette set (Part C revision). Each badge has a saturated
+// background and white (or near-white) text — gives the dashboard a
+// stronger visual rhythm than the previous mist/soft fills, and keeps
+// the per-state semantics distinct.
+//
+// Solid tangerine for ACTIVE recurring (indefinite + fixed-term) — same
+// brand orange as primary buttons, "your support is alive".
+const ACTIVE_PALETTE = "bg-tangerine text-white border-tangerine";
+// Solid sky-deep for ONE-TIME — a contrasting blue, distinct from the
+// orange/moss families so a single completed gift reads instantly.
+const ONE_TIME_PALETTE = "bg-sky-deep text-white border-sky-deep";
+// Solid slate for COMPLETED — neutral / done / inactive without being
+// alarming; reads cleanly against the cream dashboard.
+const COMPLETED_PALETTE = "bg-slate text-white border-slate";
+// Deep moss for PREPAID — unchanged from earlier Part C; visually
+// loudest "this is locked in".
+const PREPAID_PALETTE = "bg-moss text-cream border-moss";
+// Neutral subtle for CANCELLED — unchanged; present but de-emphasised.
 const CANCELLED_PALETTE = "bg-ink/[0.04] text-slate-soft border-ink/[0.08]";
 
 // The unified status badge. Every sponsorship surface (dashboard home
@@ -110,18 +118,18 @@ export function SponsorshipStatusBadge({ s }: { s: Sponsorship }) {
         <Pill className={ACTIVE_PALETTE}>
           Active
           {s.scheduled_end_date ? (
-            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-tangerine-deep/75">
+            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-white/85">
               · ends {formatShortMonth(s.scheduled_end_date)}
             </span>
           ) : null}
         </Pill>
       );
     case "active_prepaid":
-      return <Pill className={DEEP_MOSS_PALETTE}>Prepaid</Pill>;
+      return <Pill className={PREPAID_PALETTE}>Prepaid</Pill>;
     case "active_one_time":
-      return <Pill className={QUIET_MOSS_PALETTE}>One-time</Pill>;
+      return <Pill className={ONE_TIME_PALETTE}>One-time</Pill>;
     case "completed":
-      return <Pill className={QUIET_MOSS_PALETTE}>Completed</Pill>;
+      return <Pill className={COMPLETED_PALETTE}>Completed</Pill>;
     case "pending":
       return (
         <Pill className="bg-tangerine-mist text-tangerine-deep border-tangerine-soft">
@@ -139,7 +147,7 @@ export function SponsorshipStatusBadge({ s }: { s: Sponsorship }) {
         <Pill className={ACTIVE_PALETTE}>
           Active
           {s.cancellation_scheduled_at ? (
-            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-tangerine-deep/75">
+            <span className="ml-1.5 font-body text-[9px] tracking-[0.06em] normal-case text-white/85">
               · ends {formatShortMonth(s.cancellation_scheduled_at)}
             </span>
           ) : null}

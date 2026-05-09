@@ -27,24 +27,27 @@ export default async function DashboardSponsorshipsPage() {
   const sponsorships = await getDonorSponsorships(donor.id, { limit: 200 });
   const displayable = sponsorships.filter(isDisplaySponsorship);
 
-  // Three buckets:
-  //   • Currently sponsoring — status='active' (includes prepaid in their
-  //     paid window). Sorted by Part-C priority: prepaid → recurring →
-  //     one-time, newest first within each tier.
-  //   • Awaiting payment — status='pending_payment'. Rendered as a small
-  //     transient block above "Currently sponsoring" so the donor can
-  //     finish or cancel the checkout. Not part of the two main sections
-  //     but kept for visibility.
-  //   • Previously supported — status IN ('completed', 'cancelled').
-  //     Sorted by most-recently-ended first.
+  // Four buckets:
+  //   • Currently sponsoring  — status='active' (includes prepaid). Sorted
+  //     by priority: prepaid → recurring → one-time, newest within tier.
+  //   • Awaiting payment      — status='pending_payment'. Small transient
+  //     block above the main sections so the donor can finish or cancel
+  //     the checkout.
+  //   • Previously supported  — status='completed' only. Sorted most-
+  //     recently-ended first.
+  //   • Cancelled             — status='cancelled' only. Same sort.
+  // Completed and cancelled used to share a section in early Part C; the
+  // revision splits them so the failure state isn't conflated with the
+  // success state in the editorial heading.
   const active = sortSponsorshipsByPriority(
     displayable.filter((s) => s.status === "active"),
   );
   const pending = displayable.filter((s) => s.status === "pending_payment");
-  const previously = sortSponsorshipsByEnded(
-    displayable.filter(
-      (s) => s.status === "completed" || s.status === "cancelled",
-    ),
+  const completed = sortSponsorshipsByEnded(
+    displayable.filter((s) => s.status === "completed"),
+  );
+  const cancelled = sortSponsorshipsByEnded(
+    displayable.filter((s) => s.status === "cancelled"),
   );
 
   return (
@@ -89,18 +92,37 @@ export default async function DashboardSponsorshipsPage() {
         )}
       </section>
 
-      {previously.length > 0 ? (
+      {completed.length > 0 ? (
         <section>
           <header>
             <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
               Previously supported
             </h2>
             <p className="mt-2 text-[14px] text-slate italic">
-              {previously.length}{" "}
-              {previously.length === 1 ? "child" : "children"}
+              {completed.length}{" "}
+              {completed.length === 1
+                ? "completed sponsorship"
+                : "completed sponsorships"}
             </p>
           </header>
-          <Group items={previously} />
+          <Group items={completed} />
+        </section>
+      ) : null}
+
+      {cancelled.length > 0 ? (
+        <section>
+          <header>
+            <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
+              Cancelled
+            </h2>
+            <p className="mt-2 text-[14px] text-slate italic">
+              {cancelled.length}{" "}
+              {cancelled.length === 1
+                ? "cancelled sponsorship"
+                : "cancelled sponsorships"}
+            </p>
+          </header>
+          <Group items={cancelled} />
         </section>
       ) : null}
     </div>
