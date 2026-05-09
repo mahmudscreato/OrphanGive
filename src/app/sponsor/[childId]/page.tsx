@@ -1,6 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
-import { getChildById, getViewerTier } from "@/lib/child-profile-data";
+import { getChildById } from "@/lib/child-profile-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { readCart } from "@/lib/cart-data";
 import { SponsorPageContent } from "./sponsor-page-content";
@@ -14,14 +14,21 @@ export default async function SponsorPage({
 }) {
   const { childId } = await params;
 
+  // Charity-trust pattern: sponsoring requires a signed-in donor from
+  // the very first step. Anonymous visitors browsing /children/[id]
+  // who click "Sponsor a Child" land on /signin with this URL queued
+  // as `next=`, so they return here after authenticating.
+  const donor = await getCurrentDonor();
+  if (!donor) {
+    redirect(`/signin?next=/sponsor/${encodeURIComponent(childId)}`);
+  }
+
   // Use admin tier for the fetch — sponsor page only displays public-safe
   // fields, but we want full reliability regardless of viewer role.
   const child = await getChildById(childId, "admin");
   if (!child) notFound();
 
-  const { tier } = await getViewerTier();
-  const donor = tier === "donor" || tier === "admin" ? await getCurrentDonor() : null;
-  const donorState = donor ? getDonorState(donor) : "unauthenticated";
+  const donorState = getDonorState(donor);
 
   const cart = await readCart();
   const cartItemCount = cart?.items.length ?? 0;

@@ -79,7 +79,13 @@ export function SiteNav({ signedIn, firstName }: Props) {
       </div>
 
       <div className="flex items-center gap-2">
-        <CartIconButton />
+        {/* Charity-trust pattern: cart icon is only visible to
+            signed-in donors. Anonymous visitors are routed through
+            sign-in before they can build a cart, so we don't surface
+            the cart at all. The cart_session cookie data isn't
+            destroyed — when they sign in the icon reappears with
+            whatever was saved. */}
+        {signedIn ? <CartIconButton /> : null}
         {signedIn ? (
           <Link
             href="/dashboard"

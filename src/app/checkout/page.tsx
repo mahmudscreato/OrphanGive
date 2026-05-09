@@ -1,8 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { hydrateCart, readCart } from "@/lib/cart-data";
+import {
+  addOrUpdateItem,
+  cartItemFromSponsorship,
+  hydrateCart,
+  readCart,
+} from "@/lib/cart-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
+import { getSponsorshipForDonor } from "@/lib/sponsorship-data";
 import { getStripePublishableKey, getUsdToBdtRate } from "@/lib/stripe-client";
 import { CheckoutOrderSummary } from "@/components/checkout/CheckoutOrderSummary";
 import { PaymentMethodPicker } from "@/components/checkout/PaymentMethodPicker";
@@ -13,11 +19,59 @@ export const metadata = {
   title: "Checkout — OrphanGive",
 };
 
-export default async function CheckoutPage() {
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function CheckoutPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ resume?: string | string[] }>;
+}) {
   // Auth gate
   const donor = await getCurrentDonor();
   if (!donor) {
     redirect("/signin?next=/checkout");
+  }
+
+  // Resume-pending flow. When the donor clicks "Complete payment →"
+  // on a pending_payment card on /dashboard/sponsorships, they
+  // arrive here with `?resume=<sponsorshipId>`. We look up the row,
+  // confirm ownership + status, reconstruct the CartItem the
+  // sponsorship was created from, and add it to the cart server-side
+  // before the page renders. The cart is dedup'd by
+  // (childId, paymentMode), so revisiting this URL is idempotent.
+  //
+  // The previous checkout's stale Stripe objects (the failed PI/sub
+  // referenced by this pending row) get reconciled automatically by
+  // checkout/init's cancelPendings logic on the NEXT init call,
+  // because the new fingerprint won't match the stale row's.
+  //
+  // TODO (Session 16): if the original cart was a multi-child bundle,
+  // only the SINGLE clicked sponsorship is resumed. Resuming the full
+  // bundle requires storing the original cart_id on each sponsorship
+  // row at create time.
+  const sp = await searchParams;
+  const resumeParam = Array.isArray(sp.resume) ? sp.resume[0] : sp.resume;
+  if (resumeParam && UUID_RE.test(resumeParam)) {
+    const pending = await getSponsorshipForDonor(resumeParam, donor.id);
+    if (pending && pending.status === "pending_payment") {
+      try {
+        await addOrUpdateItem({
+          donorId: donor.id,
+          item: cartItemFromSponsorship(pending),
+        });
+      } catch (err) {
+        console.warn(
+          `[checkout] resume add-to-cart failed for sponsorship ${resumeParam}:`,
+          err instanceof Error ? err.message : err,
+        );
+        // Fall through to normal checkout render — the donor will
+        // see their existing cart (if any) and can decide what to do.
+      }
+    }
+    // If pending is null (not owned / not found) or status changed,
+    // silently fall through. The donor either already completed it
+    // or it was cancelled — empty-cart state will catch them.
   }
 
   const state = getDonorState(donor);

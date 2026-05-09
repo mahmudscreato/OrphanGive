@@ -451,6 +451,52 @@ export async function clearCart(): Promise<void> {
   await persistCart(cart, []);
 }
 
+// Pure mapper from a Sponsorship row back to the CartItem shape that
+// produced it. Used by the resume-pending flow: when a donor clicks
+// "Complete payment →" on a stuck pending_payment card, we look up
+// the sponsorship row and reconstruct the cart item so the donor sees
+// their original selection in /checkout.
+//
+// The row's `child` may arrive as either a string id (when fields
+// requested without expansion) or an expanded child object — handle both.
+//
+// Cause defaults to general_care when the row pre-dates the Session 14.5
+// migration (`null` cause). Same fallback as labelForCause().
+//
+// TODO (Session 16): if the original cart was a multi-child bundle, this
+// helper only reconstructs the SINGLE item the donor clicked. Resuming
+// the full bundle would require persisting the original cart_session id
+// on each sponsorship row at create time.
+export function cartItemFromSponsorship(
+  s: import("./sponsorship-data").Sponsorship,
+): CartItem {
+  const childId = typeof s.child === "string" ? s.child : s.child.id;
+  const cause: CauseEnum =
+    s.cause && (CAUSE_VALUES as ReadonlySet<string>).has(s.cause)
+      ? (s.cause as CauseEnum)
+      : DEFAULT_CAUSE;
+  return {
+    childId,
+    paymentMode: s.payment_mode,
+    amountUsd: s.amount_usd,
+    durationMonths: s.duration_months,
+    paymentSchedule: s.payment_schedule,
+    cause,
+  };
+}
+
+// Subset of CauseEnum values for the runtime-validation check above.
+// Keeping a local Set rather than importing isValidCause from cause.ts
+// avoids creating a circular module reference (cart-data is imported
+// widely; cause.ts is a leaf).
+const CAUSE_VALUES: ReadonlySet<string> = new Set([
+  "general_care",
+  "education",
+  "healthcare",
+  "food",
+  "eid_gift",
+]);
+
 // Verify a child exists and is currently active. Used at /api/cart/add to
 // reject items that point at non-active or non-existent children.
 export async function isChildAvailable(childId: string): Promise<boolean> {
