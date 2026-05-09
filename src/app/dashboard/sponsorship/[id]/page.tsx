@@ -12,6 +12,7 @@ import {
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { formatUsd } from "@/lib/pricing";
+import { labelForCause } from "@/lib/cause";
 import { SponsorshipStatusBadge } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { SponsorshipActions } from "./SponsorshipActions";
 
@@ -86,6 +87,13 @@ export default async function SponsorshipDetailPage({
         <SponsorshipStatusBadge s={sponsorship} />
       </div>
 
+      {/* Cause label sits between the back-link/badge row and the child
+          card so it leads visually — donor sees "supporting EDUCATION
+          AND LEARNING for Fuad Hasan" as one read. */}
+      <div className="mb-3 font-mono text-[10.5px] tracking-[0.14em] uppercase text-tangerine-deep">
+        {labelForCause(sponsorship.cause)}
+      </div>
+
       {/* Child summary card */}
       <ChildCard
         childId={childId}
@@ -101,6 +109,12 @@ export default async function SponsorshipDetailPage({
         status={status}
         totalContributed={totalContributed}
       />
+
+      <p className="mt-4 text-[12.5px] text-slate-soft italic leading-snug max-w-[640px]">
+        Allocated by Children&rsquo;s Heaven Trust based on operational
+        need. Your stated intent guides allocation but funds may be
+        applied where most needed.
+      </p>
 
       {/* Actions — hidden entirely for completed/cancelled. The
           SponsorshipActions client component itself decides which

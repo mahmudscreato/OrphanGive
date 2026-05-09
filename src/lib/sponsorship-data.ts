@@ -67,6 +67,12 @@ export type Sponsorship = {
   // 'active' until the prepaid period ends, at which point the cron
   // flips status to 'cancelled'.
   cancellation_scheduled_at: string | null;
+  // Coverage package / cause — donor's stated allocation intent at
+  // sponsor-flow time. Charity admin may override in Directus admin
+  // (hybrid model). See src/lib/cause.ts for the canonical enum.
+  // Nullable for legacy rows that pre-date Session 14.5; display
+  // helpers fall back to "Where most needed" via labelForCause().
+  cause: string | null;
 };
 
 const FULL_FIELDS = [
@@ -79,6 +85,7 @@ const FULL_FIELDS = [
   "duration_months", "payment_schedule",
   "prepaid_months_total", "prepaid_months_remaining", "scheduled_end_date",
   "cancellation_scheduled_at",
+  "cause",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
 ] as const;
@@ -162,6 +169,11 @@ export async function createPendingSponsorship(opts: {
   prepaid_months_total?: number | null;
   prepaid_months_remaining?: number | null;
   scheduled_end_date?: string | null;
+  // Coverage package / cause — donor's stated allocation intent.
+  // Caller is expected to validate via isValidCause() before reaching
+  // here; we forward whatever string is supplied (so an admin override
+  // path could pass any value the Directus dropdown allows).
+  cause?: string | null;
 }): Promise<{ id: string }> {
   const payload: Record<string, unknown> = {
     donor: opts.donor,
@@ -179,6 +191,7 @@ export async function createPendingSponsorship(opts: {
     prepaid_months_total: opts.prepaid_months_total ?? null,
     prepaid_months_remaining: opts.prepaid_months_remaining ?? null,
     scheduled_end_date: opts.scheduled_end_date ?? null,
+    cause: opts.cause ?? null,
   };
   const created = (await directusServer().request(
     createItem("sponsorship" as never, payload as never),

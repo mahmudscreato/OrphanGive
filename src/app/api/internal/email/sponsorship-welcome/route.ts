@@ -13,6 +13,7 @@ import {
   SponsorshipWelcomeEmail,
   type SponsorshipWelcomeItem,
 } from "@/emails/SponsorshipWelcomeEmail";
+import { labelForCause } from "@/lib/cause";
 
 export const runtime = "nodejs";
 
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
       paymentMode: s.payment_mode,
       amountUsd: s.amount_usd,
       nextBillingDate: s.payment_mode === "monthly" ? s.next_billing_date : null,
+      causeLabel: labelForCause(s.cause),
     };
   });
 

@@ -19,6 +19,8 @@ export type SponsorshipExtendedEmailProps = {
   prepaidEndDateIso?: string | null;
   monthlyAmountUsd?: number;
   sponsorshipUrl: string;
+  // Pre-resolved cause label for the "Supporting" line.
+  causeLabel?: string;
 };
 
 function fmtUsd(n: number): string {
@@ -53,6 +55,7 @@ export function SponsorshipExtendedEmail({
   prepaidEndDateIso = null,
   monthlyAmountUsd,
   sponsorshipUrl,
+  causeLabel,
 }: SponsorshipExtendedEmailProps) {
   const newEndStr = fmtDate(newEndDateIso);
   const prepaidEndStr = fmtDate(prepaidEndDateIso);
@@ -142,6 +145,9 @@ export function SponsorshipExtendedEmail({
         />
         {newEndStr ? (
           <MetadataRow label="Sponsorship now ends" value={newEndStr} />
+        ) : null}
+        {causeLabel ? (
+          <MetadataRow label="Supporting" value={causeLabel} />
         ) : null}
         {paidNow ? (
           <MetadataRow

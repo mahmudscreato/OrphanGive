@@ -11,6 +11,10 @@ export type SponsorshipWelcomeItem = {
   paymentMode: "monthly" | "one_time";
   amountUsd: number;
   nextBillingDate?: string | null;
+  // Donor-facing label for the chosen cause (e.g. "Education and learning").
+  // Pre-resolved by the route handler via labelForCause() so the email
+  // template doesn't import application code.
+  causeLabel?: string;
 };
 
 export type SponsorshipWelcomeEmailProps = {
@@ -160,6 +164,9 @@ export function SponsorshipWelcomeEmail({
             />
             {s.paymentMode === "monthly" && next ? (
               <MetadataRow label="Next charge" value={next} />
+            ) : null}
+            {s.causeLabel ? (
+              <MetadataRow label="Supporting" value={s.causeLabel} />
             ) : null}
           </MetadataCard>
         );

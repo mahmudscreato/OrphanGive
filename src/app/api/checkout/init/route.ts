@@ -39,6 +39,10 @@ function fingerprintCart(items: ReadonlyArray<HydratedCartItem>): string {
       amountUsd: i.amountUsd,
       durationMonths: i.durationMonths ?? null,
       paymentSchedule: i.paymentSchedule ?? null,
+      // Cause is part of the fingerprint so changing it between
+      // checkout attempts forces a fresh sponsorship row (the old
+      // pending row gets cancelled with reason='abandoned').
+      cause: i.cause,
     }))
     .sort((a, b) => {
       if (a.childId !== b.childId) return a.childId < b.childId ? -1 : 1;
@@ -49,6 +53,7 @@ function fingerprintCart(items: ReadonlyArray<HydratedCartItem>): string {
       if ((a.paymentSchedule ?? "") !== (b.paymentSchedule ?? "")) {
         return (a.paymentSchedule ?? "") < (b.paymentSchedule ?? "") ? -1 : 1;
       }
+      if (a.cause !== b.cause) return a.cause < b.cause ? -1 : 1;
       return a.amountUsd - b.amountUsd;
     });
   return createHash("sha256")
@@ -413,6 +418,7 @@ async function createFreshCheckout(opts: {
           donor_id: donor.id,
           child_id: item.childId,
           sponsorship_pending: "true",
+          cause: item.cause,
           ...(isFixedTerm
             ? { duration_months: String(item.durationMonths) }
             : {}),
@@ -436,6 +442,7 @@ async function createFreshCheckout(opts: {
         duration_months: item.durationMonths ?? null,
         payment_schedule: "monthly",
         scheduled_end_date: scheduledEnd,
+        cause: item.cause,
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);
@@ -475,6 +482,7 @@ async function createFreshCheckout(opts: {
         prepaid_months_total: months,
         prepaid_months_remaining: months,
         scheduled_end_date: scheduledEnd,
+        cause: item.cause,
       });
       created.sponsorshipIds.push(sponsorshipId);
       sponsorshipIds.push(sponsorshipId);
@@ -495,6 +503,7 @@ async function createFreshCheckout(opts: {
           sponsorship_id: sponsorshipId,
           duration_months: String(months),
           monthly_amount_usd: String(item.amountUsd),
+          cause: item.cause,
         },
       });
       created.paymentIntentIds.push(pi.id);
@@ -526,6 +535,10 @@ async function createFreshCheckout(opts: {
           payment_mode: "one_time",
           child_ids: buckets.oneTimeItems.map((i) => i.childId).join(","),
           one_time_sponsorship_count: String(buckets.oneTimeItems.length),
+          // Comma-separated parallel to child_ids — items[i].cause
+          // belongs to items[i].childId. Per-row cause is also written
+          // to each sponsorship row below.
+          causes: buckets.oneTimeItems.map((i) => i.cause).join(","),
         },
       });
       created.paymentIntentIds.push(pi.id);
@@ -539,6 +552,7 @@ async function createFreshCheckout(opts: {
           stripe_payment_intent_id: pi.id,
           stripe_customer_id: customerId,
           checkout_fingerprint: fingerprint,
+          cause: item.cause,
           // No duration / schedule fields for one-time.
         });
         created.sponsorshipIds.push(sponsorshipId);

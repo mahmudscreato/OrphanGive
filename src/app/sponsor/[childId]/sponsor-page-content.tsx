@@ -25,7 +25,9 @@ import {
   type DurationSelection,
 } from "@/components/sponsor/DurationPicker";
 import { PaymentSchedulePicker } from "@/components/sponsor/PaymentSchedulePicker";
+import { CausePicker } from "@/components/sponsor/CausePicker";
 import { SponsorReviewCard } from "@/components/sponsor/SponsorReviewCard";
+import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "@/lib/cause";
 
 type ChildProps = {
   id: string;
@@ -46,9 +48,11 @@ type Props = {
 
 const OTHER_TIER_ID = "other" as const;
 
-// Step machine. Steps 3 + 4 are skipped for one-time, step 4 is skipped
-// for indefinite monthly.
-type Step = 1 | 2 | 3 | 4 | 5;
+// Step machine.
+//   Step 1 mode  → 2 amount → 3 duration → 4 schedule → 5 cause → 6 review
+// One-time skips 3 and 4. Indefinite monthly skips 4. Cause (step 5)
+// always renders — including for one-time gifts.
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
 
 function pickFirstSentence(s: string | null): string | null {
   if (!s) return null;
@@ -75,16 +79,30 @@ function readPrefilledState(searchParams: URLSearchParams): {
   amount: number;
   duration: DurationSelection;
   schedule: PaymentSchedule | null;
+  cause: CauseEnum;
 } | null {
   const m = searchParams.get("mode");
   const a = searchParams.get("amount");
   const d = searchParams.get("duration"); // "indef" or integer string
   const s = searchParams.get("schedule"); // optional for one_time / indef
+  const cRaw = searchParams.get("cause"); // optional; defaults to general_care
 
   if (!m || !a) return null;
   if (!isPaymentMode(m)) return null;
   const amount = Number(a);
   if (!isValidAmount(m, amount)) return null;
+
+  // Cause is optional in the URL. When provided, it must be a recognised
+  // enum; an invalid value rejects the entire prefill (donor lands on
+  // step 1 fresh) so we never silently swallow a tampered query string.
+  let cause: CauseEnum;
+  if (cRaw === null) {
+    cause = DEFAULT_CAUSE;
+  } else if (isValidCause(cRaw)) {
+    cause = cRaw;
+  } else {
+    return null;
+  }
 
   if (m === "one_time") {
     return {
@@ -92,6 +110,7 @@ function readPrefilledState(searchParams: URLSearchParams): {
       amount,
       duration: { optionId: "d_indef", months: null },
       schedule: null,
+      cause,
     };
   }
 
@@ -122,6 +141,7 @@ function readPrefilledState(searchParams: URLSearchParams): {
     amount,
     duration: durationSelectionFromMonths(months),
     schedule,
+    cause,
   };
 }
 
@@ -163,8 +183,11 @@ export function SponsorPageContent({
   const [schedule, setSchedule] = useState<PaymentSchedule | null>(
     prefill?.schedule ?? null,
   );
+  // Cause defaults to general_care so a donor who doesn't engage the
+  // picker still produces a valid value.
+  const [cause, setCause] = useState<CauseEnum>(prefill?.cause ?? DEFAULT_CAUSE);
   // Start at the review step if URL prefilled enough state to be valid.
-  const [step, setStep] = useState<Step>(prefill ? 5 : 1);
+  const [step, setStep] = useState<Step>(prefill ? 6 : 1);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -195,6 +218,7 @@ export function SponsorPageContent({
     setCustomAmount("");
     setDuration({ optionId: "d_indef", months: null });
     setSchedule(null);
+    setCause(DEFAULT_CAUSE);
     setStep(1);
     setError(null);
     setSuccess(false);
@@ -222,7 +246,7 @@ export function SponsorPageContent({
 
   function confirmAmount() {
     if (mode === "one_time") {
-      // One-time skips duration + schedule.
+      // One-time skips duration + schedule, jumps straight to cause picker.
       setStep(5);
     } else {
       setStep(3);
@@ -241,6 +265,10 @@ export function SponsorPageContent({
 
   function confirmSchedule() {
     setStep(5);
+  }
+
+  function confirmCause() {
+    setStep(6);
   }
 
   // Edit selections from review screen → restart at step 1 but preserve
@@ -266,6 +294,7 @@ export function SponsorPageContent({
                 amountUsd: amount,
                 durationMonths: null,
                 paymentSchedule: null,
+                cause,
               }
             : {
                 childId: child.id,
@@ -274,6 +303,7 @@ export function SponsorPageContent({
                 durationMonths: duration.months,
                 paymentSchedule:
                   duration.months === null ? "monthly" : schedule,
+                cause,
               };
         const res = await fetch("/api/cart/add", {
           method: "POST",
@@ -462,10 +492,40 @@ export function SponsorPageContent({
             </div>
           ) : null}
 
-          {/* Step 5: review */}
+          {/* Step 5: cause picker (always shown). Back-link target depends
+              on the previous active step — fixed-term → schedule (4),
+              indefinite monthly → duration (3), one-time → amount (2). */}
           {step === 5 && mode && amount !== null ? (
+            <div className="mb-7">
+              <StepHeader
+                n={5}
+                title="What would you like this to support?"
+              />
+              <BackLink
+                onClick={() => {
+                  if (mode === "one_time") setStep(2);
+                  else if (duration.months === null) setStep(3);
+                  else setStep(4);
+                }}
+                label="Back"
+              />
+              <CausePicker value={cause} onChange={setCause} />
+              <div className="mt-5">
+                <button
+                  type="button"
+                  onClick={confirmCause}
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+                >
+                  Continue →
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Step 6: review */}
+          {step === 6 && mode && amount !== null ? (
             <div className="mb-5">
-              <StepHeader n={5} title="Review" />
+              <StepHeader n={6} title="Review" />
               <SponsorReviewCard
                 paymentMode={mode}
                 amountUsd={amount}
@@ -477,6 +537,7 @@ export function SponsorPageContent({
                       : schedule
                     : null
                 }
+                cause={cause}
                 onEdit={editSelections}
                 onAddToCart={addToCart}
                 pending={pending}

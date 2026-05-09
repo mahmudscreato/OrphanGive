@@ -1,0 +1,36 @@
+-- ⚠ For Directus-managed collections, prefer adding fields via
+-- Directus Admin UI (Settings → Data Model). This SQL is kept
+-- as schema reference, not as the primary apply mechanism.
+-- See migrations/README.md.
+--
+-- Session 14.5 — Coverage Package / Cause feature
+--
+-- Adds one nullable text column to the sponsorship collection to
+-- capture the donor's stated allocation intent. Validation is
+-- handled at the application layer (see src/lib/cause.ts:isValidCause)
+-- so adding new causes later doesn't require a schema migration.
+-- Idempotent — safe to re-run.
+--
+-- HYBRID ALLOCATION MODEL: the donor selects a cause during sponsor
+-- flow (default: general_care). The charity admin can override the
+-- value at any time in Directus admin to reflect actual operational
+-- allocation. All display surfaces read the live value, so admin
+-- overrides flow through to dashboards and emails immediately.
+--
+-- Apply via Directus Admin UI:
+--   1. Open https://admin.orphangive.org/admin/settings/data-model/sponsorship
+--   2. + Create Field → Input → Dropdown
+--   3. Key: cause
+--      Type: string
+--      Required: no, Allow null: yes
+--      Default: general_care
+--   4. Choices (Display Label : Stored Value):
+--        Where most needed       : general_care
+--        Education and learning  : education
+--        Health and wellbeing    : healthcare
+--        Food and nutrition      : food
+--        Eid blessing            : eid_gift
+--   5. Save
+
+ALTER TABLE sponsorship
+  ADD COLUMN IF NOT EXISTS cause TEXT NULL DEFAULT 'general_care';

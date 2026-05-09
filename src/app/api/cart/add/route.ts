@@ -13,6 +13,7 @@ import {
   type PaymentSchedule,
 } from "@/lib/pricing";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
+import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "@/lib/cause";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
     amountUsd,
     durationMonths: durationRaw,
     paymentSchedule: scheduleRaw,
+    cause: causeRaw,
   } = body as Record<string, unknown>;
 
   if (typeof childId !== "string") {
@@ -120,6 +122,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Cause defaults to general_care if absent — donors can sponsor without
+  // engaging the picker. If present, it must be a recognized enum value;
+  // unknown strings are rejected so a tampered client can't write garbage
+  // to the sponsorship row's cause column.
+  let cause: CauseEnum;
+  if (causeRaw === undefined || causeRaw === null) {
+    cause = DEFAULT_CAUSE;
+  } else if (isValidCause(causeRaw)) {
+    cause = causeRaw;
+  } else {
+    return NextResponse.json(
+      { error: "Invalid cause." },
+      { status: 400 },
+    );
+  }
+
   // Block signed-in but suspended/rejected donors. Pending-approval donors
   // CAN build a cart per spec — checkout enforces approval at pay time.
   const donor = await getCurrentDonor();
@@ -145,6 +163,7 @@ export async function POST(req: NextRequest) {
       amountUsd: amount,
       durationMonths,
       paymentSchedule,
+      cause,
     },
   });
   const hydrated = await hydrateCart(cart);

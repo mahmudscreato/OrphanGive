@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
+import { labelForCause } from "@/lib/cause";
 import type { Sponsorship } from "@/lib/sponsorship-data";
 import {
   SponsorshipStatusBadge,
@@ -50,6 +51,9 @@ export function SponsorshipCard({ s }: Props) {
         <div>
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="min-w-0">
+              <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-tangerine-deep mb-1">
+                {labelForCause(s.cause)}
+              </div>
               <h3 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
                 {c.name}
               </h3>

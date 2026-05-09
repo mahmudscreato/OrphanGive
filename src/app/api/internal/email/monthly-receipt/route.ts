@@ -10,6 +10,7 @@ import {
 } from "@/lib/email-data";
 import { getStripe } from "@/lib/stripe-client";
 import { MonthlyReceiptEmail } from "@/emails/MonthlyReceiptEmail";
+import { labelForCause } from "@/lib/cause";
 
 export const runtime = "nodejs";
 
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
     template: MonthlyReceiptEmail({
       firstName,
       childName,
+      causeLabel: labelForCause(sponsorship.cause),
       amountUsd: payment.amount_usd,
       paidAt: payment.paid_at,
       paymentMethodLast4: last4,

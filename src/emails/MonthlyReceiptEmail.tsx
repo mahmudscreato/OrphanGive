@@ -13,6 +13,10 @@ export type MonthlyReceiptEmailProps = {
   stripeReceiptUrl: string | null;
   nextBillingDate: string | null;
   dashboardUrl: string;
+  // Pre-resolved cause label (e.g. "Education and learning"). Optional
+  // for back-compat — old callers that haven't been updated still send
+  // a valid receipt; the new line just won't appear.
+  causeLabel?: string;
 };
 
 function formatUsd(n: number): string {
@@ -48,6 +52,7 @@ export function MonthlyReceiptEmail({
   stripeReceiptUrl,
   nextBillingDate,
   dashboardUrl,
+  causeLabel,
 }: MonthlyReceiptEmailProps) {
   const paidAtFmt = formatDate(paidAt) ?? paidAt;
   const nextFmt = formatDate(nextBillingDate);
@@ -105,6 +110,9 @@ export function MonthlyReceiptEmail({
         <MetadataRow label="Sponsorship for" value={childName} />
         <MetadataRow label="Amount" value={formatUsd(amountUsd)} emphasized />
         <MetadataRow label="Payment method" value={methodLine} />
+        {causeLabel ? (
+          <MetadataRow label="Supporting" value={causeLabel} />
+        ) : null}
         {stripeReceiptUrl ? (
           <Text
             style={{

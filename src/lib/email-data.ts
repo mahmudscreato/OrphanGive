@@ -206,6 +206,9 @@ export type EmailSponsorship = {
   amount_usd: number;
   next_billing_date: string | null;
   status: string;
+  // Coverage package / cause — used by welcome/extended/receipt
+  // emails to show "Supporting: [label]". Nullable for legacy rows.
+  cause: string | null;
 };
 
 export async function fetchSponsorshipsByIds(
@@ -225,6 +228,7 @@ export async function fetchSponsorshipsByIds(
           "amount_usd",
           "next_billing_date",
           "status",
+          "cause",
         ],
         limit: -1,
       } as never),
@@ -240,6 +244,7 @@ export async function fetchSponsorshipsByIds(
       amount_usd: Number(r.amount_usd ?? 0),
       next_billing_date: (r.next_billing_date as string | null) ?? null,
       status: String(r.status ?? ""),
+      cause: (r.cause as string | null) ?? null,
     }));
   } catch (err) {
     console.warn(

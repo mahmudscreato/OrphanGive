@@ -69,3 +69,4 @@ ordering, dash-separated description. Example:
 | File | Collection | Apply path |
 |---|---|---|
 | `2026-05-08-add-og-profile-photo-url.sql` | `directus_users` | Directus Admin UI |
+| `2026-05-09-add-sponsorship-cause.sql` | `sponsorship` | Directus Admin UI |

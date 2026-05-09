@@ -7,6 +7,7 @@ import {
   formatTo,
 } from "@/lib/email-data";
 import { SponsorshipExtendedEmail } from "@/emails/SponsorshipExtendedEmail";
+import { labelForCause } from "@/lib/cause";
 
 export const runtime = "nodejs";
 
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       paidNow,
       paymentAmountUsd,
       sponsorshipUrl: siteUrl(`/dashboard/sponsorship/${id}`),
+      causeLabel: labelForCause(sponsorship.cause),
     }),
   });
   if (!result.success) {

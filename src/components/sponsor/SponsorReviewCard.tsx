@@ -1,6 +1,7 @@
 "use client";
 
 import { formatUsd, type PaymentMode, type PaymentSchedule } from "@/lib/pricing";
+import { labelForCause, type CauseEnum } from "@/lib/cause";
 
 export type SponsorReviewProps = {
   paymentMode: PaymentMode;
@@ -8,6 +9,8 @@ export type SponsorReviewProps = {
   // monthly only; null for one-time
   durationMonths: number | null;
   paymentSchedule: PaymentSchedule | null;
+  // Donor's chosen allocation intent.
+  cause: CauseEnum;
   // Action props
   onEdit: () => void;
   onAddToCart: () => void;
@@ -26,6 +29,7 @@ export function SponsorReviewCard({
   amountUsd,
   durationMonths,
   paymentSchedule,
+  cause,
   onEdit,
   onAddToCart,
   pending,
@@ -95,6 +99,7 @@ export function SponsorReviewCard({
               : "Pay monthly"}
           </Row>
         ) : null}
+        <Row label="Supporting">{labelForCause(cause)}</Row>
       </dl>
 
       <div className="mt-4 pt-4 border-t border-ink/[0.06] grid grid-cols-2 gap-4 max-md:grid-cols-1">

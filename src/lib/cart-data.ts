@@ -15,6 +15,7 @@ import {
   type PaymentMode,
   type PaymentSchedule,
 } from "./pricing";
+import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "./cause";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export const CART_COOKIE = "og_cart_token";
@@ -31,6 +32,9 @@ export type CartItem = {
   //   either "monthly" (recurring) or "monthly_prepaid" (single upfront).
   durationMonths: number | null;
   paymentSchedule: PaymentSchedule | null;
+  // Donor's stated allocation intent (Session 14.5). Defaults to
+  // general_care when the donor doesn't explicitly choose.
+  cause: CauseEnum;
 };
 
 export type HydratedCartItem = CartItem & {
@@ -126,6 +130,17 @@ function isPlainCartItem(v: unknown): v is CartItem {
         return false;
       }
     }
+  }
+
+  // `cause` was added in Session 14.5. Items persisted before that
+  // migration won't have it — default to general_care so legacy
+  // carts on disk don't fail this validator. Items where cause IS
+  // present must be a recognized enum value; unknown strings are
+  // rejected (could indicate a tampered cookie / stale client).
+  if ("cause" in o && o.cause !== undefined && o.cause !== null) {
+    if (!isValidCause(o.cause)) return false;
+  } else {
+    o.cause = DEFAULT_CAUSE;
   }
   return true;
 }
