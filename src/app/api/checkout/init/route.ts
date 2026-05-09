@@ -205,69 +205,218 @@ const CANCELLABLE_PI_STATES: ReadonlySet<string> = new Set([
   "processing",
 ]);
 
+// Subscription Stripe statuses where the donor has paid and the sub
+// is running. We do NOT cancel these in cleanup — the donor's
+// payment is real and the subscription will keep charging. We just
+// reconcile our row to status='active'.
+const PAID_SUB_STATES: ReadonlySet<string> = new Set(["active", "trialing"]);
+
+// Subscription statuses where the sub is already gone. No cancel
+// call needed (Stripe would reject) — just mark the row cancelled.
+const TERMINAL_SUB_STATES: ReadonlySet<string> = new Set([
+  "canceled",
+  "incomplete_expired",
+]);
+
+// The Directus field shape we patch onto a stale sponsorship row.
+// `status` is the only required key; the others are conditional
+// based on which Stripe object owned this row.
+type RowPatch = {
+  status: "active" | "completed" | "cancelled";
+  cancelled_at?: string;
+  cancellation_reason?: string;
+  stripe_payment_intent_id?: null;
+  stripe_subscription_id?: null;
+};
+
+// Resolves a stale PaymentIntent against Stripe and returns the
+// Directus patch to apply to every sponsorship row that referenced
+// this PI. Behaviour is the THREE-branch reconciliation locked in
+// during 14.5 hardening:
+//
+//   succeeded   → donor paid; finalize row as 'completed' so it
+//                 stays as a payment record, clear the PI
+//                 reference so it doesn't hold the unique slot.
+//   canceled    → already gone; mark row cancelled, clear ref.
+//   cancellable → cancel the PI now, mark row cancelled, clear ref.
+//   not found   → PI vanished from Stripe; mark row cancelled with
+//                 a forensic reason, clear ref.
+//   anything else (defensive) → log loudly, mark cancelled, clear ref.
+async function reconcilePaymentIntent(
+  stripe: Stripe,
+  piId: string,
+): Promise<RowPatch> {
+  let pi: Stripe.PaymentIntent;
+  try {
+    pi = await stripe.paymentIntents.retrieve(piId);
+  } catch (e) {
+    console.warn(
+      `[checkout/init] PI ${piId} not found in Stripe; clearing orphaned reference`,
+      e instanceof Error ? e.message : e,
+    );
+    return {
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "orphaned_pi_not_found",
+      stripe_payment_intent_id: null,
+    };
+  }
+
+  if (pi.status === "succeeded") {
+    console.warn(
+      `[checkout/init] PI ${piId} already succeeded; finalizing row as completed`,
+    );
+    return {
+      status: "completed",
+      cancellation_reason: "orphaned_succeeded_pre_finalization",
+      stripe_payment_intent_id: null,
+    };
+  }
+
+  if (pi.status === "canceled") {
+    console.warn(
+      `[checkout/init] PI ${piId} already canceled in Stripe; clearing reference`,
+    );
+    return {
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "abandoned",
+      stripe_payment_intent_id: null,
+    };
+  }
+
+  if (CANCELLABLE_PI_STATES.has(pi.status)) {
+    try {
+      await stripe.paymentIntents.cancel(piId);
+    } catch (e) {
+      console.warn(
+        `[checkout/init] cancel pi ${piId} failed:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return {
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "abandoned",
+      stripe_payment_intent_id: null,
+    };
+  }
+
+  console.error(
+    `[checkout/init] PI ${piId} in unexpected state ${pi.status}; clearing reference defensively`,
+  );
+  return {
+    status: "cancelled",
+    cancelled_at: new Date().toISOString(),
+    cancellation_reason: "unexpected_pi_state",
+    stripe_payment_intent_id: null,
+  };
+}
+
+// Same three-branch reconciliation for subscriptions. "Paid" states
+// (active / trialing) leave the sub running in Stripe and finalize
+// our row as 'active'. Terminal states (canceled / incomplete_expired)
+// skip the cancel call. Anything else cancels in Stripe.
+async function reconcileSubscription(
+  stripe: Stripe,
+  subId: string,
+): Promise<RowPatch> {
+  let sub: Stripe.Subscription;
+  try {
+    sub = await stripe.subscriptions.retrieve(subId);
+  } catch (e) {
+    console.warn(
+      `[checkout/init] sub ${subId} not found in Stripe; clearing orphaned reference`,
+      e instanceof Error ? e.message : e,
+    );
+    return {
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "orphaned_sub_not_found",
+      stripe_subscription_id: null,
+    };
+  }
+
+  if (PAID_SUB_STATES.has(sub.status)) {
+    console.warn(
+      `[checkout/init] sub ${subId} is ${sub.status} (donor paid); finalizing row as active`,
+    );
+    return {
+      status: "active",
+      cancellation_reason: "orphaned_active_pre_finalization",
+      stripe_subscription_id: null,
+    };
+  }
+
+  if (TERMINAL_SUB_STATES.has(sub.status)) {
+    console.warn(
+      `[checkout/init] sub ${subId} already ${sub.status}; clearing reference`,
+    );
+    return {
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "abandoned",
+      stripe_subscription_id: null,
+    };
+  }
+
+  try {
+    await stripe.subscriptions.cancel(subId);
+  } catch (e) {
+    console.warn(
+      `[checkout/init] cancel sub ${subId} failed:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+  return {
+    status: "cancelled",
+    cancelled_at: new Date().toISOString(),
+    cancellation_reason: "abandoned",
+    stripe_subscription_id: null,
+  };
+}
+
 async function cancelPendings(
   stripe: Stripe,
   pendings: Sponsorship[],
 ): Promise<void> {
-  const cancelledPIs = new Set<string>();
+  // One-time bundles share a PI across N rows. Cache the PI outcome
+  // so we only hit Stripe once per distinct PI; every row that
+  // references the PI gets the same patch applied to its row.
+  const piPatchCache = new Map<string, RowPatch>();
+
   for (const s of pendings) {
+    let patch: RowPatch = {
+      // Default for the rare row that has neither a sub_id nor a
+      // PI id (shouldn't happen with current creation paths, but
+      // be defensive — mark cancelled rather than leave dangling).
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "abandoned",
+    };
+
     if (s.stripe_subscription_id) {
-      try {
-        // Retrieve first — Stripe rejects subscription cancel calls
-        // when the sub is already canceled. Skip in that case.
-        const sub = await stripe.subscriptions.retrieve(
-          s.stripe_subscription_id,
-        );
-        if (sub.status !== "canceled") {
-          await stripe.subscriptions.cancel(s.stripe_subscription_id);
-        } else {
-          console.warn(
-            `[checkout/init] skipping cancel of sub ${s.stripe_subscription_id} (status=${sub.status})`,
-          );
-        }
-      } catch (e) {
-        console.warn(
-          `[checkout/init] cleanup error for sub ${s.stripe_subscription_id}:`,
-          e instanceof Error ? e.message : e,
-        );
-      }
+      patch = {
+        ...patch,
+        ...(await reconcileSubscription(stripe, s.stripe_subscription_id)),
+      };
     }
+
     if (s.stripe_payment_intent_id) {
       const piId = s.stripe_payment_intent_id;
-      if (!cancelledPIs.has(piId)) {
-        cancelledPIs.add(piId);
-        try {
-          // Retrieve first — Stripe rejects PI cancel calls when
-          // the PI is in a terminal state (succeeded, canceled).
-          // Succeeded PIs represent real charges; the donor has
-          // already paid and the resulting sponsorship can be
-          // claimed via the success page even if the row is
-          // stale.
-          const pi = await stripe.paymentIntents.retrieve(piId);
-          if (CANCELLABLE_PI_STATES.has(pi.status)) {
-            await stripe.paymentIntents.cancel(piId);
-          } else {
-            console.warn(
-              `[checkout/init] skipping cancel of pi ${piId} (status=${pi.status})`,
-            );
-          }
-        } catch (e) {
-          console.warn(
-            `[checkout/init] cleanup error for pi ${piId}:`,
-            e instanceof Error ? e.message : e,
-          );
-        }
+      let piPatch = piPatchCache.get(piId);
+      if (!piPatch) {
+        piPatch = await reconcilePaymentIntent(stripe, piId);
+        piPatchCache.set(piId, piPatch);
       }
+      patch = { ...patch, ...piPatch };
     }
+
     try {
-      await updateSponsorship(s.id, {
-        status: "cancelled",
-        cancelled_at: new Date().toISOString(),
-        cancellation_reason: "abandoned",
-      });
+      await updateSponsorship(s.id, patch);
     } catch (e) {
       console.warn(
-        `[checkout/init] mark cancelled ${s.id} failed:`,
+        `[checkout/init] reconcile row ${s.id} failed:`,
         e instanceof Error ? e.message : e,
       );
     }
