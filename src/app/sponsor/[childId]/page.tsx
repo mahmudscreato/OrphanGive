@@ -36,13 +36,26 @@ export default async function SponsorPage({
 
   // Session 14.6: child-lock — at most one active monthly sponsor per
   // child. The flag is true unless the locked sponsor IS the current
-  // donor (in which case they're the holder; they can still re-edit
-  // their own commitment via the sponsorship detail page, not here).
-  // Re-checked at /api/checkout/init too as the race-condition guard.
+  // donor (in which case they're the holder). Re-checked at
+  // /api/checkout/init too as the race-condition guard.
+  //
+  // Same-donor exemption: when the active sponsor IS the viewing
+  // donor, monthlyLocked is false AND we surface a friendly note on
+  // the sponsor page that links them to /dashboard/sponsorship/[id]
+  // for managing the existing commitment, while still allowing them
+  // to add a one-time gift below.
   const activeMonthly = await getActiveMonthlySponsorForChild(child.id);
-  const monthlyLocked = Boolean(
-    activeMonthly && activeMonthly.donorId !== donor.id,
+  const isOwnActiveMonthly = Boolean(
+    activeMonthly && activeMonthly.donorId === donor.id,
   );
+  const monthlyLocked = Boolean(activeMonthly) && !isOwnActiveMonthly;
+  const selfActiveMonthly =
+    isOwnActiveMonthly && activeMonthly
+      ? {
+          sponsorshipId: activeMonthly.sponsorshipId,
+          scheduledEndDate: activeMonthly.scheduledEndDate,
+        }
+      : null;
 
   return (
     <main className="bg-cream">
@@ -73,6 +86,7 @@ export default async function SponsorPage({
         initialCartItemCount={cartItemCount}
         monthlyLocked={monthlyLocked}
         donorFirstName={donor.first_name ?? null}
+        selfActiveMonthly={selfActiveMonthly}
       />
     </main>
   );

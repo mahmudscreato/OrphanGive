@@ -59,6 +59,17 @@ type Props = {
   // step 6 'Show my name' option so the donor sees what's about to go
   // public. Null for guests.
   donorFirstName: string | null;
+  // Session 14.6 — same-donor exemption: when the active monthly
+  // sponsor IS the current donor, monthlyLocked is false and this
+  // carries the existing sponsorship's id + end date so the page can
+  // show a friendly note and a "Manage your monthly sponsorship →"
+  // link instead of silently letting them re-create a duplicate.
+  // Null in the normal (no-active-monthly OR locked-by-other-donor)
+  // path.
+  selfActiveMonthly: {
+    sponsorshipId: string;
+    scheduledEndDate: string | null;
+  } | null;
 };
 
 const OTHER_TIER_ID = "other" as const;
@@ -182,6 +193,7 @@ export function SponsorPageContent({
   initialCartItemCount,
   monthlyLocked,
   donorFirstName,
+  selfActiveMonthly,
 }: Props) {
   const router = useRouter();
   const search = useSearchParams();
@@ -442,7 +454,13 @@ export function SponsorPageContent({
           {step === 1 ? (
             <div className="mb-7">
               <StepHeader n={1} title="How would you like to give?" />
-              {monthlyLocked ? (
+              {selfActiveMonthly ? (
+                <SelfActiveMonthlyNote
+                  childFirstName={child.display_name.split(" ")[0]!}
+                  sponsorshipId={selfActiveMonthly.sponsorshipId}
+                  scheduledEndDate={selfActiveMonthly.scheduledEndDate}
+                />
+              ) : monthlyLocked ? (
                 <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3">
                   <p className="text-[13.5px] text-ink leading-snug">
                     <span className="font-display font-medium">
@@ -689,6 +707,51 @@ function StepHeader({ n, title }: { n: number; title: string }) {
       </span>
       {title}
     </h2>
+  );
+}
+
+// Friendly informational note shown at step 1 when the viewing donor
+// is ALREADY the active monthly sponsor of this child. Distinct from
+// the moss "locked by another donor" pill: this wants to feel like a
+// guided handoff to /dashboard/sponsorship/[id], while still letting
+// the donor add an additional one-time gift on top.
+function SelfActiveMonthlyNote({
+  childFirstName,
+  sponsorshipId,
+  scheduledEndDate,
+}: {
+  childFirstName: string;
+  sponsorshipId: string;
+  scheduledEndDate: string | null;
+}) {
+  // Format the end date readably; null (indefinite sub) → omit the
+  // "through [date]" clause entirely so the copy stays grammatical.
+  let throughClause = "";
+  if (scheduledEndDate) {
+    const d = new Date(scheduledEndDate);
+    if (!Number.isNaN(d.getTime())) {
+      throughClause = ` through ${d.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })}`;
+    }
+  }
+  return (
+    <div className="mb-4 rounded-[14px] bg-tangerine-mist/60 border border-tangerine-soft px-4 py-3.5">
+      <p className="text-[13.5px] text-ink leading-[1.6]">
+        You&rsquo;re already sponsoring{" "}
+        <span className="font-display font-medium">{childFirstName}</span>{" "}
+        monthly{throughClause}. You can extend or modify your sponsorship
+        from your dashboard, or send an additional one-time gift below.
+      </p>
+      <Link
+        href={`/dashboard/sponsorship/${sponsorshipId}`}
+        className="mt-2 inline-flex items-center gap-1 text-[13px] text-tangerine-deep font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
+      >
+        Manage your monthly sponsorship →
+      </Link>
+    </div>
   );
 }
 

@@ -517,12 +517,20 @@ export async function getActiveMonthlySponsorForChild(
         },
         fields: [
           "id",
-          "donor",
+          // Ask for donor.id explicitly: requesting bare "donor"
+          // alongside "donor.first_name" makes Directus expand the
+          // relation, but the expanded object only contains the
+          // sub-fields you list. Without "donor.id" the resulting
+          // object has no id, the fallback yields donorId="", and
+          // every same-donor exemption check incorrectly fires the
+          // lock. Asking for both id + first_name keeps the helper's
+          // existing extraction logic correct.
+          "donor.id",
+          "donor.first_name",
           "visibility",
           "scheduled_end_date",
           "cancellation_scheduled_at",
           "date_created",
-          "donor.first_name",
         ],
         sort: ["-date_created"],
         limit: 5,
