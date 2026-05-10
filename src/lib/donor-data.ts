@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { readMe, readUser } from "@directus/sdk";
@@ -114,7 +115,15 @@ export function getDonorState(donor: Donor | null): DonorState {
 //
 // Never call this with a path other than the donor's own row — the
 // caller's id is the only id we accept.
-export async function getCurrentDonor(): Promise<Donor | null> {
+//
+// Session 15b1 perf — wrapped in React.cache() so multiple call
+// sites within a single render (layout + page + nested components)
+// share one Directus round-trip. cache() is request-scoped: each
+// new HTTP request gets a fresh cache, so cross-request leakage
+// is impossible. No effect on runtime correctness; just dedup.
+export const getCurrentDonor = cache(_getCurrentDonor);
+
+async function _getCurrentDonor(): Promise<Donor | null> {
   const store = await cookies();
   const accessToken = store.get(ACCESS_COOKIE)?.value;
   if (!accessToken) return null;
