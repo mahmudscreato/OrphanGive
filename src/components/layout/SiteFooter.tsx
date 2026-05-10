@@ -102,8 +102,13 @@ export function SiteFooter() {
                 {col.heading}
               </h4>
               {col.links.map((link) => (
+                // Composite key: multiple labels in the same column
+                // can alias to the same href during the v1 footer
+                // wiring (e.g. "Help centre" and "FAQ" both → /faq).
+                // Keying on href alone produced duplicate-key React
+                // warnings; label+href is unique within the column.
                 <Link
-                  key={link.href}
+                  key={`${link.label}-${link.href}`}
                   href={link.href}
                   className="block py-1.5 text-sm text-cream/70 hover:text-tangerine-light transition-colors duration-200"
                 >
@@ -121,7 +126,7 @@ export function SiteFooter() {
           <div className="flex gap-6">
             {BOTTOM_LINKS.map((link) => (
               <Link
-                key={link.href}
+                key={`${link.label}-${link.href}`}
                 href={link.href}
                 className="text-cream/50 hover:text-tangerine-light transition-colors duration-200"
               >
