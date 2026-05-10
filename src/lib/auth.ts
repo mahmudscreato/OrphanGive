@@ -46,7 +46,7 @@ export async function signIn(
   email: string,
   password: string,
 ): Promise<AuthenticationData> {
-  return directus.request(login({ email, password }, { mode: "json" }));
+  return directus().request(login({ email, password }, { mode: "json" }));
 }
 
 let donorRoleIdCache: string | null = null;
@@ -76,7 +76,7 @@ export async function signUp(
 ): Promise<void> {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
   const verification_url = siteUrl ? `${siteUrl}/auth/verify` : undefined;
-  await directus.request(
+  await directus().request(
     registerUser(email, password, {
       ...(verification_url ? { verification_url } : {}),
       ...(donorProfile.first_name ? { first_name: donorProfile.first_name } : {}),
@@ -111,7 +111,7 @@ export async function signUp(
 export async function signOut(refreshToken?: string): Promise<void> {
   if (!refreshToken) return;
   try {
-    await directus.request(
+    await directus().request(
       logout({ refresh_token: refreshToken, mode: "json" }),
     );
   } catch {
@@ -122,7 +122,7 @@ export async function signOut(refreshToken?: string): Promise<void> {
 export async function refreshSession(
   refreshToken: string,
 ): Promise<AuthenticationData> {
-  return directus.request(
+  return directus().request(
     refresh({ refresh_token: refreshToken, mode: "json" }),
   );
 }
@@ -147,7 +147,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 }
 
 export async function verifyEmailToken(token: string): Promise<void> {
-  await directus.request(registerUserVerify(token));
+  await directus().request(registerUserVerify(token));
 }
 
 export async function requestEmailVerification(_email: string): Promise<void> {
