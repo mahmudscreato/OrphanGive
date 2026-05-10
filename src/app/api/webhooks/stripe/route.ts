@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
+import { readItems, updateItem } from "@directus/sdk";
 import {
   getStripe,
   getStripeWebhookSecret,
@@ -12,10 +13,12 @@ import {
   updateSponsorship,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
+import { directusServer } from "@/lib/directus";
 import { clearCartByDonor } from "@/lib/cart-data";
 import { promoteQueue } from "@/lib/queue";
 import {
   fireMonthlyReceiptEmail,
+  fireRefundEmail,
   fireWelcomeEmail,
 } from "@/lib/email-triggers";
 
@@ -407,8 +410,18 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
     });
 
     const wasFirstActivation = !s.started_at;
-    const patch: Partial<Sponsorship> = { status: "active" };
-    if (wasFirstActivation) patch.started_at = new Date().toISOString();
+    // Session 15b1.1 Bug 1: one-time gifts complete immediately on
+    // PI success. There's no future-state for a one-time gift —
+    // status='active' is only correct for monthly_prepaid (covers
+    // a future window) and recurring monthly subs (continue billing).
+    // For one-time, jump straight to 'completed' + stamp ended_at.
+    const isOneTime = s.payment_mode === "one_time";
+    const nowIso = new Date().toISOString();
+    const patch: Partial<Sponsorship> = {
+      status: isOneTime ? "completed" : "active",
+    };
+    if (wasFirstActivation) patch.started_at = nowIso;
+    if (isOneTime) patch.ended_at = nowIso;
     if (created) {
       patch.payment_count = (s.payment_count ?? 0) + 1;
       patch.total_paid_usd = Number(s.total_paid_usd ?? 0) + paymentAmount;
@@ -449,6 +462,145 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
     });
     if (!s.started_at) {
       await updateSponsorship(s.id, { status: "failed" });
+    }
+  }
+}
+
+// Session 15b1.1 Bug 2 — charge.refunded handler. When a refund
+// is issued (full or partial) on a Stripe charge, mirror the state
+// onto our payment + sponsorship rows so the donor's dashboard
+// reads consistently and the refund-confirmation email fires.
+//
+// Stripe events relevant here:
+//   - charge.refunded — full refund (or first refund on a charge)
+//   - charge.refund.updated — refund settled, edited, etc. (we
+//     could subscribe later if partial-refund accounting needs it)
+//
+// charge.refunded carries the Charge object with .payment_intent
+// pointing at the original PI. We look up our payment row by
+// stripe_payment_intent_id, mark refunded_at + status='refunded',
+// then set the linked sponsorship to status='refunded'/'cancelled'
+// per its mode.
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  const piId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null;
+  if (!piId) {
+    console.warn(
+      `[stripe-webhook] charge.refunded ${charge.id} has no payment_intent; skip`,
+    );
+    return;
+  }
+
+  const sponsorships = await findSponsorshipsByStripeRef({
+    paymentIntentId: piId,
+  });
+  if (sponsorships.length === 0) {
+    console.warn(
+      `[stripe-webhook] charge.refunded: no sponsorship found for PI ${piId}`,
+    );
+    return;
+  }
+
+  // Find the payment row(s) tied to this PI. There's one per
+  // sponsorship in the bundle case (one-time gifts share a PI but
+  // each row gets its own payment record); for prepaid + recurring
+  // there's a single row.
+  const ds = directusServer();
+  const paymentRows = (await ds.request(
+    readItems("payment" as never, {
+      filter: { stripe_payment_intent_id: { _eq: piId } },
+      fields: ["id", "sponsorship", "amount_usd", "status", "refunded_at"],
+      limit: -1,
+    } as never),
+  )) as unknown as Array<{
+    id: string;
+    sponsorship: string;
+    amount_usd: number | string;
+    status: string;
+    refunded_at: string | null;
+  }>;
+
+  const refundedAtIso = new Date(
+    (charge.created ?? Date.now() / 1000) * 1000,
+  ).toISOString();
+  const refundedAmountUsd = (charge.amount_refunded ?? 0) / 100;
+  const refundReason = charge.refunds?.data?.[0]?.reason ?? "manual_refund";
+
+  // Mark every payment row tied to this PI as refunded — bundle
+  // PI for one-time gifts shares charge_id across N payment rows.
+  for (const p of paymentRows) {
+    if (p.refunded_at) continue; // idempotent — already marked
+    try {
+      await ds.request(
+        updateItem("payment" as never, p.id as never, {
+          status: "refunded",
+          refunded_at: refundedAtIso,
+          refund_reason: refundReason,
+        } as never),
+      );
+      console.log(
+        `[stripe-webhook] payment=${p.id} marked refunded ($${refundedAmountUsd})`,
+      );
+    } catch (err) {
+      console.warn(
+        `[stripe-webhook] payment ${p.id} update failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // For each affected sponsorship: flip status to 'cancelled' with
+  // a refund-specific reason. One-time + prepaid both terminate.
+  // For recurring monthly subs, refunding a single invoice doesn't
+  // cancel the underlying sub — Stripe handles that separately;
+  // we still mark the sponsorship cancelled because the donor's
+  // intent is clear (they got their money back). If this turns
+  // out to be wrong for partial refunds on recurring, future work
+  // can refine.
+  for (const s of sponsorships) {
+    // Idempotent guard. The schema's SponsorshipStatus union doesn't
+    // include 'refunded' — refunded rows are recorded with
+    // status='cancelled' + cancellation_reason='refunded'. Checking
+    // both terminal states catches replayed events without
+    // re-processing.
+    if (
+      s.status === "cancelled" ||
+      s.status === "completed" ||
+      s.cancellation_reason === "refunded"
+    ) {
+      continue;
+    }
+    try {
+      await updateSponsorship(s.id, {
+        status: "cancelled",
+        cancelled_at: refundedAtIso,
+        ended_at: refundedAtIso,
+        cancellation_reason: "refunded",
+      });
+      console.log(
+        `[stripe-webhook] sponsorship=${s.id} marked cancelled (refund of $${refundedAmountUsd})`,
+      );
+      // Inline refund email — Bug 4 migration. Reuses the existing
+      // sponsorship-cancelled internal route with reason='refunded'
+      // for refund-specific subject copy.
+      try {
+        await fireRefundEmail({
+          sponsorshipId: s.id,
+          refundedAmountUsd,
+        });
+      } catch (err) {
+        console.warn(
+          `[stripe-webhook] refund email for ${s.id} failed (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[stripe-webhook] sponsorship ${s.id} refund update failed:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 }
@@ -615,6 +767,15 @@ export async function POST(req: NextRequest) {
       // ── Subscription cancellation ────────────────────────────────────
       case "customer.subscription.deleted":
         await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        break;
+      // ── Refund (Session 15b1.1 Bug 2) ─────────────────────────────────
+      // charge.refunded fires for full refunds and the first partial
+      // refund on a charge. We mirror onto our payment row
+      // (status='refunded', refunded_at, refund_reason) and the
+      // sponsorship row (status='cancelled', cancellation_reason='refunded'),
+      // then fire the inline refund-confirmation email.
+      case "charge.refunded":
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
       default:
         // Unhandled event types are still acknowledged — Stripe shouldn't

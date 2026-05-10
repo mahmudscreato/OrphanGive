@@ -29,9 +29,25 @@
 // webhook handler's row update. Errors are logged with a
 // `[email-triggers]` prefix and swallowed.
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-  "http://localhost:3000";
+// Self-fetch via in-process loopback. The internal-email routes are
+// hosted by THIS Node process, so going out to NEXT_PUBLIC_SITE_URL
+// (e.g. https://orphangive.org) would round-trip:
+//   container → DNS → public IP → reverse proxy → container
+// That dependency chain means a single hiccup at any layer (DNS
+// inside container, SSL cert sniffing, proxy ACL) can silently
+// break inline email triggers — exactly what Session 15b1.1 Bug 3
+// surfaced in production. Hitting `http://localhost:${PORT}` keeps
+// the call inside the container's loopback interface; no external
+// network involved.
+//
+// Override via INTERNAL_FETCH_URL if a deployment really wants to
+// exit the process (e.g. multi-instance setups where the email
+// route lives on a different node). Single-instance default is
+// localhost.
+const SELF_PORT = process.env.PORT ?? "3000";
+const SELF_URL =
+  process.env.INTERNAL_FETCH_URL?.replace(/\/$/, "") ??
+  `http://localhost:${SELF_PORT}`;
 
 async function callInternalEmailRoute(
   path: string,
@@ -45,7 +61,7 @@ async function callInternalEmailRoute(
     return;
   }
   try {
-    const r = await fetch(`${SITE_URL}${path}`, {
+    const r = await fetch(`${SELF_URL}${path}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -114,4 +130,31 @@ export async function fireMonthlyReceiptEmail(
   await callInternalEmailRoute("/api/internal/email/monthly-receipt", {
     paymentId,
   });
+}
+
+// Refund confirmation — fires from the charge.refunded webhook
+// handler (Session 15b1.1 Bug 4 migration). Reuses the existing
+// SponsorshipCancelledEmail template via /api/internal/email/sponsorship-cancelled
+// with a refund-specific subject; the template body covers both
+// "your sponsorship has ended" and "your refund has been processed"
+// adequately for v1. A dedicated RefundConfirmation template can
+// be split out later if the copy needs to diverge.
+//
+// Caller passes the sponsorship id of the refunded row plus the
+// refunded amount in USD (for the email body). Best-effort: a
+// failure here doesn't unwind the row updates the webhook handler
+// already made.
+export async function fireRefundEmail(opts: {
+  sponsorshipId: string;
+  refundedAmountUsd: number;
+}): Promise<void> {
+  if (!opts.sponsorshipId) return;
+  await callInternalEmailRoute(
+    "/api/internal/email/sponsorship-cancelled",
+    {
+      sponsorshipId: opts.sponsorshipId,
+      reason: "refunded",
+      refundedAmountUsd: opts.refundedAmountUsd,
+    },
+  );
 }

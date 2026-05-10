@@ -14,7 +14,11 @@ export async function POST(req: NextRequest) {
   const unauthed = verifyInternalAuth(req);
   if (unauthed) return unauthed;
 
-  let body: { sponsorshipId?: unknown };
+  let body: {
+    sponsorshipId?: unknown;
+    reason?: unknown;
+    refundedAmountUsd?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -27,6 +31,15 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  // Session 15b1.1 — refund context shares this template but
+  // wants a refund-specific subject. Caller (charge.refunded
+  // handler in webhook) sends reason='refunded' + the dollar
+  // amount; everything else falls back to the generic cancel copy.
+  const reason = typeof body.reason === "string" ? body.reason : null;
+  const refundedAmountUsd =
+    typeof body.refundedAmountUsd === "number"
+      ? body.refundedAmountUsd
+      : null;
 
   const [sponsorship] = await fetchSponsorshipsByIds([id]);
   if (!sponsorship) {
@@ -48,9 +61,16 @@ export async function POST(req: NextRequest) {
   const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
   const childName = child?.display_name ?? "your sponsored child";
 
+  const subject =
+    reason === "refunded"
+      ? refundedAmountUsd !== null
+        ? `Refund of $${refundedAmountUsd.toFixed(0)} processed for your sponsorship of ${childName}`
+        : `Refund processed for your sponsorship of ${childName}`
+      : `Your sponsorship of ${childName} has ended`;
+
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: `Your sponsorship of ${childName} has ended`,
+    subject,
     template: SponsorshipCancelledEmail({
       firstName,
       childName,

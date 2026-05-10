@@ -25,7 +25,7 @@
 // webhook handler call into here.
 
 import type Stripe from "stripe";
-import { readItem, readItems, updateItem } from "@directus/sdk";
+import { readItem, readItems, readUsers, updateItem } from "@directus/sdk";
 import { directusServer } from "./directus";
 import {
   type Sponsorship,
@@ -724,12 +724,15 @@ export async function getQueueDisplayForChild(
   if (donorIdsToFetch.size > 0) {
     try {
       const ids = Array.from(donorIdsToFetch);
+      // Directus SDK v17+ rejects `readItems("directus_users", …)`
+      // with "Cannot use readItems for core collections". Use the
+      // dedicated `readUsers` helper instead.
       const rows = (await directusServer().request(
-        readItems("directus_users" as never, {
+        readUsers({
           filter: { id: { _in: ids } },
           fields: ["id", "first_name"],
           limit: -1,
-        } as never),
+        }),
       )) as unknown as Array<{ id: string; first_name?: string | null }>;
       if (Array.isArray(rows)) {
         for (const r of rows) {
