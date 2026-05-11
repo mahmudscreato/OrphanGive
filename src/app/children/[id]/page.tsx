@@ -30,6 +30,32 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// Privacy-preserving metadata. Title surfaces the child's
+// donor-facing display name (it's already public on the page);
+// description does NOT surface the child's story, district,
+// guardian details, or anything else — those live behind the
+// reveal-request flow and shouldn't leak into social previews or
+// search engine snippets. OG image inherits the site default (no
+// child photo in social cards — same privacy concern).
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  try {
+    const child = await getChildById(id, "admin");
+    const name = child?.display_name?.trim() ?? null;
+    return {
+      title: name ? `Sponsor ${name}` : "Sponsor a child",
+      description:
+        "Help a child in Bangladesh through verified sponsorship. Operated by Children's Heaven Trust.",
+    };
+  } catch {
+    return { title: "Sponsor a child" };
+  }
+}
+
 export default async function ChildProfilePage({
   params,
 }: {
