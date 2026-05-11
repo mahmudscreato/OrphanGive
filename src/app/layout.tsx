@@ -1,5 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Caveat, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
+import {
+  Caveat,
+  Fraunces,
+  Inter,
+  JetBrains_Mono,
+  Roboto,
+} from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { SiteFooter } from "@/components/layout/SiteFooter";
@@ -36,6 +42,24 @@ const caveat = Caveat({
   variable: "--font-caveat",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+// Session 16 Part 5.10 Fix B — Roboto Black for the Live Data
+// big numbers. Heavyweight geometric sans-serif —
+// institutional / financial-report / infographic feel — replaces
+// the Part 5.9 Cormorant Garamond which was a misread of
+// "formal" as "formal serif". Loaded only at weight 900 to keep
+// the font payload small.
+//
+// `--font-roboto-src` is the raw next/font CSS variable.
+// `globals.css` aliases this to the `--font-roboto` Tailwind
+// theme token (utility: `font-roboto`) — separate names avoid
+// a circular `var()` reference inside `@theme inline`.
+const roboto = Roboto({
+  variable: "--font-roboto-src",
+  subsets: ["latin"],
+  weight: ["900"],
   display: "swap",
 });
 
@@ -117,7 +141,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${caveat.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${caveat.variable} ${roboto.variable} h-full antialiased`}
     >
       <body
         className="min-h-full flex flex-col bg-cream text-ink"

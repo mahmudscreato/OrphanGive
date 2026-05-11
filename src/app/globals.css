@@ -92,6 +92,11 @@
   --font-display: var(--font-fraunces);
   --font-body: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
+  /* Session 16 Part 5.10 Fix B — Roboto Black is scoped to the
+   * Live Data big numbers only. Exposed as the `font-roboto`
+   * utility; `--font-roboto-src` is the raw variable from
+   * `next/font` (set on `<html>`). */
+  --font-roboto: var(--font-roboto-src);
 
   --shadow-card: var(--shadow-card);
   --shadow-lift: var(--shadow-lift);

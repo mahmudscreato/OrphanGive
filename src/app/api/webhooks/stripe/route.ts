@@ -610,6 +610,46 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
   }
 }
 
+// Part 5.6 Z.4 — defensive customer.subscription.created handler.
+// Insurance against future drift in case any sponsorship-creation
+// path ever forgets to set `payment_schedule`. Strategy: when
+// Stripe announces a subscription was created, find the matching
+// sponsorship row by stripe_subscription_id; if it exists AND
+// `payment_schedule` is null, write "monthly". No-op otherwise.
+//
+// Idempotent at TWO levels:
+//   1. Event-level via existing markStripeEventProcessed
+//   2. Field-level via the null check (re-running on the same
+//      already-backfilled record is a no-op)
+async function handleSubscriptionCreated(sub: Stripe.Subscription) {
+  const sponsorships = await findSponsorshipsByStripeRef({
+    subscriptionId: sub.id,
+  });
+  if (sponsorships.length === 0) {
+    // No matching sponsorship row — likely a sub created outside
+    // our checkout flow, or a timing race where this event arrived
+    // before the row was written. Defensive no-op.
+    console.log(
+      `[stripe-webhook] subscription.created — no sponsorship row for sub ${sub.id}`,
+    );
+    return;
+  }
+  for (const s of sponsorships) {
+    if (s.payment_schedule !== null) continue; // already set, no-op
+    try {
+      await updateSponsorship(s.id, { payment_schedule: "monthly" });
+      console.log(
+        `[stripe-webhook] subscription.created — backfilled payment_schedule="monthly" on sponsorship ${s.id}`,
+      );
+    } catch (err) {
+      console.warn(
+        `[stripe-webhook] sponsorship ${s.id} payment_schedule backfill failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
 async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
   const sponsorships = await findSponsorshipsByStripeRef({ subscriptionId: sub.id });
 
@@ -768,6 +808,11 @@ export async function POST(req: NextRequest) {
         break;
       case "payment_intent.payment_failed":
         await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+        break;
+      // ── Subscription created (Part 5.6 Z.4 — defensive
+      //    payment_schedule backfill) ──────────────────────────────
+      case "customer.subscription.created":
+        await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
         break;
       // ── Subscription cancellation ────────────────────────────────────
       case "customer.subscription.deleted":

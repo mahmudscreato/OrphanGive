@@ -1,9 +1,8 @@
 import { Hero } from "@/components/home/Hero";
 import { TrustBar } from "@/components/home/TrustBar";
-import { Promise as PromiseSection } from "@/components/home/Promise";
+import { StatsBand } from "@/components/home/StatsBand";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { FeaturedChildren } from "@/components/home/FeaturedChildren";
-import { DignityPromise } from "@/components/home/DignityPromise";
 import { AboutSection } from "@/components/home/AboutSection";
 import { ClosingCTA } from "@/components/home/ClosingCTA";
 import {
@@ -13,16 +12,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// Session 16 FIX 4 — FaithSection (Zakat & Sadaqah quote) and
-// CharitiesBand (dark For Charities CTA) removed from the
-// homepage. Both component files stay on disk for potential
-// reuse elsewhere; they're just no longer surfaced here.
-//
-// Session 16 REDO — StatsBand and StorySpread also previously
-// removed for the same reason.
+// Part 5.6 C.2 — Live Data moved BEFORE How It Works. Narrative:
+// hero (why) → trust strip (pillars) → live data (scale of need
+// + what we're doing) → how it works (process) → meet children
+// (who) → about (us) → closing CTA.
 //
 // Final homepage flow:
-//   Hero → TrustBar → Promise → HowItWorks → FeaturedChildren → ClosingCTA
+//   Hero → TrustBar → StatsBand → HowItWorks → FeaturedChildren
+//   → AboutSection → ClosingCTA
 export default async function Home() {
   const [stats, featured] = await Promise.all([
     getHomepageStats(),
@@ -33,10 +30,9 @@ export default async function Home() {
     <>
       <Hero listedCount={stats.listed} />
       <TrustBar />
-      <PromiseSection />
+      <StatsBand stats={stats} />
       <HowItWorks />
       <FeaturedChildren children={featured} totalListed={stats.listed} />
-      <DignityPromise />
       <AboutSection />
       <ClosingCTA />
     </>

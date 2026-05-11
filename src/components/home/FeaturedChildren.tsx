@@ -1,24 +1,44 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
-import { HandDrawnPhotoFrame } from "@/components/decorations/HandDrawnPhotoFrame";
+import {
+  HandDrawnPhotoFrame,
+  type FramePathKey,
+} from "@/components/decorations/HandDrawnPhotoFrame";
+
+const FAVICON_URL =
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 import {
   type FeaturedChild,
   directusAssetUrl,
 } from "@/lib/homepage-data";
 
+// Part 5.7 Fix D.2 — each card gets a distinct near-circle
+// pathKey so the row reads as four hand-cut shapes, not four
+// identical ones. Cycle through if more than 4 cards.
+const CARD_PATH_KEYS: FramePathKey[] = [
+  "circleA",
+  "circleB",
+  "circleC",
+  "circleD",
+];
+
 /**
- * Session 16 FINAL FeaturedChildren — conversion-focused cards.
+ * FeaturedChildren — conversion-focused cards.
  *
  * Each card now reads as a profile-ready package:
  *   1. Organic-framed photo (HandDrawnPhotoFrame, children mode).
  *   2. Two micro trust badges directly under the photo:
  *      - Verified (shield-check, tangerine-deep on cream)
  *      - Privacy protected (lock, ink-soft on light grey)
- *   3. Privacy-safe display name (first name + last initial).
+ *   3. Full display_name (Part 5.8 Fix P1 — privacy truncation
+ *      removed; the three-tier privacy model still applies to
+ *      other identifying fields, but display_name is now full
+ *      on Tier 1).
  *   4. Region + age meta row.
  *   5. Support category (currently a single sane default — could
  *      be wired to a Directus field later).
@@ -28,8 +48,8 @@ import {
  * The previous "AWAITING SPONSOR" pill on top of the photo is
  * dropped — the trust badges replace it.
  *
- * The 3-card grid is followed by a stronger outline "Browse
- * Verified Children →" button (Fix 7), centered.
+ * The 4-card grid is followed by an outline "Browse More
+ * Children →" button (Part 5.7 Fix D.3), centered.
  */
 
 const CARD_SIZES =
@@ -39,18 +59,19 @@ const BLUR_DATA_URL =
   "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3Crect width='1' height='1' fill='%23e8e2d8'/%3E%3C/svg%3E";
 
 /**
- * Privacy-safe form of a child's display name. Returns first name
- * + last-name initial (e.g. "Imran Ali" → "Imran A."). Single-word
- * names are returned unchanged.
+ * Part 5.8 Fix P1 — `privacySafeName` removed. Per the policy
+ * change confirmed by Mahmud, full `display_name` values now
+ * appear on Tier 1 (public) homepage surfaces. The three-tier
+ * privacy model still applies to other identifying fields
+ * (school, exact location, identifying photographs, guardian-
+ * approved updates) — this change is scoped to display_name only.
+ *
+ * Display fallback: if `display_name` is null we fall through to
+ * "A child" via the same default that `firstNameOnly` uses.
  */
-function privacySafeName(display: string | null): string {
-  if (!display) return "A child";
-  const parts = display.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "A child";
-  if (parts.length === 1) return parts[0]!;
-  const first = parts[0]!;
-  const last = parts[parts.length - 1]!;
-  return `${first} ${last[0]!}.`;
+function safeDisplayName(display: string | null): string {
+  const trimmed = display?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : "A child";
 }
 
 function firstNameOnly(display: string | null): string {
@@ -121,22 +142,50 @@ function ChildPhoto({
       />
     );
   }
+  // Part 5 Fix 3 — placeholder rebuilt. HandDrawnPhotoFrame
+  // (parent) provides the organic blob shape + OG-orange brush
+  // ring (matching the photo cards). Inside, we render a cream
+  // background + the OG favicon mark at ~40% of the visible area
+  // + a "Photo coming soon" caption. Replaces the previous
+  // `.child-photo-placeholder` CSS-only div which used a flat
+  // tangerine circle as the brand mark — the favicon is more
+  // recognisable + scales with the blob.
+  //
+  // We use HandDrawnPhotoFrame (not PhotoBlob) here because it
+  // accepts children, which lets us keep ProtectedChildImage's
+  // watermarking on real photo cards in the sibling branch above.
+  // The ring stroke color is already #ED8B3F (Part 5 Fix 3 earlier),
+  // so visual consistency with hero photos is preserved.
   return (
     <div
-      className="child-photo-placeholder transition-transform duration-[800ms] ease-soft group-hover:scale-[1.06]"
+      className="absolute inset-0 flex flex-col items-center justify-center bg-cream transition-transform duration-[800ms] ease-soft group-hover:scale-[1.06]"
       aria-hidden="true"
-    />
+    >
+      <Image
+        src={FAVICON_URL}
+        alt=""
+        width={120}
+        height={170}
+        unoptimized
+        className="w-[40%] h-auto opacity-90 mb-3"
+      />
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-soft">
+        Photo coming soon
+      </span>
+    </div>
   );
 }
 
 function ChildCard({
   child,
   preload,
+  pathKey,
 }: {
   child: FeaturedChild;
   preload: boolean;
+  pathKey: FramePathKey;
 }) {
-  const safeName = privacySafeName(child.display_name);
+  const safeName = safeDisplayName(child.display_name);
   const first = firstNameOnly(child.display_name);
   const locationLabel = child.region ?? child.district ?? null;
   const ageLabel = child.age !== null ? `Age ${child.age}` : null;
@@ -151,7 +200,7 @@ function ChildCard({
       >
         <div className="relative aspect-square">
           <div className="absolute inset-0">
-            <HandDrawnPhotoFrame className="w-full h-full">
+            <HandDrawnPhotoFrame className="w-full h-full" pathKey={pathKey}>
               <ChildPhoto
                 photo={child.photo}
                 name={safeName}
@@ -275,7 +324,11 @@ export function FeaturedChildren({
             <span className="block font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-4xl lg:text-5xl">
               Verified profiles.
             </span>
-            <span className="block font-script text-tangerine-deep leading-[0.95] tracking-[-0.005em] text-[clamp(3.25rem,7vw,6.75rem)] mt-2">
+            {/* Part 5 Fix 7 — force single-line on md+ via
+                whitespace-nowrap. Mobile wraps naturally. Slightly
+                tighter font-size cap so the line clears the
+                container at typical desktop widths. */}
+            <span className="block font-script text-tangerine-deep leading-[0.95] tracking-[-0.005em] text-[clamp(3rem,6vw,5.25rem)] mt-2 md:whitespace-nowrap">
               Real stories. Real care.
             </span>
           </h2>
@@ -300,11 +353,19 @@ export function FeaturedChildren({
                 whileHover={
                   reduced
                     ? undefined
-                    : { y: -6, boxShadow: "0 12px 30px rgba(0,0,0,0.08)" }
+                    : {
+                        y: -6,
+                        scale: 1.02,
+                        boxShadow: "0 12px 30px rgba(0,0,0,0.08)",
+                      }
                 }
                 transition={{ duration: 0.25 }}
               >
-                <ChildCard child={c} preload={i < 4} />
+                <ChildCard
+                  child={c}
+                  preload={i < 4}
+                  pathKey={CARD_PATH_KEYS[i % CARD_PATH_KEYS.length]!}
+                />
               </motion.div>
             ))}
           </motion.div>
@@ -322,7 +383,7 @@ export function FeaturedChildren({
             href="/children"
             className="group/browse inline-flex items-center gap-2 rounded-full bg-white text-tangerine-deep border-[1.5px] border-tangerine px-8 py-4 font-body font-medium transition-all duration-[250ms] ease-soft hover:bg-tangerine hover:text-white hover:shadow-warm hover:-translate-y-px"
           >
-            Browse Verified Children
+            Browse More Children
             <span
               aria-hidden="true"
               className="inline-block transition-transform duration-200 group-hover/browse:translate-x-1"

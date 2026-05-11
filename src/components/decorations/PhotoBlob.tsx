@@ -31,6 +31,10 @@ import { useId, type CSSProperties } from "react";
  */
 
 // Blob paths — viewBox 0 0 400 400 — exact paths from the spec.
+// `editorial` (Part 5.5 Fix A) is a tall soft-rounded rectangle
+// with subtly asymmetric corners — a lighter, more magazine-cover
+// frame than the heavy organic blobs above. Stretched via
+// preserveAspectRatio="none", the asymmetry reads natural.
 const blobPaths = {
   hero1:
     "M 200 30 C 285 30 360 85 365 175 C 370 250 335 320 270 355 C 200 390 110 380 60 320 C 15 265 25 165 70 100 C 110 50 150 30 200 30 Z",
@@ -46,6 +50,21 @@ const blobPaths = {
     "M 200 30 C 290 30 360 100 355 195 C 350 290 270 360 175 350 C 90 340 35 255 50 165 C 65 80 135 30 200 30 Z",
   story3:
     "M 200 35 C 280 28 355 80 360 175 C 365 260 305 345 215 360 C 130 375 60 320 40 230 C 22 145 90 50 200 35 Z",
+  editorial:
+    "M 70 22 Q 28 22 26 64 L 22 338 Q 26 378 66 380 L 334 376 Q 376 378 378 334 L 376 62 Q 372 24 330 22 Z",
+  // Part 5.6 Fix A.1 — deliberately broken / hand-drawn frame.
+  // Asymmetric corners (top-left rounder than top-right, left
+  // side bulges where right is straighter), tall portrait. The
+  // turbulence filter on top adds further wobble — total effect
+  // reads as "drawn by hand", not pulled from a shape library.
+  broken:
+    "M 80 32 Q 35 30 25 78 L 22 195 Q 12 260 28 320 Q 36 372 90 376 L 320 372 Q 376 370 374 320 L 372 100 Q 374 50 348 30 Q 320 24 280 28 L 92 30 Q 82 28 80 32 Z",
+  // Part 5.6 Fix D.3 — slightly tilted oval, different shape
+  // family from `broken` (oval-blob vs rect-derived). Used by
+  // AboutSection so the page reads as cohesive without two
+  // sections sharing the literal same path.
+  tilted:
+    "M 200 28 C 285 20 360 65 365 165 C 370 250 330 340 235 360 C 140 380 55 325 38 240 C 22 155 85 55 175 32 Z",
 } as const;
 
 export type BlobPathKey = keyof typeof blobPaths;
@@ -63,6 +82,16 @@ type PhotoBlobProps = {
   style?: CSSProperties;
   priority?: boolean;
   sizes?: string;
+  /** `object-position` for the inner photo (next/image fill). Use
+   * to bias the crop, e.g. `"center 15%"` to lift faces into
+   * the visible area of the blob. */
+  objectPosition?: string;
+  /** Outer brush stroke width (Part 5.5 Fix A — defaults to 14 to
+   * preserve previous look; the Hero's `editorial` shape passes
+   * a thinner value so the ring doesn't overpower the photo). */
+  outerStrokeWidth?: number;
+  /** Inner brush stroke width (defaults to 8). */
+  innerStrokeWidth?: number;
 };
 
 function buildMaskUrl(path: string): string {
@@ -83,6 +112,9 @@ export function PhotoBlob({
   style,
   priority = false,
   sizes,
+  objectPosition,
+  outerStrokeWidth = 14,
+  innerStrokeWidth = 8,
 }: PhotoBlobProps) {
   const rawId = useId();
   const filterId = `pb-rough-${rawId.replace(/:/g, "")}`;
@@ -112,7 +144,10 @@ export function PhotoBlob({
             fill
             priority={priority}
             sizes={sizes ?? "(max-width: 768px) 100vw, 400px"}
-            style={{ objectFit: "cover" }}
+            style={{
+              objectFit: "cover",
+              ...(objectPosition ? { objectPosition } : null),
+            }}
           />
         ) : fallbackGrad ? (
           <div
@@ -148,12 +183,15 @@ export function PhotoBlob({
         <g filter={`url(#${filterId})`}>
           {/* Part 4 Fix 4b — outer ring opacity 0.45 → 0.6, inner
               0.85 → 1.0 so the brush color stays vivid through
-              the turbulence filter (was reading washed-out). */}
+              the turbulence filter. Part 5.5 Fix A — stroke
+              widths are props now so the Hero's `editorial`
+              shape can request a thinner ring (10 outer / 6
+              inner) without overpowering the photo. */}
           <path
             d={path}
             fill="none"
             stroke={ringColor}
-            strokeWidth="14"
+            strokeWidth={outerStrokeWidth}
             strokeOpacity="0.6"
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -163,7 +201,7 @@ export function PhotoBlob({
             d={path}
             fill="none"
             stroke={ringColor}
-            strokeWidth="8"
+            strokeWidth={innerStrokeWidth}
             strokeOpacity="1"
             strokeLinejoin="round"
             strokeLinecap="round"

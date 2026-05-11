@@ -120,7 +120,12 @@ export function SiteNav({ signedIn, firstName }: Props) {
               Sign in
             </Link>
           )}
-          <Button href="/sponsor" variant="primary">
+          {/* Part 5.10 Fix D — destination changed from `/sponsor`
+              (which 404s — only `/sponsor/[childId]` exists) to
+              `/children`. Picking a specific child is a
+              prerequisite for sponsorship; the children gallery is
+              the natural funnel entry. */}
+          <Button href="/children" variant="primary">
             Sponsor a Child
           </Button>
         </div>

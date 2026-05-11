@@ -5,33 +5,44 @@ import { motion, useReducedMotion } from "framer-motion";
 import { PhotoBlob } from "@/components/decorations/PhotoBlob";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import {
-  BrushWash,
   ConfettiDots,
   DottedArc,
-  OliveSprig,
   PenSwoosh,
 } from "@/components/decorations/InspoDecor";
 
 /**
- * Session 16 Part 3 Item 6 — AboutSection.
+ * Session 16 Part 5.7 Fix E — AboutSection revert to peach.
  *
- * Two-column layout. Left: eyebrow + dual-font H2 + lede + a
- * small partner card crediting Goodverse Foundation and
- * Children's Heaven Trust. Right: decorative photo composition
- * with BrushWash backdrop, DottedArc + OliveSprig top-right,
- * ConfettiDots + PenSwoosh bottom-left, and a center PhotoBlob
- * using the `about` blob path.
+ *  - Removed the full orange bg introduced in 5.6 Fix D. Orange
+ *    was meant for ClosingCTA alone; having two back-to-back
+ *    orange bands (About + ClosingCTA) felt repetitive. The
+ *    section now sits on the page canvas (peach) again.
+ *  - Text colors reverted: white → ink, white/95 → ink-soft.
+ *  - Partner card style restored (cream-on-canvas, no contrast
+ *    pop needed).
+ *  - Decorations recolored back to OG-orange tones from the
+ *    cream/white set used over the orange bg.
+ *  - PhotoBlob ring color reverts to OG orange.
  *
- * Lives between the dignity-promise card and the closing CTA in
- * the homepage flow.
+ *  Preserved from 5.6: `tilted` pathKey on PhotoBlob, the
+ *  positioning wrapper that fixed the photo render, the linked
+ *  partner logos at 3× size, the ±1deg rotation drift on the
+ *  photo, the floating favicon, the dotted arc + pen-swoosh +
+ *  confetti decorations (now recolored).
  */
+
+const FAVICON_URL =
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
 const GOODVERSE_LOGO =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778509860/Goodverse_Logo_draft_wqdolh.png";
 const CH_LOGO =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778509860/CH_Logo_E_gsehzj.png";
 const ABOUT_PHOTO =
-  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490174/_OrphanGive_CG_V2_10_ppnjjm.png";
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778521851/_OrphanGive_CG_V2_10_ppnjjm.png";
+
+const GOODVERSE_URL = "https://www.goodverse.org";
+const CH_URL = "https://childrensheaventrust.org/";
 
 export function AboutSection() {
   const reduced = useReducedMotion();
@@ -69,29 +80,53 @@ export function AboutSection() {
             transparent, responsible, and impactful.
           </p>
 
-          {/* Partner card */}
-          <div className="mt-9 inline-block bg-white rounded-2xl p-5 border border-ink/[0.08] shadow-card">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-ink-soft mb-3 font-medium">
+          {/* Partner card — cream container on the page canvas
+              (peach). Logos linked, hover-scaled. */}
+          <div className="mt-10 inline-block bg-white rounded-3xl px-10 py-8 max-md:px-6 max-md:py-6 border border-ink/[0.06] shadow-md">
+            <div className="text-[12px] uppercase tracking-[0.18em] text-ink-soft mb-5 font-medium">
               A project by
             </div>
-            <div className="flex items-center gap-5">
-              <Image
-                src={GOODVERSE_LOGO}
-                alt="Goodverse Foundation"
-                width={160}
-                height={64}
-                unoptimized
-                className="h-8 w-auto"
+            <div className="flex items-center gap-10 max-md:gap-6">
+              <motion.a
+                href={GOODVERSE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Goodverse Foundation"
+                className="inline-flex"
+                whileHover={reduced ? undefined : { scale: 1.04 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Image
+                  src={GOODVERSE_LOGO}
+                  alt="Goodverse Foundation"
+                  width={360}
+                  height={180}
+                  unoptimized
+                  className="h-[90px] max-md:h-[64px] w-auto"
+                />
+              </motion.a>
+              <div
+                className="h-[80px] max-md:h-[60px] w-px bg-ink/15"
+                aria-hidden="true"
               />
-              <div className="h-8 w-px bg-ink/15" aria-hidden="true" />
-              <Image
-                src={CH_LOGO}
-                alt="Children's Heaven Trust"
-                width={160}
-                height={64}
-                unoptimized
-                className="h-8 w-auto"
-              />
+              <motion.a
+                href={CH_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Children's Heaven Trust"
+                className="inline-flex"
+                whileHover={reduced ? undefined : { scale: 1.04 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Image
+                  src={CH_LOGO}
+                  alt="Children's Heaven Trust"
+                  width={360}
+                  height={180}
+                  unoptimized
+                  className="h-[90px] max-md:h-[64px] w-auto"
+                />
+              </motion.a>
             </div>
           </div>
         </div>
@@ -101,57 +136,83 @@ export function AboutSection() {
           className="relative w-full max-lg:max-w-[560px] max-lg:mx-auto"
           style={{ height: 540 }}
         >
-          {/* BrushWash backdrop fills the container at 0.7 opacity. */}
-          <BrushWash
-            color="#FCE4D0"
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            style={{ opacity: 0.7 }}
-          />
+          {/* Floating OG favicon — subtle x/y drift in the
+              top-right corner (replaces the green leaf). */}
+          <motion.div
+            className="absolute top-3 right-14 pointer-events-none z-10"
+            aria-hidden="true"
+            animate={reduced ? undefined : { x: [0, 4, 0], y: [0, -5, 0] }}
+            transition={{
+              duration: 5,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          >
+            <Image
+              src={FAVICON_URL}
+              alt=""
+              width={56}
+              height={80}
+              unoptimized
+              className="w-7 h-auto opacity-80"
+            />
+          </motion.div>
 
-          {/* OliveSprig top-right corner, rotated -15deg. Behind
-              the DottedArc so the dots read above the leaves. */}
-          <OliveSprig
-            size={110}
-            className="absolute top-4 right-12 pointer-events-none z-10"
-            style={{ transform: "rotate(-15deg)" }}
-          />
-
-          {/* DottedArc top-right, layered above the sprig. */}
+          {/* DottedArc top-right — OG orange on peach canvas. */}
           <DottedArc
             size={120}
-            color="#F5B07A"
+            color="#ED8B3F"
             dots={14}
-            className="absolute top-2 right-2 pointer-events-none z-10"
+            className="absolute top-2 right-2 pointer-events-none z-10 opacity-80"
           />
 
-          {/* PenSwoosh bottom-left (drawn under the confetti). */}
+          {/* Second smaller DottedArc — adds rhythm. */}
+          <DottedArc
+            size={70}
+            color="#ED8B3F"
+            dots={8}
+            className="absolute top-20 right-20 pointer-events-none z-10 opacity-60"
+            style={{ transform: "rotate(40deg)" }}
+          />
+
+          {/* PenSwoosh bottom-left — tangerine-deep brushstroke. */}
           <PenSwoosh
             width={280}
-            color="#ED8B3F"
-            className="absolute bottom-6 left-4 pointer-events-none z-10"
+            color="#C95A18"
+            className="absolute bottom-6 left-4 pointer-events-none z-10 opacity-70"
           />
 
-          {/* ConfettiDots bottom-left, layered above the swoosh. */}
+          {/* ConfettiDots bottom-left. */}
           <ConfettiDots
             count={12}
             area={[240, 80]}
-            className="absolute bottom-2 left-2 pointer-events-none z-10"
+            className="absolute bottom-2 left-2 pointer-events-none z-10 opacity-90"
           />
 
-          {/* Center PhotoBlob using the `about` blob path. */}
-          <div
+          {/* Center PhotoBlob — Part 5.6 D.2 render fix preserved.
+              Part 5.7 Fix E — ring reverts to OG orange. */}
+          <motion.div
             className="absolute"
             style={{ top: 30, right: 60, bottom: 30, left: 40, zIndex: 2 }}
+            animate={reduced ? undefined : { rotate: [-1, 1, -1] }}
+            transition={{
+              duration: 8,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
           >
             <PhotoBlob
-              pathKey="about"
+              pathKey="tilted"
               src={ABOUT_PHOTO}
               alt="A glimpse of OrphanGive's work in Bangladesh"
               ringColor="#ED8B3F"
+              outerStrokeWidth={12}
+              innerStrokeWidth={7}
+              objectPosition="center 15%"
               sizes="(max-width: 1024px) 100vw, 600px"
               className="w-full h-full"
             />
-          </div>
+          </motion.div>
         </div>
       </div>
     </motion.section>

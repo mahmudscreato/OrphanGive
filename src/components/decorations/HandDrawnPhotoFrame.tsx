@@ -36,24 +36,46 @@ import type { CSSProperties, ReactNode } from "react";
 const ORGANIC_PATH =
   "M 0.5 0.05 C 0.75 0.03, 0.95 0.2, 0.98 0.5 C 1 0.75, 0.88 0.95, 0.6 0.98 C 0.35 1, 0.12 0.88, 0.05 0.6 C 0.02 0.35, 0.18 0.12, 0.5 0.05 Z";
 
-// Mask URL is a tiny SVG data URI: a black-filled shape on
-// transparent background. Where the shape is opaque, the
-// underlying photo passes through; where it's transparent, the
-// photo is hidden. `preserveAspectRatio="none"` makes the path
-// stretch with the container.
-const MASK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1' preserveAspectRatio='none'><path d='${ORGANIC_PATH}' fill='black'/></svg>`;
-const MASK_URL = `url("data:image/svg+xml;utf8,${MASK_SVG}")`;
+// Part 5.7 Fix D.2 — four near-circle path variants for the
+// homepage child cards so the 4-card row reads as four
+// hand-cut shapes instead of four identical ones. Each is a
+// gently irregular near-circle (NOT a clean ellipse) in
+// normalized 0..1 coordinates. The asymmetry sits in a
+// different spot per variant — A has a softer top-left, B
+// pinches bottom-right, C stretches vertically, D leans wider.
+const CIRCLE_PATHS = {
+  circleA:
+    "M 0.5 0.06 C 0.78 0.06, 0.95 0.24, 0.95 0.52 C 0.95 0.78, 0.78 0.95, 0.5 0.95 C 0.22 0.95, 0.05 0.78, 0.05 0.5 C 0.05 0.22, 0.22 0.06, 0.5 0.06 Z",
+  circleB:
+    "M 0.52 0.05 C 0.78 0.05, 0.96 0.22, 0.95 0.5 C 0.94 0.78, 0.75 0.95, 0.5 0.95 C 0.24 0.95, 0.07 0.76, 0.06 0.5 C 0.05 0.24, 0.26 0.07, 0.52 0.05 Z",
+  circleC:
+    "M 0.5 0.04 C 0.76 0.04, 0.96 0.22, 0.96 0.5 C 0.96 0.78, 0.78 0.97, 0.5 0.97 C 0.22 0.97, 0.04 0.78, 0.04 0.5 C 0.04 0.22, 0.24 0.04, 0.5 0.04 Z",
+  circleD:
+    "M 0.5 0.07 C 0.78 0.06, 0.94 0.24, 0.94 0.5 C 0.94 0.78, 0.78 0.94, 0.5 0.94 C 0.22 0.94, 0.06 0.78, 0.06 0.52 C 0.06 0.24, 0.22 0.08, 0.5 0.07 Z",
+} as const;
 
-const MASK_STYLES: CSSProperties = {
-  maskImage: MASK_URL,
-  maskSize: "100% 100%",
-  maskRepeat: "no-repeat",
-  maskPosition: "center",
-  WebkitMaskImage: MASK_URL,
-  WebkitMaskSize: "100% 100%",
-  WebkitMaskRepeat: "no-repeat",
-  WebkitMaskPosition: "center",
-};
+export type FramePathKey = keyof typeof CIRCLE_PATHS;
+
+function buildMaskUrl(path: string): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1' preserveAspectRatio='none'><path d='${path}' fill='black'/></svg>`;
+  return `url("data:image/svg+xml;utf8,${svg}")`;
+}
+
+function maskStylesFor(path: string): CSSProperties {
+  const url = buildMaskUrl(path);
+  return {
+    maskImage: url,
+    maskSize: "100% 100%",
+    maskRepeat: "no-repeat",
+    maskPosition: "center",
+    WebkitMaskImage: url,
+    WebkitMaskSize: "100% 100%",
+    WebkitMaskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+  };
+}
+
+const MASK_STYLES = maskStylesFor(ORGANIC_PATH);
 
 type CommonProps = {
   className?: string;
@@ -73,6 +95,10 @@ type SrcProps = CommonProps & {
 type ChildrenProps = CommonProps & {
   children: ReactNode;
   src?: never;
+  /** Part 5.7 Fix D.2 — optional pathKey to vary the silhouette
+   * across multiple cards on the same page. Defaults to the
+   * original `ORGANIC_PATH` for back-compat. */
+  pathKey?: FramePathKey;
 };
 
 type Props = SrcProps | ChildrenProps;
@@ -84,7 +110,7 @@ export function HandDrawnPhotoFrame(props: Props) {
   return <ChildrenFrame {...(props as ChildrenProps)} />;
 }
 
-function StrokeOverlay() {
+function StrokeOverlay({ path = ORGANIC_PATH }: { path?: string }) {
   return (
     <svg
       viewBox="0 0 1 1"
@@ -93,15 +119,11 @@ function StrokeOverlay() {
       aria-hidden="true"
     >
       <path
-        d={ORGANIC_PATH}
+        d={path}
         fill="none"
-        stroke="#B07A3C"
-        /* Part 2 Item 1c — bumped strokeWidth 2 → 12 + opacity
-         * 0.5 → 0.7 so the photo frame's pencil edge reads as
-         * a confident hand-drawn line, matching the new
-         * OrganicCircle stroke. */
+        stroke="#ED8B3F"
         strokeWidth="12"
-        strokeOpacity="0.7"
+        strokeOpacity="0.85"
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
@@ -150,13 +172,20 @@ function SrcFrame({
   );
 }
 
-function ChildrenFrame({ children, className = "", style }: ChildrenProps) {
+function ChildrenFrame({
+  children,
+  className = "",
+  style,
+  pathKey,
+}: ChildrenProps) {
+  const path = pathKey ? CIRCLE_PATHS[pathKey] : ORGANIC_PATH;
+  const styles = pathKey ? maskStylesFor(path) : MASK_STYLES;
   return (
     <div className={`relative ${className}`} style={style}>
-      <div className="absolute inset-0" style={MASK_STYLES}>
+      <div className="absolute inset-0" style={styles}>
         {children}
       </div>
-      <StrokeOverlay />
+      <StrokeOverlay path={path} />
     </div>
   );
 }

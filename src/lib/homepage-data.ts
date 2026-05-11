@@ -4,8 +4,21 @@ import { directusServer } from "./directus";
 export type HomepageStats = {
   bangladesh_total: string;
   listed: number | null;
+  /**
+   * Distinct children with active monthly support.
+   * `sponsorship.status = 'active'` AND
+   *   (`payment_schedule = 'monthly'`
+   *    OR (`payment_schedule = 'monthly_prepaid'`
+   *        AND (`scheduled_end_date IS NULL` OR `scheduled_end_date > NOW()`)))
+   * Null payment_schedule is excluded by design.
+   */
   sponsored: number | null;
-  joining_next: number | null;
+  /**
+   * Children waiting for a sponsor: `child.status = 'active'`
+   * AND child.id NOT IN (the distinct child set above). Replaces
+   * the old `joining_next` ("onboarding") metric.
+   */
+  waiting: number | null;
 };
 
 export type FeaturedChild = {
@@ -98,18 +111,144 @@ async function safeCount(
 }
 
 export async function getHomepageStats(): Promise<HomepageStats> {
-  const [listed, sponsored, joining_next] = await Promise.all([
-    safeCount("child", { status: { _eq: "active" } }),
-    safeCount("sponsorship", { status: { _eq: "active" } }),
-    safeCount("child", {
-      status: { _in: ["draft", "pending_approval"] },
-    }),
-  ]);
+  // Part 5.6 Z.2 — strict tile 3 query (distinct children with
+  // active monthly support) + new tile 4 query (active children
+  // NOT in the tile 3 set). Both fetch raw rows then dedupe
+  // client-side rather than aggregating in Directus, so the count
+  // is always "distinct children" regardless of how many
+  // sponsorship rows a single child might have.
+  const nowIso = new Date().toISOString();
+
+  // Active sponsorships matching the strict criteria. Null
+  // payment_schedule is excluded — see HomepageStats.sponsored
+  // jsdoc for the exact predicate.
+  let sponsored: number | null = null;
+  const sponsoredChildIds = new Set<string>();
+  try {
+    const rows = (await directusServer().request(
+      readItems("sponsorship" as never, {
+        filter: {
+          _and: [
+            { status: { _eq: "active" } },
+            // Part 5.6 → 5.7 Fix F — exclude queued sponsorships.
+            // A queued row has `status='active'` because money is
+            // committed, but the actual support hasn't started yet
+            // (it's waiting for a slot or the previous donor's
+            // coverage to end). The Directus `queue_status` enum
+            // only has 'queued' or null today; explicit OR keeps
+            // future enum values from accidentally being included.
+            {
+              _or: [
+                { queue_status: { _null: true } },
+                { queue_status: { _neq: "queued" } },
+              ],
+            },
+            {
+              _or: [
+                { payment_schedule: { _eq: "monthly" } },
+                {
+                  _and: [
+                    { payment_schedule: { _eq: "monthly_prepaid" } },
+                    {
+                      _or: [
+                        { scheduled_end_date: { _null: true } },
+                        { scheduled_end_date: { _gt: nowIso } },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        fields: ["child"],
+        limit: -1,
+      } as never),
+    )) as unknown as
+      | Array<{ child: string | number | { id: string | number } | null }>
+      | undefined;
+    if (Array.isArray(rows)) {
+      for (const r of rows) {
+        const c = r.child;
+        // Part 5.8 Fix C.4 — coerce to string defensively.
+        // Directus can return primary keys as either string or
+        // number depending on the column type; the Tile 4 set
+        // membership check below also coerces, so both sides
+        // end up comparing strings regardless of source type.
+        const cid =
+          typeof c === "string" || typeof c === "number"
+            ? String(c)
+            : c && typeof c === "object" && c.id != null
+              ? String(c.id)
+              : null;
+        if (cid) sponsoredChildIds.add(cid);
+      }
+      sponsored = sponsoredChildIds.size;
+    }
+  } catch (err) {
+    console.warn(
+      "[homepage-data] tile 3 (sponsored) query failed",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // All active children — used to compute both `listed` (total
+  // count) and `waiting` (count NOT in the sponsored set above).
+  let listed: number | null = null;
+  let waiting: number | null = null;
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: { status: { _eq: "active" } },
+        fields: ["id"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ id: string | number }> | undefined;
+    if (Array.isArray(rows)) {
+      listed = rows.length;
+      // `waiting` only meaningful if the sponsored query succeeded;
+      // otherwise we skip rather than report a misleading number.
+      // Part 5.8 Fix C.4 — `String(c.id)` keeps the comparison
+      // consistent with the same coercion above when building
+      // `sponsoredChildIds`.
+      if (sponsored !== null) {
+        waiting = rows.filter(
+          (c) => !sponsoredChildIds.has(String(c.id)),
+        ).length;
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[homepage-data] active children query failed",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Part 5.8 Fix C.4 — math-identity warning. With both Tile 3
+  // and Tile 4 sourced from the SAME `sponsoredChildIds` set
+  // (and consistent string coercion), the identity
+  // `waiting === listed - (sponsored ∩ listed)` should hold.
+  // If sponsored children are entirely a subset of listed
+  // children (the normal case), this simplifies to
+  // `waiting === listed - sponsored`. A gap here means either
+  // (a) a sponsored child has child.status ≠ 'active', or
+  // (b) ID type drift slipped past the coercion. Doesn't
+  // block rendering — just notes the drift for ops.
+  if (listed !== null && sponsored !== null && waiting !== null) {
+    const expected = listed - sponsored;
+    if (waiting !== expected) {
+      console.warn(
+        `[homepage-stats] math identity drift: listed=${listed}, sponsored=${sponsored}, waiting=${waiting}, expected waiting=${expected}. ` +
+          `Likely cause: at least one sponsored child has child.status ≠ 'active'.`,
+      );
+    }
+  }
+
   return {
     bangladesh_total: "4.8M",
     listed,
     sponsored,
-    joining_next,
+    waiting,
   };
 }
 

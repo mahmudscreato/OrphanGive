@@ -232,9 +232,22 @@ export function SiteFooter() {
           </div>
         </div>
 
-        <div className="pt-8 border-t border-white/10 flex flex-wrap justify-between items-center gap-3 text-xs text-white/60 tracking-wide">
+        {/* Part 5.5 Fix C — bottom rows collapsed into a single
+            flex row. Copyright LEFT, printAgraphy credit RIGHT.
+            Mobile (max-md) stacks vertically, both centred. */}
+        <div className="pt-8 border-t border-white/10 flex flex-wrap justify-between items-center gap-3 max-md:flex-col max-md:items-center max-md:text-center text-xs text-white/60 tracking-wide">
           <span>© {year} OrphanGive. All rights reserved.</span>
-          <span>Built with care in Bangladesh.</span>
+          <p className="m-0">
+            Built with care in Bangladesh by{" "}
+            <a
+              href="https://www.printagraphy.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold transition-colors hover:underline underline-offset-2 hover:text-[#ED8B3F]"
+            >
+              printAgraphy
+            </a>
+          </p>
         </div>
       </div>
     </footer>

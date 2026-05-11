@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 
@@ -121,29 +122,53 @@ function StepIcon({ kind }: { kind: StepKind }) {
   );
 }
 
+/**
+ * Part 5.7 Fix C — bolder hand-drawn arrow between steps.
+ *
+ * Solid (not dashed) shaft with a slight wobble baked into the
+ * path so it reads as drawn, not vector-perfect. A turbulence
+ * filter further roughens the edge — same technique as
+ * PhotoBlob's ring. OG orange (#ED8B3F), 3.5px stroke, full
+ * opacity. Arrowhead drawn as two strokes meeting at a point
+ * (no closed polygon) so the brush feel carries through.
+ */
 function StepArrow() {
+  const rawId = useId();
+  const filterId = `arrow-rough-${rawId.replace(/:/g, "")}`;
   return (
     <svg
-      viewBox="0 0 50 20"
+      viewBox="0 0 60 24"
       fill="none"
       aria-hidden="true"
-      className="w-12 h-5 text-tangerine-deep opacity-50"
+      className="w-14 h-6"
     >
-      <path
-        d="M 2 10 L 38 10"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeDasharray="3 4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 36 4 L 44 10 L 36 16"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
+      <defs>
+        <filter id={filterId} x="-10%" y="-30%" width="120%" height="160%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.06"
+            numOctaves="2"
+            seed="3"
+          />
+          <feDisplacementMap in="SourceGraphic" scale="1.4" />
+        </filter>
+      </defs>
+      <g filter={`url(#${filterId})`} stroke="#ED8B3F" fill="none">
+        {/* Shaft — slight downward dip mid-path so it reads as
+            drawn by hand, not perfectly horizontal. */}
+        <path
+          d="M 2 12 Q 18 14 32 11 T 50 12"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+        {/* Arrowhead — two strokes meeting at a point. */}
+        <path
+          d="M 44 5 L 52 12 L 44 19"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
     </svg>
   );
 }
@@ -238,13 +263,13 @@ export function HowItWorks() {
                   {step.body}
                 </p>
 
-                {/* Dashed arrow to the next step. Hidden on the
-                    last card and on mobile/tablet (where cards
-                    stack). */}
+                {/* Part 5.7 Fix C — bolder hand-drawn arrow.
+                    Hidden on the last card and on mobile/tablet
+                    (where cards stack). */}
                 {i < STEPS.length - 1 ? (
                   <div
                     className="absolute hidden lg:block pointer-events-none"
-                    style={{ top: "50%", right: -28, transform: "translateY(-50%)" }}
+                    style={{ top: "50%", right: -34, transform: "translateY(-50%)" }}
                     aria-hidden="true"
                   >
                     <StepArrow />
