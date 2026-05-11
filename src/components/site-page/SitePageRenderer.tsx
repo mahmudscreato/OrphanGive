@@ -182,12 +182,29 @@ function formatMonthYear(iso: string | null): string | null {
 // passes through unchanged because step 1 finds no matches; marked
 // then sees HTML and emits HTML unchanged.
 function ProseBody({ body }: { body: string }) {
-  // Step 1: strip <p>...</p> wrappers around markdown-syntax lines.
+  // Step 1: strip <p>...</p> wrappers when ANY line inside the
+  // block matches markdown syntax. Earlier versions only checked
+  // the trimmed start of the block, which missed the common
+  // Directus WYSIWYG pattern where a single <p> wraps a mixed
+  // run of prose + headings + lists pasted as plain text:
+  //
+  //   <p>Some intro paragraph...
+  //   ## Heading
+  //   When the user does X...
+  //   - Bullet one
+  //   - Bullet two</p>
+  //
+  // The line-anywhere check correctly identifies this block as
+  // markdown-bearing and unwraps the whole thing. Pure-prose
+  // paragraphs (no markdown syntax on any line) stay wrapped.
   const unwrapped = body.replace(/<p>([\s\S]*?)<\/p>/g, (match, inner) => {
     const decoded = decodeBasicEntities(inner);
-    if (MARKDOWN_LINE_PREFIX.test(decoded.trim())) {
-      // Trailing blank line so adjacent unwrapped lines don't
-      // glue together into a single markdown block by accident.
+    const hasMarkdownLine = decoded
+      .split("\n")
+      .some((line) => MARKDOWN_LINE_PREFIX.test(line.trim()));
+    if (hasMarkdownLine) {
+      // Trailing blank line so adjacent unwrapped blocks don't
+      // glue together into a single markdown chunk by accident.
       return `${decoded}\n\n`;
     }
     return match;
@@ -200,15 +217,51 @@ function ProseBody({ body }: { body: string }) {
   // Step 3: decode entities for any text still outside paragraphs.
   const decoded = decodeBasicEntities(withNewlines);
 
-  // Step 4: parse markdown → HTML. async:false guarantees a
+  // Step 4: normalize block-element spacing. Markdown's block
+  // grammar requires a blank line BEFORE and AFTER headings, list
+  // starts, and blockquotes. WYSIWYG editors strip blank lines on
+  // save, so a multi-line block coming out of step 1 will have
+  // its block-level elements butted up against surrounding prose.
+  // Marked then misreads "prose\n## heading" as a single
+  // paragraph containing literal '##' characters. The regex chain
+  // restores the blank-line shape marked expects.
+  //
+  // Each pass uses a negative-prefix lookbehind to avoid stacking
+  // blank lines (we don't want "\n\n\n## foo" → "\n\n\n\n## foo").
+  // The final \n{3,} → \n\n collapse cleans up any over-padding.
+  const normalized = decoded
+    // Trim trailing whitespace per line; preserve leading indent
+    // (matters for nested list parsers).
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    // Blank line BEFORE a heading
+    .replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2")
+    // Blank line AFTER a heading
+    .replace(/(^|\n)(#{1,6}\s[^\n]+)\n([^\n#])/g, "$1$2\n\n$3")
+    // Blank line BEFORE the start of a bullet list (previous line
+    // is neither blank nor another list item)
+    .replace(/([^\n\-*+])\n([-*+]\s)/g, "$1\n\n$2")
+    // Blank line AFTER the end of a bullet list (next line is
+    // neither blank, another list item, nor leading-space
+    // continuation)
+    .replace(/(\n[-*+]\s[^\n]+)\n([^\n\-*+\s])/g, "$1\n\n$2")
+    // Blank line BEFORE a numbered list item
+    .replace(/([^\n])\n(\d+\.\s)/g, "$1\n\n$2")
+    // Blank line BEFORE a blockquote
+    .replace(/([^\n>])\n(>\s)/g, "$1\n\n$2")
+    // Collapse 3+ consecutive newlines back to a single blank line
+    .replace(/\n{3,}/g, "\n\n");
+
+  // Step 5: parse markdown → HTML. async:false guarantees a
   // synchronous string return so we can sanitize in the same tick.
-  const html = marked.parse(decoded, {
+  const html = marked.parse(normalized, {
     async: false,
     gfm: true,
     breaks: false,
   }) as string;
 
-  // Step 5: sanitize.
+  // Step 6: sanitize.
   const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
