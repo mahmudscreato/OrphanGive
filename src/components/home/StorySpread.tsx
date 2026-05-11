@@ -1,12 +1,19 @@
 import Link from "next/link";
+import { PolaroidFrame } from "@/components/decorations/Sketches";
 
 export function StorySpread() {
   return (
     <section className="bg-cream px-6 py-40 max-md:py-24">
       <div className="max-w-[1320px] mx-auto grid grid-cols-2 gap-20 items-center max-lg:grid-cols-1 max-lg:gap-12">
-        <div className="relative aspect-[4/5] rounded-[28px] overflow-hidden shadow-lift">
-          <div className="story-photo-placeholder" aria-hidden="true" />
-        </div>
+        {/* Session 16 — Polaroid treatment around the story photo.
+            tilt=-2 gives a "tucked into a notebook" feel. When a
+            real story photo lands, swap the inner placeholder div
+            for next/image with `fill`. */}
+        <PolaroidFrame tilt={-2} className="aspect-[4/5]">
+          <div className="relative w-full h-full overflow-hidden rounded-[2px]">
+            <div className="story-photo-placeholder" aria-hidden="true" />
+          </div>
+        </PolaroidFrame>
         <div>
           <div className="eyebrow-tag">A field note · 12 March 2026</div>
           <h2 className="font-display font-normal mt-6 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2rem,4vw,3.25rem)]">
@@ -22,10 +29,20 @@ export function StorySpread() {
             Dhaka&apos;s Mirpur district, could no longer manage three children
             alone.
           </p>
-          <blockquote className="my-9 py-7 pl-8 border-l-[3px] border-tangerine font-display italic text-[clamp(1.35rem,2.2vw,1.75rem)] leading-[1.4] text-ink">
+          <blockquote className="relative my-9 py-7 pl-8 pr-6 bg-paper rounded-[16px] border border-tangerine-soft font-display italic text-[clamp(1.35rem,2.2vw,1.75rem)] leading-[1.4] text-ink">
+            {/* Session 16 — warm paper-backed callout replaces the
+                bare left-border quote. The handwritten byline
+                anchors the quote to a named voice (Asma) the
+                surrounding prose already introduced. */}
             &ldquo;He hadn&apos;t sent or received anything in three years. The
             morning he held the pen, his hand shook so much I had to look
             away.&rdquo;
+            <span
+              className="block mt-5 font-script not-italic text-[22px] text-tangerine-deep text-right -rotate-[2deg]"
+              aria-hidden="true"
+            >
+              — Asma
+            </span>
           </blockquote>
           <p className="text-[17px] text-slate leading-[1.7]">
             For the first months, Rana spoke very little. He carried his

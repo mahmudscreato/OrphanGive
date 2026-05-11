@@ -11,18 +11,28 @@ type StatTileProps = {
   context: string;
   feature?: boolean;
   live?: boolean;
+  // Session 16 — per-card tilt in degrees. Small, fixed values give
+  // the row a hand-pinned-to-a-corkboard feel without looking
+  // chaotic. Hover settles each card to 0deg via the transition.
+  tilt?: number;
 };
 
-function StatTile({ label, value, context, feature, live }: StatTileProps) {
+function StatTile({ label, value, context, feature, live, tilt = 0 }: StatTileProps) {
   const baseTile =
-    "rounded-[20px] p-9 px-7 relative transition-all duration-[350ms] ease-soft border hover:-translate-y-1 hover:shadow-lift";
+    "rounded-[20px] p-9 px-7 relative transition-all duration-[350ms] ease-soft border hover:-translate-y-1 hover:shadow-lift hover:rotate-0";
+  // Feature card keeps the tangerine-mist gradient — it's the row's
+  // visual anchor and shouldn't compete with the paper texture
+  // applied to the other three.
   const variant = feature
     ? "border-transparent bg-gradient-to-br from-tangerine-mist to-tangerine-soft"
-    : "bg-white border-ink/[0.04] hover:border-tangerine-soft";
+    : "bg-paper border-ink/[0.04] hover:border-tangerine-soft";
   const labelColor = feature ? "text-tangerine-deep" : "text-slate";
   const numberColor = feature ? "text-tangerine-deep" : "text-ink";
   return (
-    <div className={`${baseTile} ${variant}`}>
+    <div
+      className={`${baseTile} ${variant}`}
+      style={{ transform: `rotate(${tilt}deg)` }}
+    >
       <div
         className={`font-mono text-[11px] tracking-[0.14em] uppercase mb-6 flex items-center gap-2 ${labelColor}`}
       >
@@ -58,23 +68,27 @@ export function StatsBand({ stats }: { stats: HomepageStats }) {
             label="Bangladesh, total"
             value={stats.bangladesh_total}
             context="orphan children nationwide. The need is generational and immense."
+            tilt={-0.5}
           />
           <StatTile
             live
             label="Listed with us"
             value={formatCount(stats.listed)}
             context="verified profiles, available for sponsorship right now."
+            tilt={0.5}
           />
           <StatTile
             live
             label="Currently sponsored"
             value={formatCount(stats.sponsored)}
             context="children in active monthly sponsorships across many countries."
+            tilt={-0.3}
           />
           <StatTile
             label="Joining next month"
             value={formatCount(stats.joining_next)}
             context="new profiles in onboarding. Documentation review under way."
+            tilt={0.7}
           />
         </div>
       </div>

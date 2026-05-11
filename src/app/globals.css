@@ -19,6 +19,15 @@
   --sky-deep: #075985;
   --white: #FFFFFF;
 
+  /* Session 16 — hand-drawn brand tokens. `paper` is a warmer
+   * cousin of cream used for stat cards + Polaroid backs;
+   * `ink-soft` is a slightly less harsh dark for sketched
+   * strokes; `sketch` matches the OG logo's grey wordmark for
+   * pencil-style outlines. */
+  --sketch: #3A3A3E;
+  --paper: #FBF4E5;
+  --ink-soft: #4A4A4C;
+
   --shadow-card: 0 1px 2px rgba(42, 42, 44, 0.04), 0 8px 24px -8px rgba(42, 42, 44, 0.08);
   --shadow-lift: 0 2px 4px rgba(42, 42, 44, 0.06), 0 16px 40px -12px rgba(42, 42, 44, 0.12);
   --shadow-warm: 0 8px 32px -8px rgba(243, 147, 34, 0.25);
@@ -388,4 +397,60 @@ body {
 .prose-content pre code {
   background: transparent;
   padding: 0;
+}
+
+/* ─── Session 16: hand-drawn brand utilities ─────────────────────────
+ *
+ * Script font for founder-style annotations and decorative callouts.
+ * Use sparingly: one or two per section, never as body copy. The
+ * size variants give common breakpoints so callers don't have to
+ * pick arbitrary font-size values.
+ */
+.font-script {
+  font-family: var(--font-caveat), "Caveat", cursive;
+}
+.text-script-lg {
+  font-family: var(--font-caveat), "Caveat", cursive;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+.text-script-md {
+  font-family: var(--font-caveat), "Caveat", cursive;
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+.text-script-sm {
+  font-family: var(--font-caveat), "Caveat", cursive;
+  font-size: 1.125rem;
+  line-height: 1.4;
+}
+
+/* Soft paper texture. Tiny dotted grain gives a warm hand-printed
+ * feel without obscuring whatever sits on top. The radial-dot
+ * pattern is ~1.5% opacity, invisible at a glance but visible to
+ * the eye in aggregate. Used on stat cards + occasional callouts. */
+.bg-paper {
+  background-color: var(--paper);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(0, 0, 0, 0.015) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+}
+
+/* Polaroid frame. Wraps a photo with a thick white bottom margin
+ * (the "label space" on a real Polaroid) and a soft shadow. Used
+ * by the <PolaroidFrame> component which adds a small per-instance
+ * rotation via inline style. */
+.polaroid-frame {
+  background: #ffffff;
+  padding: 8px 8px 28px 8px;
+  border-radius: 4px;
+  box-shadow: var(--shadow-lift);
+  transition: transform 500ms var(--ease-soft);
+  transform-origin: center center;
+}
+.polaroid-frame:hover {
+  transform: rotate(0deg) !important;
 }

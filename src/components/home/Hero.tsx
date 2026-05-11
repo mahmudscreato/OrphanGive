@@ -1,5 +1,10 @@
 import Image from "next/image";
 import { Button } from "@/components/ui/Button";
+import {
+  BrushedUnderline,
+  PolaroidFrame,
+  SketchArrow,
+} from "@/components/decorations/Sketches";
 
 export type HeroProps = {
   listedCount: number | null;
@@ -28,9 +33,16 @@ export function Hero({ listedCount }: HeroProps) {
           <div className="eyebrow-tag">A sponsorship service · Bangladesh</div>
           <h1 className="font-display font-normal mt-7 text-ink leading-[0.98] tracking-[-0.035em] text-[clamp(3rem,6.5vw,6.25rem)]">
             Every child carries a{" "}
-            <em className="painterly-underline italic font-light text-tangerine">
+            <span className="relative inline-block italic font-light text-tangerine">
               story
-            </em>
+              {/* Session 16 — brushed underline replaces the CSS
+                  painterly-underline with a textured two-stroke SVG.
+                  Pointer-events-none so it doesn't block hover on
+                  any future link wrapping. */}
+              <BrushedUnderline
+                className="absolute left-0 right-0 -bottom-1 h-3 w-full pointer-events-none text-tangerine"
+              />
+            </span>
             <br />
             still being written.
           </h1>
@@ -80,26 +92,47 @@ export function Hero({ listedCount }: HeroProps) {
               height: 100,
             }}
           />
-          <div className="absolute inset-0 rounded-[28px] overflow-hidden shadow-lift">
-            {/* Cloudinary-hosted hero (Session 15b2 batch 7).
-                `fill` + the wrapper's `overflow-hidden` give a clean
-                crop. `priority` is correct here — this is the LCP
-                image and shouldn't lazy-load. The badge below sits
-                as a later sibling so it stacks above the image
-                naturally without an explicit z-index. */}
-            <Image
-              src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490185/_OrphanGive_CG_V1__32_suehjj.png"
-              alt="OrphanGive — a child carries a story still being written"
-              fill
-              priority
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-cover"
-            />
-            <div className="absolute top-6 left-6 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[11px] tracking-[0.12em] uppercase text-ink font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
-              Rana · Dhaka · March 2026
+          {/* Session 16 — script callout, founder-style annotation
+              floating just above the Polaroid's top-left edge.
+              Hidden on small screens to keep the mobile hero clean. */}
+          <span
+            className="hidden lg:block absolute -top-6 -left-3 text-script-md text-tangerine-deep -rotate-[6deg] z-10 pointer-events-none"
+            aria-hidden="true"
+          >
+            still being written.
+          </span>
+          {/* Session 16 — decorative arrow pointing from headline
+              area toward the Polaroid. Desktop-only; purely
+              ornamental, hidden from assistive tech. */}
+          <SketchArrow
+            direction="down-right"
+            className="hidden lg:block absolute -top-10 -left-24 w-24 h-12 text-tangerine-deep opacity-60 pointer-events-none"
+          />
+          <PolaroidFrame
+            tilt={-1.5}
+            className="absolute inset-0"
+          >
+            <div className="relative w-full h-full overflow-hidden rounded-[2px]">
+              {/* Cloudinary-hosted hero. `fill` + the wrapper's
+                  `overflow-hidden` give a clean crop. `priority`
+                  is correct here — this is the LCP image and
+                  shouldn't lazy-load. The badge below sits as a
+                  later sibling so it stacks above the image
+                  naturally without an explicit z-index. */}
+              <Image
+                src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490185/_OrphanGive_CG_V1__32_suehjj.png"
+                alt="OrphanGive — a child carries a story still being written"
+                fill
+                priority
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover"
+              />
+              <div className="absolute top-6 left-6 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[11px] tracking-[0.12em] uppercase text-ink font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
+                Rana · Dhaka · March 2026
+              </div>
             </div>
-          </div>
+          </PolaroidFrame>
           <div className="absolute -bottom-8 -left-8 max-w-[320px] flex items-center gap-4 bg-white rounded-[20px] py-5 px-6 shadow-lift animate-float-in max-md:left-3 max-md:max-w-[calc(100%-24px)]">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-tangerine to-tangerine-deep flex items-center justify-center font-display text-[22px] text-white shrink-0">
               R

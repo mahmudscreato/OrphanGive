@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
+import { SketchDivider } from "@/components/decorations/Sketches";
 import {
   type FeaturedChild,
   directusAssetUrl,
 } from "@/lib/homepage-data";
+
+// Session 16 — fixed-per-card tilts so the row reads like three
+// Polaroids pinned at slightly different angles. Indexed by card
+// position, not by child id, so the visual rhythm stays consistent
+// even as featured children rotate.
+const CARD_TILTS = [-1.5, 1, -0.8];
 
 const CARD_SIZES =
   "(max-width: 768px) 100vw, (max-width: 1200px) 33vw, 400px";
@@ -55,19 +62,30 @@ function ChildPhoto({
 function ChildCard({
   child,
   preload,
+  tilt,
 }: {
   child: FeaturedChild;
   preload: boolean;
+  tilt: number;
 }) {
   const { label, dot } = statusLabel(child.status);
   const name = child.display_name ?? "A child awaiting sponsorship";
+  // First name only for the handwritten label above the card —
+  // mirrors how a real Polaroid might be annotated. Falls back
+  // gracefully when display_name is missing.
+  const firstName = (child.display_name?.trim() || "").split(/\s+/)[0] || null;
   const meta = [child.region ?? child.district, child.age !== null ? `Age ${child.age}` : null].filter(
     Boolean,
   );
   return (
     <Link
       href={`/children/${child.id}`}
-      className="group block bg-white rounded-[28px] overflow-hidden border border-ink/[0.05] transition-all duration-[400ms] ease-soft hover:-translate-y-1.5 hover:shadow-lift"
+      // Session 16 — per-card tilt + hover settle. Each card sits
+      // like a Polaroid pinned to a corkboard. The Caveat label
+      // above the card is positioned by the parent grid item.
+      style={{ transform: `rotate(${tilt}deg)` }}
+      className="group block bg-white rounded-[28px] overflow-hidden border border-ink/[0.05] transition-all duration-[400ms] ease-soft hover:-translate-y-1.5 hover:shadow-lift hover:rotate-0"
+      data-first-name={firstName ?? undefined}
     >
       <div className="relative aspect-square overflow-hidden">
         <ChildPhoto photo={child.photo} name={name} preload={preload} />
@@ -130,11 +148,40 @@ export function FeaturedChildren({
           </Button>
         </div>
 
+        {/* Session 16 — sketched divider between the heading row
+            and the cards. Replaces the implicit "white space as
+            separator" with a hand-drawn cue that the row is its
+            own thing. */}
+        <div className="mb-10 max-w-[420px]">
+          <SketchDivider className="w-full h-2 text-tangerine-deep" />
+        </div>
         {children.length > 0 ? (
-          <div className="grid grid-cols-3 gap-7 max-lg:grid-cols-2 max-md:grid-cols-1">
-            {children.map((c, i) => (
-              <ChildCard key={c.id} child={c} preload={i < 3} />
-            ))}
+          <div className="grid grid-cols-3 gap-y-12 gap-x-7 max-lg:grid-cols-2 max-md:grid-cols-1">
+            {children.map((c, i) => {
+              const firstName =
+                (c.display_name?.trim() || "").split(/\s+/)[0] || null;
+              // Alternate the label rotation so the row reads
+              // like notes scribbled at different moments.
+              const labelTilt = i % 2 === 0 ? -3 : 2;
+              return (
+                <div key={c.id} className="relative">
+                  {firstName ? (
+                    <span
+                      className="absolute -top-6 left-4 font-script text-[26px] leading-none text-tangerine-deep pointer-events-none z-10"
+                      style={{ transform: `rotate(${labelTilt}deg)` }}
+                      aria-hidden="true"
+                    >
+                      {firstName}
+                    </span>
+                  ) : null}
+                  <ChildCard
+                    child={c}
+                    preload={i < 3}
+                    tilt={CARD_TILTS[i % CARD_TILTS.length]!}
+                  />
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-[28px] border border-ink/[0.05] bg-white p-12 text-center text-slate">
