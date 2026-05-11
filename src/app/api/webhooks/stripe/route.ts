@@ -560,18 +560,23 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
   // out to be wrong for partial refunds on recurring, future work
   // can refine.
   for (const s of sponsorships) {
-    // Idempotent guard. The schema's SponsorshipStatus union doesn't
-    // include 'refunded' — refunded rows are recorded with
-    // status='cancelled' + cancellation_reason='refunded'. Checking
-    // both terminal states catches replayed events without
-    // re-processing.
-    if (
-      s.status === "cancelled" ||
-      s.status === "completed" ||
-      s.cancellation_reason === "refunded"
-    ) {
-      continue;
-    }
+    // Idempotent guard (Session 15b1.2 fix).
+    //
+    // Canonical "this sponsorship has already been refunded" signal:
+    // cancellation_reason === 'refunded'. We do NOT gate on
+    // status === 'completed' or status === 'cancelled' — refunds
+    // SUPERSEDE those terminal states. The Session 15b1.1 Bug 1
+    // fix flips one-time gifts to status='completed' on PI success;
+    // a later refund must still mark the sponsorship cancelled with
+    // reason='refunded' so the donor's dashboard reflects the
+    // money-back outcome (and so the refund email fires).
+    //
+    // Event-level replay protection lives upstream in
+    // stripe_event_processed — by the time we reach here, this is
+    // a first-delivery (or our deliberate manual replay). Per-row
+    // dedup just prevents looping over the same row twice within
+    // one handler invocation.
+    if (s.cancellation_reason === "refunded") continue;
     try {
       await updateSponsorship(s.id, {
         status: "cancelled",
