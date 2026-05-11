@@ -25,6 +25,7 @@
 
 import Link from "next/link";
 import DOMPurify from "isomorphic-dompurify";
+import { marked } from "marked";
 import type { SitePage } from "@/lib/site-page";
 
 // Tags + attributes the WYSIWYG is allowed to emit. Everything
@@ -32,6 +33,11 @@ import type { SitePage } from "@/lib/site-page";
 // the inner text, so authors who paste rich content from external
 // sources still see their words even if the surrounding markup
 // can't render here).
+//
+// table/thead/tbody/tr/th/td are included because marked emits
+// them for GFM-style tables. The wider HTML payload still goes
+// through DOMPurify so the table allow doesn't widen the attack
+// surface meaningfully.
 const ALLOWED_TAGS = [
   "p",
   "h1",
@@ -53,8 +59,43 @@ const ALLOWED_TAGS = [
   "hr",
   "code",
   "pre",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
 ];
 const ALLOWED_ATTR = ["href", "target", "rel"];
+
+// Lines whose trimmed prefix matches this pattern are markdown
+// syntax (headings, list items, blockquotes, code fences). When
+// Directus's WYSIWYG wraps such lines in <p>…</p>, the syntax is
+// preserved but invisible to marked unless we unwrap first. See
+// ProseBody below for the full preprocessing pipeline.
+const MARKDOWN_LINE_PREFIX = /^(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```)/;
+
+// Minimal HTML entity decoder. WYSIWYG editors encode em/en
+// dashes, quotes, &amp;, etc. when wrapping content; marked
+// happily renders those as literal entity strings if we don't
+// decode first. Order matters: &amp; last so we don't double-
+// decode a string that contained &amp;amp;.
+function decodeBasicEntities(s: string): string {
+  return s
+    .replace(/&mdash;/g, "—")
+    .replace(/&ndash;/g, "–")
+    .replace(/&hellip;/g, "…")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&rsquo;/g, "’")
+    .replace(/&lsquo;/g, "‘")
+    .replace(/&rdquo;/g, "”")
+    .replace(/&ldquo;/g, "“")
+    .replace(/&amp;/g, "&");
+}
 
 type Props = {
   page: SitePage | null;
@@ -112,17 +153,67 @@ function formatMonthYear(iso: string | null): string | null {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long" });
 }
 
-// Renders WYSIWYG HTML through DOMPurify. The allow-list (above)
-// gates which tags + attributes survive — anything off-list is
-// stripped silently so authors who paste rich content from
-// external sources still get their text content, just without
-// the surrounding markup. Typography styling lives in
-// `.prose-content` in globals.css.
+// Renders authored content via the WYSIWYG-aware markdown
+// pipeline. Pipeline order:
+//
+//   1. Unwrap WYSIWYG <p>...</p> wrappers around lines whose
+//      trimmed prefix is markdown syntax (##, -, *, 1., >, ```).
+//      Directus's editor preserves the syntax characters but
+//      buries them inside <p> tags, which marked then refuses
+//      to interpret. Unwrapping converts back to raw markdown
+//      that marked can parse. Real prose paragraphs (no leading
+//      syntax) stay wrapped — we don't want to flatten authored
+//      structure.
+//
+//   2. Convert <br> inside the unwrapped runs to newline. WYSIWYG
+//      sometimes uses <br> as a soft break inside what should
+//      be list-item markup; marked needs newlines, not breaks.
+//
+//   3. Decode common HTML entities (em-dash, smart quotes, &amp;).
+//      Marked would otherwise emit them as literal strings.
+//
+//   4. marked.parse → HTML.
+//
+//   5. DOMPurify sanitize with the same allow-list as before.
+//
+//   6. Render via dangerouslySetInnerHTML on `.prose-content`.
+//
+// Idempotent: content that's already pure HTML (no markdown syntax)
+// passes through unchanged because step 1 finds no matches; marked
+// then sees HTML and emits HTML unchanged.
 function ProseBody({ body }: { body: string }) {
-  const clean = DOMPurify.sanitize(body, {
+  // Step 1: strip <p>...</p> wrappers around markdown-syntax lines.
+  const unwrapped = body.replace(/<p>([\s\S]*?)<\/p>/g, (match, inner) => {
+    const decoded = decodeBasicEntities(inner);
+    if (MARKDOWN_LINE_PREFIX.test(decoded.trim())) {
+      // Trailing blank line so adjacent unwrapped lines don't
+      // glue together into a single markdown block by accident.
+      return `${decoded}\n\n`;
+    }
+    return match;
+  });
+
+  // Step 2: <br> → newline (helps WYSIWYG soft-break content
+  // collapse into proper markdown lists / paragraphs).
+  const withNewlines = unwrapped.replace(/<br\s*\/?>/gi, "\n");
+
+  // Step 3: decode entities for any text still outside paragraphs.
+  const decoded = decodeBasicEntities(withNewlines);
+
+  // Step 4: parse markdown → HTML. async:false guarantees a
+  // synchronous string return so we can sanitize in the same tick.
+  const html = marked.parse(decoded, {
+    async: false,
+    gfm: true,
+    breaks: false,
+  }) as string;
+
+  // Step 5: sanitize.
+  const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
   });
+
   return (
     <div
       className="prose-content mt-12"
