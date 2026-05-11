@@ -29,6 +29,16 @@ export type SitePage = {
   meta_description: string | null;
   status: string;
   published_at: string | null;
+  // Manual "content was meaningfully revised at this time" field
+  // (Session 15b2 batch 3). Surfaced on legal pages as
+  // "Last updated: May 2026" — donors expect that signal on
+  // privacy / terms / refund / cookies / safeguarding. Optional:
+  // when null (or when the field doesn't exist on the row yet),
+  // the renderer omits the footer line entirely. Mahmud adds the
+  // field to the site_page collection in Directus admin; until
+  // then this property is undefined from the API response, which
+  // TypeScript treats as `null` via the read-side coalesce below.
+  last_updated: string | null;
 };
 
 export async function getSitePage(slug: string): Promise<SitePage | null> {
@@ -50,11 +60,27 @@ export async function getSitePage(slug: string): Promise<SitePage | null> {
           "meta_description",
           "status",
           "published_at",
+          "last_updated",
         ],
         limit: 1,
       } as never),
-    )) as unknown as SitePage[];
-    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+    )) as unknown as Array<Partial<SitePage> & { id: string; slug: string }>;
+    const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
+    if (!row) return null;
+    // Normalize: requesting a field that doesn't exist on the
+    // collection (e.g. last_updated before Mahmud adds it in
+    // Directus admin) sometimes returns undefined rather than
+    // null. Coalesce to null so consumers can use a single guard.
+    return {
+      id: row.id,
+      slug: row.slug,
+      title: row.title ?? "",
+      content: row.content ?? null,
+      meta_description: row.meta_description ?? null,
+      status: row.status ?? "draft",
+      published_at: row.published_at ?? null,
+      last_updated: row.last_updated ?? null,
+    };
   } catch (err) {
     console.warn(
       `[site-page] getSitePage(${slug}) failed:`,

@@ -28,6 +28,7 @@ type Props = {
 export function SitePageRenderer({ page, fallback }: Props) {
   const title = page?.title?.trim() || fallback.title;
   const body = page?.content?.trim() ?? "";
+  const lastUpdatedLabel = formatMonthYear(page?.last_updated ?? null);
 
   return (
     <main className="bg-cream">
@@ -41,10 +42,32 @@ export function SitePageRenderer({ page, fallback }: Props) {
           ) : (
             <ComingSoon fallbackDescription={fallback.description} />
           )}
+          {/* Session 15b2 batch 3 — "Last updated: May 2026" footer
+              for CMS pages where the date field is set. Surfaced
+              prominently on legal pages (donors expect that signal
+              on privacy / terms / refund / cookies / safeguarding)
+              but harmless on others. Hidden entirely when
+              last_updated isn't set on the row. */}
+          {lastUpdatedLabel ? (
+            <p className="mt-16 pt-6 border-t border-ink/[0.08] font-mono text-[11.5px] tracking-[0.1em] text-slate-soft">
+              Last updated: {lastUpdatedLabel}
+            </p>
+          ) : null}
         </article>
       </div>
     </main>
   );
+}
+
+// "May 2026"-style label. Returns null for missing / invalid input
+// so the renderer can omit the footer cleanly. Format intentionally
+// coarse — legal copy is rarely revised more than once a month and
+// donors don't need day-level precision.
+function formatMonthYear(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long" });
 }
 
 // Splits the authored text into paragraphs on blank lines and
