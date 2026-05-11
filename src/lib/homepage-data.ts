@@ -32,10 +32,40 @@ type DirectusChildRow = {
   bd_district?: RelationRow;
   story?: string | null;
   // Directus field is `Photo` (capital P) — relation to directus_files.
-  // When requested as a literal field it returns the file UUID string.
-  Photo?: string | null;
+  // When requested as a literal field it typically returns the file
+  // UUID string, but in some schema configurations Directus returns
+  // the full file row `{ id, filename_disk, ... }`. Type the field
+  // as the union so the runtime coercion in `coercePhotoId` is
+  // type-checked rather than `as never`-cast.
+  Photo?: string | { id?: string | null } | null;
   status?: string | null;
 };
+
+/**
+ * Normalize a Directus file-relation value to a non-empty UUID
+ * string, or null if it's missing / malformed. Handles:
+ *   - null / undefined → null
+ *   - empty / whitespace string → null
+ *   - non-empty string → trimmed string
+ *   - relation object `{ id }` → trimmed id, or null if id is missing/empty
+ *
+ * The frontend filter in FeaturedChildren.tsx still rechecks
+ * for truthiness as belt-and-braces.
+ */
+function coercePhotoId(
+  raw: string | { id?: string | null } | null | undefined,
+): string | null {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof raw === "object" && "id" in raw && typeof raw.id === "string") {
+    const trimmed = raw.id.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+}
 
 type AggregateRow = { count: number | string | null };
 
@@ -103,9 +133,19 @@ function trimStory(s: string | null | undefined, max = 120): string | null {
 
 export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
   try {
+    // Session 16 polish Fix C (tightened) — fetch only children
+    // whose Photo field is non-null at the Directus level. The
+    // frontend then filters again defensively in case the field
+    // returns an empty string, malformed value, or an object
+    // instead of the expected UUID string.
     const items = (await directusServer().request(
       readItems(("child" as never), {
-        filter: { status: { _eq: "active" } },
+        filter: {
+          _and: [
+            { status: { _eq: "active" } },
+            { Photo: { _nnull: true } },
+          ],
+        },
         fields: [
           "id",
           "display_name",
@@ -118,7 +158,13 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
           "Photo",
           "status",
         ],
-        limit: 3,
+        // Part 4 Fix 5 — bumped from 9 → 20 so we have enough
+        // candidates after the photo + sponsor filters to fill
+        // 4 cards on the homepage. The `status: active` filter
+        // already excludes children who are sponsored; the
+        // schema's `active` state IS the "available for
+        // sponsorship" state.
+        limit: 20,
       } as never),
     )) as unknown as DirectusChildRow[] | undefined;
     if (!Array.isArray(items)) return [];
@@ -129,7 +175,12 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
       region: row.bd_division?.name ?? null,
       district: row.bd_district?.name ?? null,
       story: trimStory(row.story),
-      photo: row.Photo ?? null,
+      // Coerce Photo to a string id regardless of whether
+      // Directus returned a UUID string (expected per field
+      // selector) or a relation object (defensive — happens when
+      // schema config differs from this query). Anything that
+      // can't be coerced ends up null and gets filtered.
+      photo: coercePhotoId(row.Photo),
       status: row.status ?? null,
     }));
   } catch (err) {

@@ -89,6 +89,16 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  // Session 16 FINAL Fix 2b — favicon points at the icon-only SVG
+  // hosted on Cloudinary. Modern browsers + iOS home-screen icons
+  // both honour the same SVG URL; we don't need separate PNG fall-
+  // backs at this stage.
+  icons: {
+    icon:
+      "https://res.cloudinary.com/dh9w1apsk/image/upload/v1778388529/OG_Logo_F_SVG_x0frxm.svg",
+    apple:
+      "https://res.cloudinary.com/dh9w1apsk/image/upload/v1778388529/OG_Logo_F_SVG_x0frxm.svg",
+  },
 };
 
 export const viewport: Viewport = {

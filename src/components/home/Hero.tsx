@@ -1,174 +1,228 @@
-import Image from "next/image";
+"use client";
+
+import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
+import { PhotoBlob } from "@/components/decorations/PhotoBlob";
 import {
-  BrushedUnderline,
-  PolaroidFrame,
-  SketchArrow,
-} from "@/components/decorations/Sketches";
+  ConfettiDots,
+  DottedArc,
+  HeartOutline,
+} from "@/components/decorations/InspoDecor";
 
 export type HeroProps = {
   listedCount: number | null;
 };
 
-export function Hero({ listedCount }: HeroProps) {
-  return (
-    <section className="relative overflow-hidden bg-cream pt-[140px] pb-20 px-6 max-md:pt-[120px] max-md:pb-16 max-md:px-5">
-      {/* Faint rotated logo motif behind the hero */}
-      <div
-        className="logo-motif"
-        aria-hidden="true"
-        style={{
-          top: 80,
-          right: -120,
-          width: 600,
-          height: 600,
-          opacity: 0.04,
-          transform: "rotate(15deg)",
-        }}
-      />
+/**
+ * Session 16 FINAL Hero — Part 4 polish.
+ *
+ * Part 4 Fix 3 — photos enlarged so the main photo dominates the
+ * right column:
+ *   - hero1 (Rana): 380×400 → 460×500
+ *   - hero2 (top-right): 200×200 → 240×240
+ *   - hero3 (bottom-right): 240×240 → 280×280
+ * Right column switched from aspect-square to an explicit
+ * min-height ~680 to accommodate the larger composition.
+ *
+ * Part 4 Fix 4 — OliveSprig removed; all PhotoBlob ringColors
+ * set explicitly to --orange-solid (#ED8B3F); trust card text
+ * replaced with "Every child verified. / Every taka tracked."
+ * with the word `tracked.` in Caveat tangerine-deep.
+ */
+export function Hero(_props: HeroProps) {
+  const reduced = useReducedMotion();
+  const float = (duration: number) =>
+    reduced
+      ? undefined
+      : ({
+          animate: { y: [0, -8, 0] as number[] },
+          transition: {
+            duration,
+            repeat: Infinity,
+            ease: "easeInOut" as const,
+          },
+        } as const);
 
-      <div className="relative max-w-[1320px] mx-auto grid grid-cols-[1.1fr_1fr] gap-20 items-center max-lg:grid-cols-1 max-lg:gap-12">
-        {/* Left: copy */}
-        <div>
-          <div className="eyebrow-tag">A sponsorship service · Bangladesh</div>
-          <h1 className="font-display font-normal mt-7 text-ink leading-[0.98] tracking-[-0.035em] text-[clamp(3rem,6.5vw,6.25rem)]">
-            Every child carries a{" "}
-            <span className="relative inline-block italic font-light text-tangerine">
-              story
-              {/* Session 16 — brushed underline replaces the CSS
-                  painterly-underline with a textured two-stroke SVG.
-                  Pointer-events-none so it doesn't block hover on
-                  any future link wrapping. */}
-              <BrushedUnderline
-                className="absolute left-0 right-0 -bottom-1 h-3 w-full pointer-events-none text-tangerine"
+  return (
+    <motion.section
+      className="relative overflow-hidden pt-12 pb-20 px-6 max-md:pt-8 max-md:pb-14 max-md:px-5"
+      initial={reduced ? false : { opacity: 0, y: 30 }}
+      whileInView={reduced ? undefined : { opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+      viewport={{ once: true, margin: "-80px" }}
+    >
+      <div className="relative max-w-[1320px] mx-auto grid grid-cols-1 lg:grid-cols-[5fr_6fr] gap-16 items-start max-lg:gap-12">
+        {/* Left column — copy. Top-aligned with the right column
+            (no pt offset). */}
+        <div className="relative">
+          {/* HeartOutline decoration peeking near the H1 */}
+          <HeartOutline
+            size={22}
+            color="#ED8B3F"
+            className="absolute -top-1 -left-2 pointer-events-none -rotate-[8deg]"
+          />
+          <h1>
+            <span className="block font-display font-normal text-ink leading-[0.98] tracking-[-0.035em] text-[clamp(2.75rem,6vw,5.5rem)]">
+              Give with trust.
+            </span>
+            <span className="block mt-1 max-md:mt-2 leading-[0.95]">
+              <span className="text-script-hero">
+                Change a child&apos;s tomorrow.
+              </span>{" "}
+              <HeartOutline
+                size={36}
+                color="#ED8B3F"
+                stroke={3}
+                className="inline-block align-baseline -translate-y-3 max-md:-translate-y-2"
               />
             </span>
-            <br />
-            still being written.
           </h1>
-          <p className="mt-8 text-[19px] leading-[1.6] text-slate max-w-[520px]">
-            OrphanGive connects verified orphan children in Bangladesh with
-            sponsors who fund their education, follow their progress, and stay
-            with them for years. Not weeks. Years.
+          <p className="mt-7 text-[19px] leading-[1.6] text-slate max-w-[520px]">
+            OrphanGive connects verified vulnerable and orphaned children with
+            donors through transparent, privacy-protected giving. Every profile
+            is reviewed with care, so your support reaches a real need with
+            dignity.
           </p>
-          <div className="mt-11 flex gap-4 items-center flex-wrap">
-            <Button href="/sponsor" variant="tangerine" size="lg">
-              Begin a sponsorship →
-            </Button>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center gap-3 text-sm font-medium text-ink py-2 group"
-            >
-              <span className="w-9 h-9 rounded-full bg-tangerine-soft flex items-center justify-center transition-all duration-[250ms] ease-soft group-hover:bg-tangerine group-hover:scale-[1.08]">
-                <svg viewBox="0 0 12 12" fill="none" className="w-3 h-3">
-                  <path d="M3 2 L9 6 L3 10 Z" fill="currentColor" />
-                </svg>
-              </span>
-              Watch how it works (2 min)
-            </a>
+          <div className="mt-4 mb-6 text-sm text-ink-soft opacity-80 flex flex-wrap gap-x-3 gap-y-1 items-center">
+            <span>Verified profiles</span>
+            <span aria-hidden="true" className="tracking-widest">
+              •
+            </span>
+            <span>Privacy protected</span>
+            <span aria-hidden="true" className="tracking-widest">
+              •
+            </span>
+            <span>Transparent support</span>
           </div>
-          <div className="mt-14 flex gap-8 items-center flex-wrap font-mono text-[11px] text-slate-soft tracking-[0.1em]">
-            <span className="inline-flex items-center">
-              <span className="inline-block w-2 h-2 bg-moss rounded-full mr-2 animate-pulse-dot" />
-              Active in 11 districts
-            </span>
-            <span>
-              {listedCount !== null
-                ? `${listedCount} ${listedCount === 1 ? "child" : "children"} listed`
-                : "Children listed monthly"}
-            </span>
+          <div className="flex gap-4 items-center flex-wrap">
+            <Button href="/sponsor" variant="tangerine" size="lg">
+              Support a Child →
+            </Button>
+            <Button href="/how-it-works" variant="white" size="lg">
+              How It Works
+            </Button>
           </div>
         </div>
 
-        {/* Right: visual */}
-        <div className="relative aspect-[4/5]">
-          <div
-            className="logo-motif animate-gentle-bob"
-            aria-hidden="true"
+        {/* Right column — photo collage. Explicit min-height fits
+            the enlarged main + corner photos + trust card. */}
+        <div
+          className="relative w-full max-lg:max-w-[600px] max-lg:mx-auto"
+          style={{ minHeight: 680 }}
+        >
+          {/* DottedArc top-left of cluster, rotated -30deg. */}
+          <DottedArc
+            size={110}
+            color="#ED8B3F"
+            dots={11}
+            className="absolute -top-4 -left-4 pointer-events-none z-0"
+            style={{ transform: "rotate(-30deg)" }}
+          />
+
+          {/* ConfettiDots bottom-left of cluster. */}
+          <ConfettiDots
+            count={10}
+            area={[200, 100]}
+            className="absolute -bottom-2 -left-2 pointer-events-none z-0"
+          />
+
+          {/* Main center photo — Rana (460×500). Floats at 4s. */}
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20"
+            style={{ width: 460, height: 500 }}
+            {...(float(4) ?? {})}
+          >
+            <PhotoBlob
+              pathKey="hero1"
+              src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490185/_OrphanGive_CG_V1__32_suehjj.png"
+              alt="A child carrying a story still being written"
+              ringColor="#ED8B3F"
+              priority
+              sizes="460px"
+              className="w-full h-full"
+            />
+          </motion.div>
+
+          {/* Top-right photo — child + mother (240×240). 5s float. */}
+          <motion.div
+            className="absolute z-30"
+            style={{ top: -10, right: -10, width: 240, height: 240 }}
+            {...(float(5) ?? {})}
+          >
+            <PhotoBlob
+              pathKey="hero2"
+              src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490174/_OrphanGive_CG_V1__22_in48ah.png"
+              alt="A child with their mother"
+              ringColor="#ED8B3F"
+              sizes="240px"
+              className="w-full h-full"
+            />
+          </motion.div>
+
+          {/* Bottom-right photo — supporting (280×280), shifted
+              right -40px to poke past the column edge. 6s float. */}
+          <motion.div
+            className="absolute z-30"
+            style={{ bottom: 10, right: -40, width: 280, height: 280 }}
+            {...(float(6) ?? {})}
+          >
+            <PhotoBlob
+              pathKey="hero3"
+              src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490182/_OrphanGive_CG_V1__11_pp331u.png"
+              alt="A child supported by OrphanGive"
+              ringColor="#ED8B3F"
+              sizes="280px"
+              className="w-full h-full"
+            />
+          </motion.div>
+
+          {/* Floating trust card — "Every child verified. / Every
+              taka tracked." with Caveat tangerine-deep accent on
+              `tracked.` */}
+          <motion.div
+            className="absolute z-40 bg-white rounded-2xl p-4 max-w-xs"
             style={{
-              top: -20,
-              right: -40,
-              width: 100,
-              height: 100,
+              bottom: -10,
+              left: 0,
+              boxShadow: "var(--shadow-warm), 0 8px 24px rgba(42,42,44,0.08)",
             }}
-          />
-          {/* Session 16 — script callout, founder-style annotation
-              floating just above the Polaroid's top-left edge.
-              Hidden on small screens to keep the mobile hero clean. */}
-          <span
-            className="hidden lg:block absolute -top-6 -left-3 text-script-md text-tangerine-deep -rotate-[6deg] z-10 pointer-events-none"
-            aria-hidden="true"
+            animate={reduced ? undefined : { scale: [1, 1.02, 1] }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
           >
-            still being written.
-          </span>
-          {/* Session 16 — decorative arrow pointing from headline
-              area toward the Polaroid. Desktop-only; purely
-              ornamental, hidden from assistive tech. */}
-          <SketchArrow
-            direction="down-right"
-            className="hidden lg:block absolute -top-10 -left-24 w-24 h-12 text-tangerine-deep opacity-60 pointer-events-none"
-          />
-          <PolaroidFrame
-            tilt={-1.5}
-            className="absolute inset-0"
-          >
-            <div className="relative w-full h-full overflow-hidden rounded-[2px]">
-              {/* Cloudinary-hosted hero. `fill` + the wrapper's
-                  `overflow-hidden` give a clean crop. `priority`
-                  is correct here — this is the LCP image and
-                  shouldn't lazy-load. The badge below sits as a
-                  later sibling so it stacks above the image
-                  naturally without an explicit z-index. */}
-              <Image
-                src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490185/_OrphanGive_CG_V1__32_suehjj.png"
-                alt="OrphanGive — a child carries a story still being written"
-                fill
-                priority
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-cover"
-              />
-              <div className="absolute top-6 left-6 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[11px] tracking-[0.12em] uppercase text-ink font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
-                Rana · Dhaka · March 2026
-              </div>
-            </div>
-          </PolaroidFrame>
-          <div className="absolute -bottom-8 -left-8 max-w-[320px] flex items-center gap-4 bg-white rounded-[20px] py-5 px-6 shadow-lift animate-float-in max-md:left-3 max-md:max-w-[calc(100%-24px)]">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-tangerine to-tangerine-deep flex items-center justify-center font-display text-[22px] text-white shrink-0">
-              R
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-mono text-[10px] text-slate-soft tracking-[0.12em] uppercase">
-                Just sponsored
-              </div>
-              <div className="font-display text-base text-ink mt-0.5">
-                Rana, age 9
-              </div>
-              <div className="text-xs text-slate mt-0.5">
-                By Mahmud K. · 12 month sponsorship
-              </div>
-            </div>
-            <div className="w-8 h-8 rounded-full bg-moss-soft flex items-center justify-center text-moss shrink-0">
+            <div className="flex items-center gap-3">
               <svg
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
+                className="w-6 h-6 text-tangerine shrink-0"
+                viewBox="0 0 24 24"
                 fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
                 aria-hidden="true"
               >
-                <path
-                  d="M2 7L5.5 10.5L12 4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <path d="M12 2L4 6v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-8-4z" />
+                <path d="M9 12l2 2 4-4" />
               </svg>
+              <div className="leading-tight">
+                <div className="text-sm font-medium text-ink">
+                  Every child verified.
+                </div>
+                <div className="text-sm text-ink-soft">
+                  Every taka{" "}
+                  <span className="font-script text-tangerine-deep text-lg">
+                    tracked.
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
-    </section>
+    </motion.section>
   );
 }
 
