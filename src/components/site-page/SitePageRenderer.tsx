@@ -1,18 +1,60 @@
-// Generic renderer for CMS-authored static pages (Session 15a).
-// Used by /about, /how-it-works, /for-charities, /stories, /faq —
-// each route reads its `site_page` row by slug and hands the
-// content here.
+// Generic renderer for CMS-authored static pages (Session 15a;
+// extended in 15b2 batch 4 to render WYSIWYG HTML safely).
+// Used by /about, /how-it-works, /for-charities, /stories, /faq,
+// and the 5 legal routes — each reads its `site_page` row by
+// slug and hands the content here.
 //
-// Content authored in Directus is plain text/markdown (per
-// site_page.content schema). For v1 we render as a vertical
-// stack of paragraphs, splitting on blank lines. No markdown
-// library — keep it minimal. If a row doesn't exist or has no
-// body yet, render a graceful "Coming soon" so the route still
-// resolves to a 200 instead of 404 (link from footer doesn't
-// dead-end during the content-authoring window).
+// Content authoring lives in Directus's WYSIWYG interface, which
+// outputs raw HTML (<p>, <h2>, <a>, <strong>, lists, etc.). We
+// inject that HTML via dangerouslySetInnerHTML — but pass it
+// through DOMPurify first to strip anything dangerous (script /
+// iframe / on* handlers / data-url tricks). The allow-list below
+// is intentionally tight: text-content tags only, no media, no
+// forms, no anchors that could escape the renderer's intent.
+//
+// Why DOMPurify over a markdown library: Directus's WYSIWYG is
+// the authoring source of truth. Round-tripping through markdown
+// would add a translation step + lose formatting nuance authors
+// rely on. Sanitization-after-WYSIWYG keeps authoring frictionless
+// without trusting the admin user's input absolutely.
+//
+// If the row doesn't exist or has no body yet, render a graceful
+// "Coming soon" so the route still resolves to a 200 instead of
+// 404 (link from footer doesn't dead-end during the content-
+// authoring window).
 
 import Link from "next/link";
+import DOMPurify from "isomorphic-dompurify";
 import type { SitePage } from "@/lib/site-page";
+
+// Tags + attributes the WYSIWYG is allowed to emit. Everything
+// else gets stripped silently (DOMPurify removes the tag and keeps
+// the inner text, so authors who paste rich content from external
+// sources still see their words even if the surrounding markup
+// can't render here).
+const ALLOWED_TAGS = [
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "a",
+  "ul",
+  "ol",
+  "li",
+  "strong",
+  "em",
+  "b",
+  "i",
+  "blockquote",
+  "br",
+  "hr",
+  "code",
+  "pre",
+];
+const ALLOWED_ATTR = ["href", "target", "rel"];
 
 type Props = {
   page: SitePage | null;
@@ -70,43 +112,22 @@ function formatMonthYear(iso: string | null): string | null {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long" });
 }
 
-// Splits the authored text into paragraphs on blank lines and
-// renders each as a `<p>`. Lines starting with "## " become h2
-// (subheadings) so authors can structure long pages with light
-// markup. No deeper markdown — bold/italic/links can be added
-// later if authors actually need them.
+// Renders WYSIWYG HTML through DOMPurify. The allow-list (above)
+// gates which tags + attributes survive — anything off-list is
+// stripped silently so authors who paste rich content from
+// external sources still get their text content, just without
+// the surrounding markup. Typography styling lives in
+// `.prose-content` in globals.css.
 function ProseBody({ body }: { body: string }) {
-  const blocks = body.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const clean = DOMPurify.sanitize(body, {
+    ALLOWED_TAGS,
+    ALLOWED_ATTR,
+  });
   return (
-    <div className="mt-12 space-y-7 text-[19px] text-ink leading-[1.75]">
-      {blocks.map((block, i) => {
-        if (block.startsWith("## ")) {
-          return (
-            <h2
-              key={i}
-              className="font-display text-[28px] text-ink leading-tight tracking-[-0.01em] mt-12 mb-2 max-md:text-[24px]"
-            >
-              {block.slice(3).trim()}
-            </h2>
-          );
-        }
-        if (block.startsWith("# ")) {
-          return (
-            <h2
-              key={i}
-              className="font-display text-[32px] text-ink leading-tight tracking-[-0.01em] mt-12 mb-2 max-md:text-[28px]"
-            >
-              {block.slice(2).trim()}
-            </h2>
-          );
-        }
-        return (
-          <p key={i} className="m-0">
-            {block}
-          </p>
-        );
-      })}
-    </div>
+    <div
+      className="prose-content mt-12"
+      dangerouslySetInnerHTML={{ __html: clean }}
+    />
   );
 }
 

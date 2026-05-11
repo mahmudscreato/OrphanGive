@@ -290,3 +290,125 @@ body {
   background: var(--tangerine);
 }
 
+
+/* ─── Site page content (Session 15b2 batch 4) ──────────────────────
+ *
+ * Typography for CMS-authored prose rendered by SitePageRenderer
+ * via dangerouslySetInnerHTML. The renderer pipes Directus
+ * WYSIWYG output through DOMPurify; this stylesheet handles the
+ * visual presentation. Plain CSS (no @apply) so it works outside
+ * Tailwind's component context — Tailwind v4 enforces @apply only
+ * inside @layer, and these styles target HTML emitted at runtime
+ * by the sanitizer, not source markup the compiler can scan.
+ *
+ * Variables come from the :root block at the top of this file.
+ */
+.prose-content {
+  color: var(--slate);
+  font-size: 17px;
+  line-height: 1.65;
+  max-width: 720px;
+}
+.prose-content > * + * {
+  margin-top: 1.25rem;
+}
+.prose-content h1,
+.prose-content h2,
+.prose-content h3,
+.prose-content h4,
+.prose-content h5,
+.prose-content h6 {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  color: var(--ink);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  margin-top: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+.prose-content h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+.prose-content h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+.prose-content h3 {
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+}
+.prose-content h4,
+.prose-content h5,
+.prose-content h6 {
+  font-size: 1.125rem;
+}
+.prose-content p {
+  margin: 0;
+}
+.prose-content a {
+  color: var(--tangerine-deep);
+  border-bottom: 1.5px solid var(--tangerine);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.prose-content a:hover {
+  opacity: 0.7;
+}
+.prose-content ul,
+.prose-content ol {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+.prose-content ul {
+  list-style-type: disc;
+}
+.prose-content ol {
+  list-style-type: decimal;
+}
+.prose-content li {
+  margin-bottom: 0.4rem;
+}
+.prose-content li > p {
+  /* Collapse the renderer's "* + *" gap inside list items so a
+   * paragraph nested inside <li> doesn't double-space. */
+  display: inline;
+}
+.prose-content strong,
+.prose-content b {
+  font-weight: 600;
+  color: var(--ink);
+}
+.prose-content em,
+.prose-content i {
+  font-style: italic;
+}
+.prose-content blockquote {
+  border-left: 3px solid var(--tangerine);
+  padding: 0.25rem 0 0.25rem 1.5rem;
+  margin: 1.5rem 0;
+  font-style: italic;
+  color: var(--ink);
+}
+.prose-content hr {
+  border: 0;
+  border-top: 1px solid rgba(42, 42, 44, 0.1);
+  margin: 2.5rem 0;
+}
+.prose-content code {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.92em;
+  background: rgba(42, 42, 44, 0.05);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+.prose-content pre {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  background: rgba(42, 42, 44, 0.05);
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+.prose-content pre code {
+  background: transparent;
+  padding: 0;
+}
