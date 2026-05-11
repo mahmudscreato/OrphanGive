@@ -29,6 +29,24 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# NEXT_PUBLIC_* build args — Next.js inlines NEXT_PUBLIC_* values
+# into the client bundle at build time, so they MUST be available
+# during `npm run build`, not just at runtime. Pass them via
+# `--build-arg NEXT_PUBLIC_FOO=bar` (or compose's `args:` block).
+# Server-only secrets (DIRECTUS_SERVER_TOKEN, STRIPE_SECRET_KEY,
+# etc.) stay out of here — they're injected at container start.
+ARG NEXT_PUBLIC_DIRECTUS_URL
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_USD_TO_BDT_RATE
+ARG NEXT_PUBLIC_PLACEHOLDER_ASSET_IDS
+ENV NEXT_PUBLIC_DIRECTUS_URL=${NEXT_PUBLIC_DIRECTUS_URL}
+ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+ENV NEXT_PUBLIC_USD_TO_BDT_RATE=${NEXT_PUBLIC_USD_TO_BDT_RATE}
+ENV NEXT_PUBLIC_PLACEHOLDER_ASSET_IDS=${NEXT_PUBLIC_PLACEHOLDER_ASSET_IDS}
+
 RUN npm run build
 
 # ─── Stage 3: runtime ────────────────────────────────────────
