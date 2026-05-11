@@ -14,6 +14,19 @@ const nextConfig: NextConfig = {
   },
   images: {
     qualities: [75, 85],
+    // Session 15b2 batch 7 — allow Next.js's image optimizer to
+    // proxy images from our Cloudinary account. Tightly scoped to
+    // the `dh9w1apsk` cloud prefix so we don't accidentally
+    // optimize someone else's Cloudinary content. Add additional
+    // patterns here when new image hosts are introduced (e.g.
+    // Directus assets domain, if those ever go through next/image).
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+        pathname: "/dh9w1apsk/**",
+      },
+    ],
   },
   async redirects() {
     return [

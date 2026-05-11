@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 
 export type HeroProps = {
@@ -80,7 +81,20 @@ export function Hero({ listedCount }: HeroProps) {
             }}
           />
           <div className="absolute inset-0 rounded-[28px] overflow-hidden shadow-lift">
-            <div className="hero-photo-placeholder" aria-hidden="true" />
+            {/* Cloudinary-hosted hero (Session 15b2 batch 7).
+                `fill` + the wrapper's `overflow-hidden` give a clean
+                crop. `priority` is correct here — this is the LCP
+                image and shouldn't lazy-load. The badge below sits
+                as a later sibling so it stacks above the image
+                naturally without an explicit z-index. */}
+            <Image
+              src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490185/_OrphanGive_CG_V1__32_suehjj.png"
+              alt="OrphanGive — a child carries a story still being written"
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+            />
             <div className="absolute top-6 left-6 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[11px] tracking-[0.12em] uppercase text-ink font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-tangerine" />
               Rana · Dhaka · March 2026
