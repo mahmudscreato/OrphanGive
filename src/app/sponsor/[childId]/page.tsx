@@ -108,7 +108,7 @@ export default async function SponsorPage({
   }
 
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <div className="px-6 pt-32 max-md:pt-28">
         <div className="max-w-[1100px] mx-auto">
           <Breadcrumb
@@ -140,6 +140,6 @@ export default async function SponsorPage({
         queueJoin={queueJoin}
         queueFullThrough={queueFullThrough}
       />
-    </main>
+    </div>
   );
 }

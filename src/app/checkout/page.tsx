@@ -95,7 +95,7 @@ export default async function CheckoutPage({
   // Empty cart short-circuit.
   if (hydrated.items.length === 0) {
     return (
-      <main className="bg-cream">
+      <div className="bg-cream">
         <section className="px-6 pt-32 pb-24 max-md:pt-28 max-md:pb-16">
           <div className="max-w-[640px] mx-auto text-center">
             <h1 className="font-display text-[32px] text-ink leading-tight">
@@ -112,7 +112,7 @@ export default async function CheckoutPage({
             </Link>
           </div>
         </section>
-      </main>
+      </div>
     );
   }
 
@@ -120,7 +120,7 @@ export default async function CheckoutPage({
   const totalUsd = hydrated.monthlyTotal + hydrated.oneTimeTotal;
 
   return (
-    <main className="min-h-screen grid grid-cols-[2fr_3fr] max-lg:grid-cols-1">
+    <div className="min-h-screen grid grid-cols-[2fr_3fr] max-lg:grid-cols-1">
       {/* Left: tangerine warmth panel */}
       <aside className="bg-tangerine text-cream relative overflow-hidden flex flex-col px-12 py-16 max-md:px-7 max-md:py-12">
         <div
@@ -222,6 +222,6 @@ export default async function CheckoutPage({
           )}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

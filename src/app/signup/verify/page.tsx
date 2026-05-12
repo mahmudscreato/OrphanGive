@@ -22,7 +22,7 @@ export default async function VerifyPage({
         : "";
 
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <section className="px-6 pt-32 pb-20 max-md:pt-28 max-md:pb-16">
         <div className="max-w-[520px] mx-auto">
           <div className="eyebrow-tag">Verify your email</div>
@@ -53,6 +53,6 @@ export default async function VerifyPage({
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function SignUpPage() {
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <section className="px-6 pt-32 pb-20 max-md:pt-28 max-md:pb-16">
         <div className="max-w-[640px] mx-auto">
           <div className="eyebrow-tag">Create your donor account</div>
@@ -36,6 +36,6 @@ export default function SignUpPage() {
           </p>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
