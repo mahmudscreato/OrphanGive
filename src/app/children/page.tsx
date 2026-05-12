@@ -91,12 +91,16 @@ export default async function BrowseChildrenPage() {
             <EyebrowIcon />
             Meet the children
           </div>
+          {/* Session 17.5 (review answer #6) — differentiated from
+              the homepage Featured Children section ("Verified
+              profiles. / Real stories. Real care.") so this page
+              reads as a sibling, not a clone. */}
           <h1 className="mt-4">
             <span className="block font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2.25rem,5vw,4rem)]">
-              Verified profiles.
+              Every face.
             </span>
             <span className="block font-script text-tangerine-deep leading-[0.95] tracking-[-0.005em] text-[clamp(2.75rem,6vw,5rem)] mt-2">
-              Real children. Real stories.
+              Every story matters.
             </span>
           </h1>
           <p className="mt-6 max-w-2xl mx-auto text-lg text-ink-soft leading-[1.65]">

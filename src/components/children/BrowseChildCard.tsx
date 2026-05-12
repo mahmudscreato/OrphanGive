@@ -242,14 +242,17 @@ export function BrowseChildCard({
           </div>
         ) : null}
 
-        {/* Support type tag. Static "Education support" matches the
-            homepage default — when Directus exposes a per-child
-            support category we can wire it through. */}
+        {/* TODO: swap to `child.support_type` / `child.monthly_cost_bdt`
+            once the Directus `child` schema adds these fields.
+            Mahmud's Session 17 review (decision #3) confirmed
+            deferring the schema change — until then both values are
+            hardcoded to the homepage defaults so every card reads
+            consistently rather than randomly varying. Both belong to
+            the public-tier `SAFE_FIELDS` set when added (see
+            src/lib/children-data.ts). */}
         <div className="mt-3 text-sm text-tangerine-deep font-medium">
           Education support
         </div>
-
-        {/* Cost line. */}
         <div className="mt-1 text-base text-ink font-medium">
           From BDT 1,500/month
         </div>
