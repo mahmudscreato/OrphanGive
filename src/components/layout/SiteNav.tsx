@@ -34,7 +34,16 @@ export function SiteNav({ signedIn, firstName }: Props) {
 
   // The dashboard renders its own permanent left sidebar, so the
   // floating top nav would just compete for attention. Hide it there.
-  if (pathname.startsWith("/dashboard")) return null;
+  // Session 25 — also hide on /maintenance and /offline, which both
+  // ship their own inline logo header and need to render even when
+  // the rest of the app's data layer is unreachable.
+  if (
+    pathname.startsWith("/dashboard") ||
+    pathname === "/maintenance" ||
+    pathname === "/offline"
+  ) {
+    return null;
+  }
 
   // Session 16 polish Fix A — switched from a floating-pill
   // `fixed top-6` design to a full-width `sticky top-0` bar.
