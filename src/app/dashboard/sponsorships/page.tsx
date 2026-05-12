@@ -13,6 +13,7 @@ import {
   sortSponsorshipsByPriority,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
+import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { VertSponsorshipCard } from "../components/VertSponsorshipCard";
 import { CollapsibleSection } from "./CollapsibleSection";
 
@@ -85,7 +86,11 @@ export default async function DashboardSponsorshipsPage() {
 
       <section>
         <header>
-          <h1 className="font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
+          <div className="inline-flex items-center text-script-md text-tangerine-deep">
+            <EyebrowIcon />
+            Children you support
+          </div>
+          <h1 className="mt-3 font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
             Currently sponsoring
           </h1>
           {ongoing.length > 0 ? (

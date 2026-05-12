@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
+import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { ProfileSections } from "./ProfileSections";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,11 @@ export default async function DashboardProfilePage() {
   return (
     <div className="space-y-10">
       <header>
-        <h1 className="font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
+        <div className="inline-flex items-center text-script-md text-tangerine-deep">
+          <EyebrowIcon />
+          Account
+        </div>
+        <h1 className="mt-3 font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
           Profile
         </h1>
         <p className="mt-2 text-[15px] text-slate italic max-w-[640px]">

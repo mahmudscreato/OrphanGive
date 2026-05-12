@@ -104,7 +104,7 @@ export function VertSponsorshipCard({ s }: Props) {
 
   if (variant === "pending") {
     return (
-      <li className="rounded-[18px] bg-ink/[0.025] border border-ink/[0.06] overflow-hidden opacity-90">
+      <li className="rounded-3xl bg-ink/[0.025] border border-ink/[0.06] overflow-hidden opacity-90">
         {body}
       </li>
     );
@@ -112,10 +112,10 @@ export function VertSponsorshipCard({ s }: Props) {
 
   const surfaceClass =
     variant === "cancelled"
-      ? "rounded-[18px] bg-cream border border-ink/[0.06] overflow-hidden opacity-80 hover:opacity-100 hover:shadow-warm transition-all"
+      ? "rounded-3xl bg-cream border border-ink/[0.06] overflow-hidden opacity-80 hover:opacity-100 hover:shadow-warm transition-all"
       : variant === "completed"
-        ? "rounded-[18px] bg-white border border-moss/25 overflow-hidden hover:shadow-warm transition-all"
-        : "rounded-[18px] bg-white border border-ink/[0.06] overflow-hidden hover:shadow-warm transition-all";
+        ? "rounded-3xl bg-white border border-moss/25 overflow-hidden hover:shadow-warm transition-all"
+        : "rounded-3xl bg-white border border-ink/[0.06] overflow-hidden hover:shadow-warm transition-all";
 
   return (
     <li className="h-full">
