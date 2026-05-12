@@ -4,6 +4,7 @@ import {
   getDonorState,
 } from "@/lib/donor-data";
 import { getAllDonorReveals } from "@/lib/reveal-data";
+import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { RevealRequestsSection } from "../components/RevealRequestsSection";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,11 @@ export default async function DashboardInformationAccessPage() {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
+        <div className="inline-flex items-center text-script-md text-tangerine-deep">
+          <EyebrowIcon />
+          Reveal requests
+        </div>
+        <h1 className="mt-3 font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
           Information access
         </h1>
         <p className="mt-2 text-[15px] text-slate italic max-w-[640px]">
