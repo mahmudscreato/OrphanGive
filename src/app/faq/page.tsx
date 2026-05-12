@@ -57,7 +57,7 @@ export default async function FaqPage() {
   const grouped = groupByCategory(rows);
 
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <div className="px-6 pt-32 pb-24 max-md:pt-24 max-md:pb-16">
         <div className="max-w-[820px] mx-auto">
           <header>
@@ -124,6 +124,6 @@ export default async function FaqPage() {
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

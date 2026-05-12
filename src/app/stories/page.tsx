@@ -54,7 +54,7 @@ function fmtDate(iso: string | null): string | null {
 export default async function StoriesIndexPage() {
   const stories = await getPublishedStories();
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <div className="px-6 pt-32 pb-24 max-md:pt-24 max-md:pb-16">
         <div className="max-w-[1100px] mx-auto">
           <header className="max-w-[760px]">
@@ -117,6 +117,6 @@ export default async function StoriesIndexPage() {
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

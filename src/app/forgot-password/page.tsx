@@ -16,7 +16,7 @@ export const metadata = {
 
 export default function ForgotPasswordPage() {
   return (
-    <main className="bg-cream min-h-screen">
+    <div className="bg-cream min-h-screen">
       <div className="px-6 pt-32 pb-24 max-md:pt-24 max-md:pb-16">
         <div className="max-w-[480px] mx-auto">
           <h1 className="font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2rem,4vw,3rem)] m-0">
@@ -31,6 +31,6 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

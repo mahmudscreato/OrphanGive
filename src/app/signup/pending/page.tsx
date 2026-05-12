@@ -6,7 +6,7 @@ export const metadata = {
 
 export default function PendingPage() {
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <section className="px-6 pt-32 pb-24 max-md:pt-28 max-md:pb-16">
         <div className="max-w-[640px] mx-auto text-center">
           <div
@@ -54,6 +54,6 @@ export default function PendingPage() {
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

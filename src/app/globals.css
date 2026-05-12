@@ -114,6 +114,35 @@
   color-scheme: light;
 }
 
+/* Session 28 — global keyboard focus indicator.
+ *
+ * `:focus-visible` activates only when the user reaches an element
+ * via keyboard navigation (or other non-pointer input), so mouse
+ * users don't see the ring on click — but keyboard + screen-reader
+ * users always get a clear, high-contrast indicator.
+ *
+ * Ring color is tangerine-deep (`#D97A0F`) at full opacity for the
+ * inner ring + a soft 2px halo at 40% so the focus state remains
+ * legible against the page's warm canvas. `outline-offset: 2px`
+ * keeps the ring outside the element's natural border so rounded
+ * pill buttons still read as pills, not solid blocks. */
+*:focus-visible {
+  outline: 2px solid var(--tangerine-deep);
+  outline-offset: 2px;
+  border-radius: 4px;
+  box-shadow: 0 0 0 4px rgba(217, 122, 15, 0.2);
+}
+
+/* Don't double up on focus-visible for elements that ship their
+ * own tighter focus styling (auth form inputs, dashboard sidebar
+ * nav items). They use Tailwind `focus:ring-*` already; the
+ * specific style wins via specificity below. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  box-shadow: none;
+}
+
 html {
   scroll-behavior: smooth;
   background-color: var(--bg-canvas);

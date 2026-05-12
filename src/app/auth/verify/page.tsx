@@ -26,7 +26,7 @@ export default async function VerifyPage({
 
   if (!token) {
     return (
-      <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-16">
+      <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-16">
         <h1 className="text-2xl font-semibold">Verification link is missing a token</h1>
         <p className="text-sm text-zinc-600">
           Open the verification link from the email you received.
@@ -34,7 +34,7 @@ export default async function VerifyPage({
         <a className="underline text-sm" href="/signup">
           Back to sign up
         </a>
-      </main>
+      </div>
     );
   }
 
@@ -50,7 +50,7 @@ export default async function VerifyPage({
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-16">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-16">
       <h1 className="text-2xl font-semibold">Verification failed</h1>
       <p className="text-sm text-red-600">{error}</p>
       <p className="text-sm text-zinc-600">
@@ -65,6 +65,6 @@ export default async function VerifyPage({
           Sign in
         </a>
       </div>
-    </main>
+    </div>
   );
 }

@@ -22,7 +22,7 @@ export default async function SignInPage({
   const verified = asString(params.verified) === "1";
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-16">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-6 py-16">
       <h1 className="text-2xl font-semibold">Sign in</h1>
       {verified ? (
         <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -41,6 +41,6 @@ export default async function SignInPage({
           Sign up
         </a>
       </p>
-    </main>
+    </div>
   );
 }

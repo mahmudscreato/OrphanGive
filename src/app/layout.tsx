@@ -147,6 +147,17 @@ export default async function RootLayout({
         className="min-h-full flex flex-col bg-cream text-ink"
         suppressHydrationWarning={true}
       >
+        {/* Session 28 — skip-to-main-content link. Hidden until
+            focused via keyboard tab, then appears at the top-left
+            with a high-contrast OG-orange pill. Lets screen-reader
+            and keyboard-only users skip past the SiteNav directly
+            to the page body. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-5 focus:py-2.5 focus:rounded-full focus:bg-orange-solid focus:text-white focus:font-body focus:font-semibold focus:text-sm focus:shadow-warm focus:outline-none focus:ring-4 focus:ring-orange-pale"
+        >
+          Skip to main content
+        </a>
         <SiteNav
           signedIn={!!donor}
           firstName={
@@ -155,7 +166,9 @@ export default async function RootLayout({
             null
           }
         />
-        <main className="flex-1">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1">
+          {children}
+        </main>
         <SiteFooter />
       </body>
     </html>
