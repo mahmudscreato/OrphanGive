@@ -143,6 +143,26 @@ export default async function RootLayout({
       lang="en"
       className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${caveat.variable} ${roboto.variable} h-full antialiased`}
     >
+      <head>
+        {/* Session 27 — perf hints. Cloudinary serves logos +
+            child photos on every page so a full preconnect (DNS
+            + TCP + TLS) earns the cost of the open connection.
+            Stripe is only loaded on /checkout, so the cheaper
+            dns-prefetch is sufficient — it primes the DNS cache
+            without holding a connection open elsewhere.
+            crossOrigin on the Cloudinary preconnect matters
+            because next/image requests Cloudinary URLs as CORS-
+            anonymous fetches; without it browsers won't reuse
+            the warm connection. */}
+        <link
+          rel="preconnect"
+          href="https://res.cloudinary.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+        <link rel="dns-prefetch" href="https://js.stripe.com" />
+        <link rel="dns-prefetch" href="https://api.stripe.com" />
+      </head>
       <body
         className="min-h-full flex flex-col bg-cream text-ink"
         suppressHydrationWarning={true}
