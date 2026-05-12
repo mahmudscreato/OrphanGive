@@ -31,19 +31,16 @@
 
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/transparency",
   title: "Transparency",
   description:
-    "OrphanGive's public commitment to transparency in operations and funds — fund allocation, reporting cadence, verification model, and regulatory standing.",
-  openGraph: {
-    title: "Transparency — OrphanGive",
-    description:
-      "Public commitment to transparency in operations and funds. Every taka tracked, every donor informed.",
-  },
-};
+    "Public commitment to transparency in operations and funds. Fund allocation, reporting cadence, verification model, regulatory standing.",
+});
 
 // TBD-ALLOCATION — confirm with finance team before publish.
 type Allocation = {

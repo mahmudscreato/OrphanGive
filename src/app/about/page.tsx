@@ -1,18 +1,18 @@
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
   const page = await getSitePage("about");
-  return {
-    title: page?.title
-      ? `${page.title} — OrphanGive`
-      : "About OrphanGive",
+  return buildPageMetadata({
+    path: "/about",
+    title: page?.title ?? "About OrphanGive",
     description:
       page?.meta_description ??
       "OrphanGive connects donors to orphan children in Bangladesh, operated by Children's Heaven Trust.",
-  };
+  });
 }
 
 export default async function AboutPage() {

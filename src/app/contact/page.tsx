@@ -9,20 +9,17 @@
 
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
+import { buildPageMetadata } from "@/lib/page-metadata";
 import { ContactForm } from "./ContactForm";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/contact",
   title: "Contact us",
   description:
-    "Get in touch with the OrphanGive team — sponsorship questions, technical issues, press inquiries, partnership opportunities. We respond within two business days.",
-  openGraph: {
-    title: "Contact us — OrphanGive",
-    description:
-      "Sponsorship questions, technical issues, press inquiries, partnership opportunities — we respond within two business days.",
-  },
-};
+    "Sponsorship questions, technical issues, press inquiries, partnership opportunities — we respond within two business days.",
+});
 
 const SUPPORT_EMAIL = "support@orphangive.org";
 // TODO: confirm with Mahmud before publish.

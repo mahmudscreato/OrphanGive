@@ -12,19 +12,16 @@
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { PhotoBlob, type BlobPathKey } from "@/components/decorations/PhotoBlob";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/how-it-works",
   title: "How OrphanGive works",
   description:
-    "From verification to delivery, the full story of how OrphanGive sponsorships work — five steps, the verification model, transparent fund flow, and the most-asked questions.",
-  openGraph: {
-    title: "How OrphanGive works",
-    description:
-      "Five steps from verification to delivery. The full story of how sponsorships work, who verifies, and how funds flow.",
-  },
-};
+    "Five steps from verification to delivery — the full story of how sponsorships work, who verifies, and how funds flow.",
+});
 
 // --- 5-step content. Each step picks one Cloudinary asset that
 // already lives in the homepage components — no new assets added,

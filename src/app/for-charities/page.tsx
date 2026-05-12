@@ -11,19 +11,16 @@
 import Image from "next/image";
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/for-charities",
   title: "For charities & NGOs",
   description:
-    "OrphanGive provides verified-donor reach, privacy-first child profile management, and transparent operations infrastructure for charities and NGOs in Bangladesh.",
-  openGraph: {
-    title: "For charities & NGOs — OrphanGive",
-    description:
-      "Verified-donor reach, privacy-first child profile management, transparent operations — built for charities operating in Bangladesh.",
-  },
-};
+    "Verified-donor reach, privacy-first child profile management, transparent operations — built for charities operating in Bangladesh.",
+});
 
 const GOODVERSE_LOGO =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778509860/Goodverse_Logo_draft_wqdolh.png";

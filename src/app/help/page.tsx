@@ -13,19 +13,16 @@
 
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/help",
   title: "Help Centre",
   description:
-    "Find answers, get in touch, and learn how OrphanGive sponsorship works. Quick links to common topics + the full FAQ + direct contact.",
-  openGraph: {
-    title: "Help Centre — OrphanGive",
-    description:
-      "Quick links to common help topics, the full FAQ, and direct contact channels.",
-  },
-};
+    "Quick links to common help topics, the full FAQ, and direct contact channels.",
+});
 
 type QuickLink = {
   href: string;

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Session 15b1 — emit a self-contained server bundle for the
@@ -39,4 +40,26 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Session 21 — Sentry build-time wrapper. The wrapper:
+//   - detects sentry.{client,server,edge}.config.ts and wires
+//     them into the runtime bundles
+//   - uploads source maps on `next build` IF SENTRY_AUTH_TOKEN +
+//     SENTRY_ORG + SENTRY_PROJECT env vars are present (they are
+//     not, currently — uploads are skipped silently)
+//
+// TODO Mahmud: when ready to activate Sentry, set on the VPS:
+//   SENTRY_DSN              (server runtime)
+//   NEXT_PUBLIC_SENTRY_DSN  (browser runtime)
+//   SENTRY_ORG              (source-map upload — optional)
+//   SENTRY_PROJECT          (source-map upload — optional)
+//   SENTRY_AUTH_TOKEN       (source-map upload — optional)
+// All four sentry.*.config.ts files no-op until the DSN appears.
+const sentryWebpackPluginOptions = {
+  // Suppress logs in CI / production builds. Keep them in dev.
+  silent: process.env.NODE_ENV === "production",
+  // Source-map upload is opt-in via env vars. The wrapper checks
+  // for SENTRY_AUTH_TOKEN at build time and skips upload if absent.
+  // No additional flag needed here.
+};
+
+export default withSentryConfig(nextConfig, sentryWebpackPluginOptions);

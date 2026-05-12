@@ -29,6 +29,12 @@ export default function robots(): MetadataRoute.Robots {
           "/forgot-password",
           "/signup/verify",
           "/auth/",
+          // Session 21 — `/admin` doesn't exist as a route on this
+          // public-site app (Directus admin lives on a separate
+          // domain), but block it defensively in case anything
+          // ever lands there.
+          "/admin",
+          "/admin/",
         ],
       },
     ],

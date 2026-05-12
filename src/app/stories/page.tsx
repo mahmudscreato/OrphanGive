@@ -11,20 +11,17 @@ import Link from "next/link";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
+import { buildPageMetadata } from "@/lib/page-metadata";
 import { StoriesNewsletterForm } from "./StoriesNewsletterForm";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/stories",
   title: "Stories",
   description:
-    "Stories from sponsored children, published only with explicit consent from their guardians. Real moments, real progress, real care.",
-  openGraph: {
-    title: "Stories — OrphanGive",
-    description:
-      "Stories from sponsored children, published only with explicit consent from their guardians.",
-  },
-};
+    "Stories from sponsored children, published only with explicit consent from their guardians.",
+});
 
 type Story = {
   id: string;

@@ -10,19 +10,16 @@
 
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/faq",
   title: "Frequently asked questions",
   description:
-    "Answers to common questions about sponsoring a child through OrphanGive — verification, payments, privacy, account, and the organisation behind the network.",
-  openGraph: {
-    title: "Frequently asked questions — OrphanGive",
-    description:
-      "Common questions about sponsorship, verification, payments, privacy, and your account.",
-  },
-};
+    "Common questions about sponsorship, verification, payments, privacy, and your account — twenty-eight answers grouped by topic.",
+});
 
 type Faq = { q: string; a: string };
 type FaqGroup = {

@@ -9,14 +9,14 @@
 // see src/app/global-error.tsx which is rendered without the root
 // layout wrapping it.
 //
-// Sentry integration: when @sentry/nextjs is installed (deferred
-// until Mahmud provisions a DSN), it auto-instruments React error
-// boundaries to capture the error. Until then, we log to the
-// browser console for dev diagnostics. The explicit `useEffect`
-// guard means our manual capture call doesn't fire on SSR (where
-// `window.Sentry` doesn't exist).
+// Sentry integration (Session 21): @sentry/nextjs is installed
+// and `Sentry.captureException` is a safe no-op until the DSN
+// env vars are set. Calling it unconditionally keeps the
+// boundary identical pre- and post-DSN — when Mahmud wires the
+// DSN, errors flow without any code change here.
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 type Props = {
   error: Error & { digest?: string };
@@ -25,29 +25,20 @@ type Props = {
 
 export default function RouteError({ error, reset }: Props) {
   useEffect(() => {
-    // Always log so developers can see something in the browser
-    // console even before Sentry is set up. The `digest` is Next's
+    // Always log so developers see something in the browser
+    // console even before Sentry is active. The `digest` is Next's
     // hash of the error stack — useful when correlating against
     // production-only React Server Component errors.
     // eslint-disable-next-line no-console
     console.error("[route-error]", error.digest ?? error.message, error);
 
-    // Sentry-ready hook. After `npm install @sentry/nextjs` + DSN
-    // configuration, the SDK's automatic instrumentation will
-    // capture this without our manual call. We leave the manual
-    // window.Sentry path as a fallback for the case where the SDK
-    // is installed but auto-instrumentation didn't catch this
-    // particular boundary (e.g. a typo in a config file).
-    if (typeof window !== "undefined") {
-      const w = window as unknown as {
-        Sentry?: { captureException?: (e: unknown) => void };
-      };
-      try {
-        w.Sentry?.captureException?.(error);
-      } catch {
-        // Defensive — never let an error reporter break the error
-        // boundary itself.
-      }
+    // The SDK auto-instruments error boundaries when initialised,
+    // so this is belt-and-braces. Wrapped in try/catch so a
+    // misconfigured reporter can never break the boundary itself.
+    try {
+      Sentry.captureException(error);
+    } catch {
+      /* never let the reporter break the boundary */
     }
   }, [error]);
 

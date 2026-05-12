@@ -10,13 +10,16 @@ import {
 } from "@/lib/children-data";
 import { getMonthlyQueueStateByChild } from "@/lib/sponsorship-data";
 
+import { buildPageMetadata } from "@/lib/page-metadata";
+
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/children",
   title: "Children awaiting sponsors",
   description:
     "Browse verified profiles of orphan and vulnerable children in Bangladesh awaiting a monthly or one-time sponsor. Operated by Children's Heaven Trust.",
-};
+});
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
