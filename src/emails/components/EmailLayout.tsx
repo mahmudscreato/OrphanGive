@@ -12,14 +12,26 @@ import {
   Text,
 } from "@react-email/components";
 
-// Colour + type tokens — kept inline because most email clients don't
-// honour <style> blocks reliably.
+// Colour + type tokens — kept inline because most email clients
+// don't honour <style> blocks reliably.
+//
+// Session 22 Item 3 — colour palette aligned to the Session 16+
+// inspiration design system:
+//   - cream: page bg (was #FFFAF2; now #FBF1E5 to match the
+//     web app's `--cream` value that ships in globals.css).
+//   - tangerine: canonical OG-orange #ED8B3F (was a brighter
+//     #F39322 before). All buttons + accents pick this up.
+//
+// Type stacks remain web-font-with-system-fallback. Email
+// clients almost never load Fraunces/Inter/JetBrains Mono, so
+// the second-position fallbacks (Georgia / Helvetica /
+// system-mono) are what most recipients actually see.
 export const tokens = {
-  cream: "#FFFAF2",
+  cream: "#FBF1E5",
   card: "#FFFFFF",
   ink: "#2A2A2C",
   inkSubtle: "rgba(42,42,44,0.6)",
-  tangerine: "#F39322",
+  tangerine: "#ED8B3F",
   moss: "#6B8E5A",
   border: "rgba(42,42,44,0.08)",
   cardSoft: "#F9F4ED",
@@ -94,8 +106,10 @@ export function EmailLayout({ preview, children }: Props) {
           <Section
             style={{
               backgroundColor: tokens.card,
-              borderRadius: "16px",
-              padding: "32px 28px",
+              // Session 22 — bumped from 16px to 24px to match the
+              // web app's card radii (`rounded-3xl` ≈ 24px).
+              borderRadius: "24px",
+              padding: "36px 32px",
               boxShadow: "0 1px 2px rgba(42,42,44,0.04)",
               border: `1px solid ${tokens.border}`,
             }}
@@ -145,7 +159,7 @@ export function EmailLayout({ preview, children }: Props) {
             style={{
               border: "none",
               borderTop: `1px solid ${tokens.border}`,
-              margin: "20px 0 8px 0",
+              margin: "20px 0 12px 0",
             }}
           />
           <Text
@@ -153,13 +167,35 @@ export function EmailLayout({ preview, children }: Props) {
               fontSize: "11px",
               color: tokens.inkSubtle,
               textAlign: "center",
-              margin: 0,
+              margin: "0 0 6px 0",
               fontFamily: tokens.mono,
               letterSpacing: "0.05em",
             }}
           >
             You&rsquo;re receiving this because you have an account with
             OrphanGive.
+          </Text>
+          {/* Session 22 — printAgraphy credit footer per the
+              brand pass spec. Matches the homepage SiteFooter. */}
+          <Text
+            style={{
+              fontSize: "11px",
+              color: tokens.inkSubtle,
+              textAlign: "center",
+              margin: 0,
+            }}
+          >
+            Built with care in Bangladesh by{" "}
+            <Link
+              href="https://www.printagraphy.com"
+              style={{
+                color: tokens.inkSubtle,
+                textDecoration: "underline",
+                fontWeight: 600,
+              }}
+            >
+              printAgraphy
+            </Link>
           </Text>
         </Container>
       </Body>
