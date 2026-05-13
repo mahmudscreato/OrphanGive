@@ -319,6 +319,44 @@ export async function getAwaitingChildrenCount(): Promise<number> {
   return safeAggregateCount({ status: { _eq: "active" } });
 }
 
+/**
+ * Session 17 — fetch every active child for the public browse list.
+ * Sorted by `approved_at` ascending so the longest-waiting children
+ * surface first. `approved_at` reflects the moment a profile became
+ * publicly listed (post-verification), which is a more honest "how
+ * long has this child been waiting?" signal than the system
+ * `date_created` field (and `date_created` isn't readable on this
+ * collection — see scripts/verify-children-list-sort.mjs).
+ *
+ * `display_name` is the secondary sort key so two children approved
+ * in the same instant render in a stable order across requests.
+ *
+ * Children whose `approved_at` is null still render — they fall to
+ * the end of the list (Directus default) but are visible.
+ *
+ * No pagination, no filtering — both deferred until the active pool
+ * grows past ~25 children. See TODOs in `app/children/page.tsx`.
+ */
+export async function getActiveChildrenForBrowse(): Promise<ChildSummary[]> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: { status: { _eq: "active" } },
+        fields: [...SAFE_FIELDS],
+        sort: ["approved_at", "display_name"],
+        limit: -1,
+      } as never),
+    )) as unknown as DirectusChildRow[] | undefined;
+    return Array.isArray(rows) ? rows.map(rowToSummary) : [];
+  } catch (err) {
+    console.warn(
+      "[children-data] getActiveChildrenForBrowse failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
 export async function getActiveDistricts(): Promise<string[]> {
   try {
     const rows = (await directusServer().request(
