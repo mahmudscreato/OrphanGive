@@ -629,23 +629,13 @@ fields:
       note: "Internal-only district label. NEVER exposed at Tier 1 (public). Coexists with bd_district relation for now — DI-side input flow."
       hidden: false
 
-  - collection: child
-    field: region_division
-    type: string
-    meta:
-      interface: select-dropdown
-      required: true
-      options:
-        choices:
-          - { text: "Dhaka",       value: "Dhaka" }
-          - { text: "Chattogram",  value: "Chattogram" }
-          - { text: "Khulna",      value: "Khulna" }
-          - { text: "Rajshahi",    value: "Rajshahi" }
-          - { text: "Sylhet",      value: "Sylhet" }
-          - { text: "Barishal",    value: "Barishal" }
-          - { text: "Rangpur",     value: "Rangpur" }
-          - { text: "Mymensingh",  value: "Mymensingh" }
-      note: "DI Dashboard input target. Constrained to the 8 Bangladesh divisions via Postgres CHECK constraint. See migrations/session-41/001-schema.sql §2.2 for the schema-gap note about coexistence with bd_division."
+  # AMENDED 2026-05-14 — the `region_division` field was removed.
+  # Production `child` uses the existing `bd_division` M2O relation
+  # as the single source of truth. The FK to the bd_division lookup
+  # table enforces the 8-division constraint by virtue of the lookup
+  # containing only those rows. No parallel field metadata needed
+  # here — `bd_division` already exists in production's child schema
+  # so Directus already knows about it.
 
   - collection: directus_users
     field: assigned_divisions
@@ -653,7 +643,7 @@ fields:
     meta:
       interface: tags
       special: ["cast-json"]
-      note: "Array of Bangladesh division names the DI can CREATE new children in. Does NOT govern READ scope (that's enforced via uploaded_by_di_id/assigned_di_id filters on child). Null for non-DI users. Example: [\"Dhaka\", \"Chattogram\"]."
+      note: "Array of bd_division UUIDs. Constrains divisions a DI can CREATE new children in. Does NOT govern READ visibility — READ scope is `uploaded_by_di_id = self OR assigned_di_id = self`. Null for non-DI users. Example: [\"18f3a4e5-…\", \"7c91b220-…\"] — two UUIDs referencing rows in the bd_division lookup table."
 
 # =====================================================================
 # RELATIONS — Directus needs explicit relation rows so the Admin UI
@@ -750,6 +740,13 @@ permissions:
   # READ scope: rows the DI uploaded OR is assigned to, excluding
   # withdrawn rows. Field-level READ is restricted via the fields[]
   # whitelist — anything not listed is denied.
+  #
+  # AMENDED 2026-05-14 — whitelist rewritten using REAL production
+  # field names, not the spec's logical names. Directus permission
+  # whitelists silently drop entries that don't correspond to actual
+  # fields, so the prior version was granting nothing on most of these
+  # while real fields stayed denied. Per-field comments map each entry
+  # back to its spec logical name (spec section 3) for traceability.
   - role: data_inputter
     collection: child
     action: read
@@ -760,24 +757,45 @@ permissions:
             - assigned_di_id:    { _eq: "$CURRENT_USER" }
         - status: { _neq: "withdrawn" }
     fields:
-      - display_name
-      - age_years          # ⚠ field does not exist today; flagged in ship report
-      - region_division
-      - district_internal
-      - photo_url          # ⚠ production uses `Photo` (capital P) M2O to files
-      - support_type       # ⚠ field does not exist today
-      - monthly_cost       # ⚠ field does not exist today
-      - status
+      # Core identity + privacy-safe display
+      - id
+      - display_name                # spec: display_name ✓
+      - date_of_birth               # spec: age_years (computed app-layer via calcAge())
+      - gender                      # not in spec but DI legitimately needs it for context
+      # Division/location — bd_division is the SINGLE source of truth
+      # for division (Session 41 amendment). Dotted paths request the
+      # relation's sub-fields; Directus 11 supports this in fields[].
+      - bd_division                 # spec: region_division → bd_division M2O
+      - bd_division.code            # for display + filtering
+      - bd_division.name            # for display
+      - district_internal           # spec: district_internal ✓ (new field)
+      # Photo — M2O to directus_files, returns UUID; app resolves via
+      # /api/assets/<id> through directusAssetUrl() helper.
+      - Photo                       # spec: photo_url → Photo (capital P)
+      # Workflow status
+      - status                      # spec: status ✓
+      - documents_status            # not in spec — workflow state DI needs
+      - approved_at                 # not in spec — moment of publication
+      # Story / narrative — full story; DI's app layer truncates if
+      # an excerpt view is needed (spec's background_story_excerpt).
+      - story                       # spec: background_story_excerpt → story
+      - education_level             # spec: education_level ✓
+      - class_grade                 # not in spec — DI context
+      # DI ownership pointers (new fields from 001-schema.sql §2.1)
       - assigned_di_id
       - uploaded_by_di_id
-      - education_level
-      - guardian_summary_internal   # ⚠ field does not exist today
-      - background_story_excerpt    # ⚠ field does not exist today
-      - sponsor_count               # ⚠ field does not exist today (derive at app layer)
-      - sponsor_queue_depth         # ⚠ field does not exist today (derive at app layer)
-      - created_at
-      - updated_at
-      - last_visit_date             # ⚠ field does not exist today
+      # ⚠ Spec fields with NO production equivalent — Session 43's
+      # app-layer route either derives them from related tables or
+      # returns hardcoded constants. NOT included in the whitelist:
+      #   • support_type           — UI hardcodes "Education support"
+      #   • monthly_cost           — UI hardcodes "From BDT 1,500/month"
+      #   • sponsor_count          — derive from sponsorship table
+      #   • sponsor_queue_depth    — derive from sponsorship table
+      #   • guardian_summary_internal — not present; admin-only when added
+      #   • last_visit_date        — not present
+      #   • created_at / updated_at — date_created not readable on this
+      #                               collection per existing comment in
+      #                               src/lib/children-data.ts (line 524)
 
   # CREATE/UPDATE/DELETE on `child` — DENIED. No permission rows
   # = Directus denies by default. Listed here as documentation.

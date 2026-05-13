@@ -1,9 +1,12 @@
 # Session 41 — APPLY instructions
 
+> **Amended 2026-05-14:** `region_division` text column removed.
+> `bd_division` (existing M2O relation) is the single source of truth.
+> The reconciliation-decision step has been deleted from this file —
+> there is no longer a decision to make.
+
 Step-by-step for taking the four artifacts in `migrations/session-41/`
-and turning them into running production state. **Read the schema-gap
-section at the bottom of this file before starting** — there are
-spec/reality mismatches that need a decision before step 5.
+and turning them into running production state.
 
 ## Prerequisites
 
@@ -109,33 +112,28 @@ Follow `003-system-user-note.md`. End state:
 - `SYSTEM_USER_ID` env var on the VPS is set to that user's UUID
 - `docker compose up -d app` was run after env update
 
-## 5 — Backfill `child.region_division`
+## 5 — Verify division data via `bd_division` relation
 
-⚠ DECISION POINT — see schema-gap section at the bottom of this
-file BEFORE running this step.
-
-If Mahmud chose path (a) — keep both `region_division` and
-`bd_division`:
+No backfill required. Production `child` already populates
+`bd_division` via the existing relation. Sanity-check the distribution
+of children by division before continuing:
 
 ```sql
--- Backfill region_division from the bd_division relation's name
--- column. Run inside psql against the directus DB.
-UPDATE child
-SET region_division = bd.name
-FROM bd_division bd
-WHERE child.bd_division = bd.id
-  AND child.region_division IS NULL;
-
--- Verify zero remaining nulls before locking the column.
-SELECT COUNT(*) FROM child WHERE region_division IS NULL;
--- Expected: 0
-
--- Lock the column NOT NULL.
-ALTER TABLE child ALTER COLUMN region_division SET NOT NULL;
+SELECT bd.name AS division, COUNT(c.id) AS child_count
+FROM child c
+LEFT JOIN bd_division bd ON c.bd_division = bd.id
+GROUP BY bd.name
+ORDER BY child_count DESC;
 ```
 
 
-If Mahmud chose path (b) or (c) — see schema-gap section.
+Expected: one row per division actually used in production, plus
+possibly a row with `division = NULL` for any historical child whose
+`bd_division` was never set. If you see NULLs, decide whether to
+backfill them in Directus admin before exposing those children to the
+DI Dashboard — the DI's READ permission technically still resolves a
+null-division child, but the UI will render an empty division
+location which is worth flagging in QA.
 
 ## 6 — Restart Directus container
 
@@ -205,6 +203,14 @@ permission matrix):
   assigned_di_id = self
 - ✓ Field-level READ on `child` excludes guardian contact, GPS,
   exact school, medical records, internal admin notes
+- ✓ **bd_division relation traversal renders.** Open any visible
+  child record as the test DI; the division name should pull through
+  via the `bd_division.name` whitelist entry. If the relation
+  resolves but the name shows as blank/UUID, Directus has applied
+  the field whitelist at the scalar level but not the relation
+  sub-fields — fix by ensuring both `bd_division` AND
+  `bd_division.name` (and `bd_division.code` if used) appear in the
+  fields whitelist in 002-snapshot.yaml's `child read` permission.
 
 Delete the test user after verification.
 
@@ -226,37 +232,23 @@ git push origin main
 
 ---
 
-## Schema-gap section — read before step 5
+## Schema reconciliation — locked decision (2026-05-14)
 
-The DI Dashboard spec (`docs/DI_DASHBOARD_SPEC_v2.md`) was written
-against an idealised `child` schema. Production differs:
+The DI Dashboard spec was written against an idealised `child` schema.
+Production reality wins on the division question — `bd_division` (the
+existing M2O relation to the `bd_division` lookup table) is the single
+source of truth. The previous version of this file documented three
+reconciliation paths; that decision is now locked and the section has
+been removed. The remaining production-vs-spec gaps below are
+informational only — Sessions 43–46 handle them at the app layer.
 
-| Spec field           | Production reality                  | This migration's choice     |
+| Spec field | Production reality | Handling |
 |---|---|---|
-| `region_division text NOT NULL` with 8-division CHECK | M2O relation `bd_division` to `bd_division` lookup table | Adds `region_division` as a new column alongside `bd_division`. Backfill in step 5. |
-| `photo_url text`      | M2O relation `Photo` (capital P) to `directus_files` | Untouched. DI code uses existing `directusAssetUrl()` helper. |
-| `age_years integer`   | Computed at app layer from `date_of_birth` | Untouched. DI code derives via `calcAge()`. |
-| `support_type text`, `monthly_cost integer`, `guardian_summary_internal`, `background_story_excerpt`, `sponsor_count`, `sponsor_queue_depth`, `last_visit_date` | None of these exist in production | Listed in YAML field whitelist; Directus skips unknown fields gracefully. DI Dashboard code (Sessions 42–46) needs a reconciliation step — either add the columns or change spec/code to match reality. |
-
-**Mahmud's decision before step 5:**
-
-- **(a) Keep both `region_division` AND `bd_division`** (recommended).
-  DI Dashboard writes to `region_division`. Admin approval flow
-  syncs into `bd_division` for backwards compatibility with the
-  existing /children page. Less invasive; preserves the lookup
-  table and its locale data.
-
-- **(b) Drop `bd_division`** entirely; denormalise to
-  `region_division`. Simplest schema. Cost: lose any code/locale
-  metadata stored on the lookup rows. Requires updating
-  `src/lib/children-data.ts` to read from `region_division`
-  directly.
-
-- **(c) Rewrite spec** to use the existing `bd_division` relation.
-  No schema change. Cost: spec drifts from "v2 locked", and the
-  CHECK constraint moves from Postgres to application validation.
-
-If unsure: pick (a). It's reversible.
+| `region_division text NOT NULL` with 8-division CHECK | M2O relation `bd_division` to `bd_division` lookup table | **Use the relation.** 002-snapshot.yaml whitelists `bd_division`, `bd_division.code`, `bd_division.name` so DI sees the division through the join. CREATE-scope validation in Session 44 compares submitted UUID against `directus_users.assigned_divisions`. |
+| `photo_url text` | M2O relation `Photo` (capital P) to `directus_files` | Whitelist uses `Photo`. DI code reads the UUID and resolves via the existing `directusAssetUrl()` helper. |
+| `age_years integer` | Computed at app layer from `date_of_birth` | Whitelist uses `date_of_birth`. DI code derives via `calcAge()`. |
+| `support_type`, `monthly_cost`, `guardian_summary_internal`, `background_story_excerpt`, `sponsor_count`, `sponsor_queue_depth`, `last_visit_date` | None exist in production | Omitted from whitelist. Sessions 43–46's app-layer route returns these as derived/computed/hardcoded values. |
+| `created_at` / `updated_at` | `date_created` not readable per existing code comment in `src/lib/children-data.ts:524` | Omitted from whitelist. Use `approved_at` (whitelisted) as the proxy for "when did this child go live". |
 
 ## Schema-gap section — sponsorship
 

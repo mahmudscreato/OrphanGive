@@ -29,24 +29,29 @@
 -- first. Re-running this file on a fresh DB is safe; re-running on a
 -- partially-applied DB is also safe.
 --
--- ─── Schema/reality gap (see ship report flag #3) ─────────────────────
+-- ─── Schema/reality reconciliation (Session 41 amendment 2026-05-14) ──
 --
--- Some field names in DI_DASHBOARD_SPEC_v2.md don't match the existing
--- `child` collection's actual column names. This SQL uses the names
--- from the spec verbatim so the artifact matches the spec doc; where
--- the existing schema uses a different name or shape, the DI Dashboard
--- code in Sessions 42–46 will need a reconciliation step (either rename
--- existing columns, or have the app layer translate).
+-- AMENDED: `region_division` column ADD was removed in the Session 41
+-- amendment commit. Production `child` uses the existing `bd_division`
+-- M2O relation to the `bd_division` lookup table as the single source
+-- of truth for division. The FK to that lookup table enforces the
+-- 8-division constraint by virtue of the lookup containing only those
+-- rows; no parallel text column needed.
 --
--- The two known gaps as of 2026-05-14:
---   * Spec uses `region_division text`. Production has `bd_division`
---     as a M2O relation to a `bd_division` lookup table. This SQL
---     ADDS `region_division text` as a new column rather than touch
---     the relation. Mahmud's call to consolidate or keep both.
---   * Spec uses `photo_url text`. Production uses `Photo` as a M2O
---     relation to `directus_files`. Not touched here — DI Dashboard
---     code will read from `Photo` and resolve via the existing
+-- Remaining spec/reality notes for Session 42–46 reference:
+--   * Spec uses `photo_url text`. Production uses `Photo` (capital P)
+--     as a M2O relation to `directus_files`. Not touched here — DI
+--     Dashboard code reads from `Photo` and resolves via the existing
 --     `directusAssetUrl()` helper.
+--   * Spec uses `age_years integer`. Production has `date_of_birth`;
+--     age is computed at app layer via `calcAge()`. DI's READ permission
+--     whitelists `date_of_birth` so the app can compute.
+--   * Spec uses `sponsor_count`, `sponsor_queue_depth`,
+--     `last_visit_date`, `guardian_summary_internal`, `support_type`,
+--     `monthly_cost`. None of these exist on production `child` today.
+--     Session 43's app-layer route either derives them from related
+--     tables or returns them as hardcoded constants. The amendment
+--     does NOT add columns for any of these — discovered need first.
 -- ─────────────────────────────────────────────────────────────────────
 
 BEGIN;
@@ -101,58 +106,32 @@ $$;
 CREATE INDEX IF NOT EXISTS idx_child_uploaded_by_di ON child(uploaded_by_di_id);
 CREATE INDEX IF NOT EXISTS idx_child_assigned_di    ON child(assigned_di_id);
 
--- 2.2 child — region_division NOT NULL + 8-division CHECK constraint
--- ──────────────────────────────────────────────────────────────────
--- ⚠ SCHEMA-GAP NOTE: production `child` does NOT have a `region_division`
--- column today; it has `bd_division` as a M2O relation. To honour the
--- spec's CHECK constraint, this block ADDS the column if missing and
--- attaches the CHECK. Mahmud decides whether to:
---   (a) keep both columns (DI Dashboard writes to region_division,
---       admin approval triggers a sync into bd_division), OR
---   (b) drop bd_division in favour of region_division (denormalising
---       the lookup table; simpler but loses code/locale data), OR
---   (c) rewrite the spec to use the bd_division relation FK (forces
---       DI Dashboard to dereference the lookup).
--- See ship report flag #4.
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'child' AND column_name = 'region_division'
-  ) THEN
-    ALTER TABLE child ADD COLUMN region_division text;
-  END IF;
-
-  -- Add CHECK constraint only if not already present.
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'child_region_division_valid'
-  ) THEN
-    ALTER TABLE child
-      ADD CONSTRAINT child_region_division_valid CHECK (
-        region_division IS NULL OR region_division IN (
-          'Dhaka', 'Chattogram', 'Khulna', 'Rajshahi',
-          'Sylhet', 'Barishal', 'Rangpur', 'Mymensingh'
-        )
-      );
-  END IF;
-
-  -- NOT NULL is deferred — flipping to NOT NULL on existing rows would
-  -- fail if any production row has region_division IS NULL (which it
-  -- will after this column is just added). Mahmud must:
-  --   (1) backfill region_division from bd_division.name
-  --   (2) THEN run:
-  --         ALTER TABLE child ALTER COLUMN region_division SET NOT NULL;
-  -- See APPLY.md step 5.
-END
-$$;
+-- 2.2 child — division source-of-truth (AMENDED 2026-05-14)
+-- ──────────────────────────────────────────────────────────
+-- The previous version of this file added a `region_division text`
+-- column with a CHECK constraint on the 8 division names. Removed
+-- in the amendment commit: production already has `bd_division` as
+-- a M2O relation to a `bd_division` lookup table. The FK enforces
+-- the 8-division constraint by referring to a lookup that contains
+-- exactly those rows — duplicating that as a text column would just
+-- create two sources of truth with no enforced sync.
+--
+-- Nothing to do here. The DI Dashboard reads/writes via the existing
+-- `bd_division` M2O field. Session 44's pending_changes endpoint will
+-- validate that a DI's submitted bd_division UUID belongs to the set
+-- listed in their `directus_users.assigned_divisions` array.
 
 -- 2.3 directus_users — assigned_divisions jsonb
 -- ─────────────────────────────────────────────
--- Per spec 2.1: stores array of Bangladesh divisions the DI can CREATE
--- new children in. Does NOT govern READ visibility (that's enforced
--- via uploaded_by_di_id / assigned_di_id filters). Null for non-DI users.
+-- Array of bd_division record UUIDs (NOT text division names).
+-- Used by Session 44's pending_changes endpoint to validate that
+-- a DI's submitted new-child bd_division falls within their allowed set.
+--
+-- Per spec 2.1: governs CREATE scope only. Does NOT govern READ
+-- visibility — READ scope is uploaded_by_di_id = self OR
+-- assigned_di_id = self. Null for non-DI users (admin, donor).
+-- Example value: ["18f3a4e5-...", "7c91b220-..."] — two UUIDs
+-- referencing rows in the bd_division lookup table.
 
 DO $$
 BEGIN
@@ -341,12 +320,9 @@ COMMIT;
 -- After this SQL runs cleanly:
 --   1. Create the `system` Directus user (see 003-system-user-note.md)
 --      and add SYSTEM_USER_ID to .env.local.
---   2. Backfill child.region_division from bd_division.name (see APPLY.md
---      step 5). Then flip column to NOT NULL:
---        ALTER TABLE child ALTER COLUMN region_division SET NOT NULL;
---   3. Apply 002-directus-snapshot.yaml so Directus registers the new
+--   2. Apply 002-directus-snapshot.yaml so Directus registers the new
 --      collections in its metadata + creates the data_inputter role
 --      with field-level permissions.
---   4. Restart the og-directus container so it reintrospects.
---   5. Smoke-test in Directus admin (see APPLY.md step 9).
+--   3. Restart the og-directus container so it reintrospects.
+--   4. Smoke-test in Directus admin (see APPLY.md).
 -- =====================================================================
