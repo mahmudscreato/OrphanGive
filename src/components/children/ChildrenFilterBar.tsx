@@ -111,15 +111,23 @@ export function ChildrenFilterBar() {
     [router, pathname],
   );
 
+  // Session 38 — `update` used to call navigate() inside the
+  // setState updater function, which fires router.replace() during
+  // React's render commit phase. React (correctly) flagged this with:
+  //   "Cannot update a component (`Router`) while rendering a different
+  //    component (`ChildrenFilterBar`)"
+  // Fix: read current state via the closure, compute next, then run
+  // setState and navigate as two independent statements outside any
+  // updater. The closure now depends on `state`, so the callback
+  // re-creates whenever state changes — fine, and far cheaper than the
+  // render-phase router update React was warning about.
   const update = useCallback(
     (patch: Partial<LocalState>) => {
-      setState((prev) => {
-        const next = { ...prev, ...patch };
-        navigate(next);
-        return next;
-      });
+      const next = { ...state, ...patch };
+      setState(next);
+      navigate(next);
     },
-    [navigate],
+    [state, navigate],
   );
 
   const clear = useCallback(() => {

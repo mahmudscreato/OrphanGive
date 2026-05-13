@@ -16,7 +16,7 @@ export async function generateMetadata() {
     title: page?.title ? `${page.title} — OrphanGive` : "Terms of use — OrphanGive",
     description:
       page?.meta_description ??
-      "The rules and expectations governing your use of OrphanGive. Operated by Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
+      "The rules and expectations governing your use of OrphanGive. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
   };
 }
 

@@ -415,7 +415,7 @@ export default function AboutPage() {
               </h3>
               <p className="mt-3 text-base text-ink-soft leading-[1.65]">
                 The field partner — a registered Bangladesh charity
-                (NGO Affairs Bureau Reg. iv-98/2021) that handles
+                (Reg. iv-98/2021) that handles
                 ground verification, guardian relationships, and
                 on-the-ground delivery of every sponsored child&apos;s
                 support. CH Trust is what makes the verification

@@ -28,6 +28,9 @@ const COLUMNS: FooterColumn[] = [
     links: [
       { href: "/about", label: "About" },
       { href: "/how-it-works", label: "How It Works" },
+      // Session 38 — FAQ slot inserted between How It Works and
+      // Stories so the column reads informational → narrative.
+      { href: "/faq", label: "FAQ" },
       { href: "/stories", label: "Stories" },
       { href: "/for-charities", label: "For Charities" },
       { href: "/about", label: "Transparency" },
