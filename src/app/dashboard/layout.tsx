@@ -44,7 +44,11 @@ export default async function DashboardLayout({
     case "approved":
       return (
         <ToastProvider>
-          <div className="bg-cream min-h-screen">
+          {/* Session 23 — page canvas shifts from `cream` (#FFFAF2)
+              to `bg-canvas` (warm peach #FBF1E5) to match the
+              Session 16 redesigned public surfaces. Pending state
+              stays cream as a transitional contrast. */}
+          <div className="bg-bg-canvas min-h-screen">
             <DashboardSidebar donor={donor!} />
             <div className="md:ml-60">
               <div className="px-10 pt-12 pb-24 max-md:px-6 max-md:pt-20 max-md:pb-16">
