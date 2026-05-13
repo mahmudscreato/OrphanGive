@@ -138,7 +138,16 @@ export function SiteFooter() {
   const reduced = useReducedMotion();
   // Dashboard owns its own chrome — marketing footer would visually
   // collide with the sidebar's bottom donor card.
-  if (pathname.startsWith("/dashboard")) return null;
+  // Session 25 — also hide on /maintenance and /offline, both of
+  // which render their own minimal inline footers and need to be
+  // robust to the rest of the app's data layer being unreachable.
+  if (
+    pathname.startsWith("/dashboard") ||
+    pathname === "/maintenance" ||
+    pathname === "/offline"
+  ) {
+    return null;
+  }
 
   const year = new Date().getFullYear();
 
