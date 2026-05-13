@@ -1,9 +1,205 @@
 import { aggregate, readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
+import type { ChildQueueBadge } from "./sponsorship-data";
 
 export const PAGE_SIZE = 12;
 export const MIN_AGE = 6;
 export const MAX_AGE = 18;
+
+// ─── Session 36 — /children browse filters ───────────────────────────
+//
+// Three filters surface on /children: status / division / age.
+// All three live in the URL as query params so browse links are
+// shareable. Constants + parser live here so the server page and the
+// client filter bar share one source of truth.
+//
+// PRIVACY NOTE — division-level only.
+// Bangladesh has 64 districts under 8 divisions. We filter by
+// DIVISION (the wider geographic unit) only on the public list. The
+// underlying data has district info, but exposing district-level
+// filters would let an outsider narrow a child's location far more
+// than the Tier 1 privacy contract allows. Don't add district
+// filtering to /children, even if it would be more useful — the
+// privacy floor is not negotiable here.
+
+/**
+ * The eight Bangladesh divisions, in the canonical north-to-south
+ * geographic ordering preferred by Bangladeshi government sources.
+ * Each entry has a stable `value` (URL-safe slug used in the query
+ * param) and a `label` (display name shown in the dropdown). The
+ * value matches the lower-case division name used in the Directus
+ * `bd_division.name` column once normalised.
+ */
+export const BANGLADESH_DIVISIONS = [
+  { value: "dhaka", label: "Dhaka" },
+  { value: "chittagong", label: "Chittagong" },
+  { value: "khulna", label: "Khulna" },
+  { value: "rajshahi", label: "Rajshahi" },
+  { value: "barisal", label: "Barisal" },
+  { value: "sylhet", label: "Sylhet" },
+  { value: "rangpur", label: "Rangpur" },
+  { value: "mymensingh", label: "Mymensingh" },
+] as const;
+
+export type DivisionValue = (typeof BANGLADESH_DIVISIONS)[number]["value"];
+
+/**
+ * Age buckets shown as chip toggles. Value is the URL-param shape
+ * (`min-max`) and matches inclusive [min, max]. The buckets cover the
+ * full plausible range; no need to constrain by MIN_AGE/MAX_AGE since
+ * the underlying data isn't padded.
+ */
+export const AGE_BUCKETS = [
+  { value: "0-5", label: "0–5", min: 0, max: 5 },
+  { value: "6-10", label: "6–10", min: 6, max: 10 },
+  { value: "11-15", label: "11–15", min: 11, max: 15 },
+  { value: "16-18", label: "16–18", min: 16, max: 18 },
+] as const;
+
+export type AgeBucketValue = (typeof AGE_BUCKETS)[number]["value"];
+
+export const SPONSOR_STATUSES = ["awaiting", "sponsored"] as const;
+export type SponsorStatus = (typeof SPONSOR_STATUSES)[number];
+
+/**
+ * The shape of /children URL params after parsing. Each field is
+ * either the validated value or null (= no filter applied).
+ */
+export type BrowseFilters = {
+  status: SponsorStatus | null;
+  division: DivisionValue | null;
+  age: AgeBucketValue | null;
+};
+
+export function parseBrowseFilters(
+  searchParams: Record<string, string | string[] | undefined>,
+): BrowseFilters {
+  const get = (k: string): string | null => {
+    const v = searchParams[k];
+    if (Array.isArray(v)) return v[0] ?? null;
+    return v ?? null;
+  };
+
+  const statusRaw = get("status")?.toLowerCase().trim() ?? null;
+  const status =
+    statusRaw && (SPONSOR_STATUSES as readonly string[]).includes(statusRaw)
+      ? (statusRaw as SponsorStatus)
+      : null;
+
+  const divisionRaw = get("division")?.toLowerCase().trim() ?? null;
+  const division =
+    divisionRaw &&
+    BANGLADESH_DIVISIONS.some((d) => d.value === divisionRaw)
+      ? (divisionRaw as DivisionValue)
+      : null;
+
+  const ageRaw = get("age")?.toLowerCase().trim() ?? null;
+  const age =
+    ageRaw && AGE_BUCKETS.some((b) => b.value === ageRaw)
+      ? (ageRaw as AgeBucketValue)
+      : null;
+
+  return { status, division, age };
+}
+
+export function isAnyBrowseFilterActive(f: BrowseFilters): boolean {
+  return f.status !== null || f.division !== null || f.age !== null;
+}
+
+/**
+ * Sponsorship category for the /children sort.
+ *
+ * Order is intentional and stable:
+ *   1. `awaiting` — no active monthly sponsor → most attention-grabbing.
+ *      These are the cards a typical visitor came here to see.
+ *   2. `prepaid`  — sponsored via a `monthly_prepaid` sub. The donor's
+ *      prepaid term will end at some point, so these cards may open up
+ *      sooner than a recurring monthly. Surfaced second so donors
+ *      considering a queue-join know there's a likely turnover slot.
+ *   3. `monthly`  — sponsored via recurring `monthly` (or indefinite,
+ *      where `payment_schedule = null`). Lowest urgency; the queue
+ *      depth is bounded so these still accept new joiners.
+ *
+ * Within each category, sort by the same `approved_at asc` rule used
+ * by the existing browse fetch — longest-waiting profile first within
+ * its bucket.
+ */
+export type ChildCategory = "awaiting" | "prepaid" | "monthly";
+
+const CATEGORY_RANK: Record<ChildCategory, number> = {
+  awaiting: 0,
+  prepaid: 1,
+  monthly: 2,
+};
+
+export function categorizeChild(
+  badge: ChildQueueBadge | undefined,
+): ChildCategory {
+  if (!badge?.hasActiveSponsor) return "awaiting";
+  if (badge.activeSchedule === "monthly_prepaid") return "prepaid";
+  return "monthly";
+}
+
+/**
+ * Sort children by category (Awaiting → Prepaid → Monthly), then by
+ * the secondary order (caller-supplied — typically `approved_at asc`
+ * preserved from the Directus fetch).
+ *
+ * The input `children` is treated as already sorted by the secondary
+ * key, so this function is stable: items within the same category
+ * keep their input ordering.
+ */
+export function sortChildrenByCategory<T extends { id: string }>(
+  children: ReadonlyArray<T>,
+  badgeByChild: ReadonlyMap<string, ChildQueueBadge>,
+): T[] {
+  return children
+    .map((c, idx) => ({
+      child: c,
+      idx,
+      rank: CATEGORY_RANK[categorizeChild(badgeByChild.get(c.id))],
+    }))
+    .sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      // Stable secondary: preserve input order so approved_at-asc holds.
+      return a.idx - b.idx;
+    })
+    .map((entry) => entry.child);
+}
+
+/**
+ * Apply the URL-driven filters to an already-fetched, already-sorted
+ * children list. Done in JS rather than at the Directus layer so the
+ * sponsorship-state classification (queue badge → category) and the
+ * filter pass share one in-memory pipeline. At current scale (~10
+ * children) this is trivially fast; if the active pool ever exceeds
+ * a few hundred, push the filters into the Directus query instead.
+ */
+export function applyBrowseFilters(
+  children: ReadonlyArray<ChildSummary>,
+  badgeByChild: ReadonlyMap<string, ChildQueueBadge>,
+  filters: BrowseFilters,
+): ChildSummary[] {
+  return children.filter((c) => {
+    if (filters.status) {
+      const cat = categorizeChild(badgeByChild.get(c.id));
+      const isAwaiting = cat === "awaiting";
+      if (filters.status === "awaiting" && !isAwaiting) return false;
+      if (filters.status === "sponsored" && isAwaiting) return false;
+    }
+    if (filters.division) {
+      const region = c.region?.toLowerCase().trim() ?? "";
+      if (region !== filters.division) return false;
+    }
+    if (filters.age) {
+      const bucket = AGE_BUCKETS.find((b) => b.value === filters.age);
+      if (!bucket) return false;
+      if (c.age === null) return false;
+      if (c.age < bucket.min || c.age > bucket.max) return false;
+    }
+    return true;
+  });
+}
 
 export const EDUCATION_LEVELS = [
   "primary",

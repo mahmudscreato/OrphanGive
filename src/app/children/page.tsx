@@ -3,9 +3,16 @@ import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { BrowseChildCard } from "@/components/children/BrowseChildCard";
 import { BrowseEmptyState } from "@/components/children/BrowseEmptyState";
 import { BrowseClosingStrip } from "@/components/children/BrowseClosingStrip";
+import { ChildrenFilterBar } from "@/components/children/ChildrenFilterBar";
 import type { FramePathKey } from "@/components/decorations/HandDrawnPhotoFrame";
-import { getActiveChildrenForBrowse } from "@/lib/children-data";
-import { getHomepageStats } from "@/lib/homepage-data";
+import {
+  applyBrowseFilters,
+  categorizeChild,
+  getActiveChildrenForBrowse,
+  isAnyBrowseFilterActive,
+  parseBrowseFilters,
+  sortChildrenByCategory,
+} from "@/lib/children-data";
 import { getMonthlyQueueStateByChild } from "@/lib/sponsorship-data";
 
 /**
@@ -20,15 +27,15 @@ import { getMonthlyQueueStateByChild } from "@/lib/sponsorship-data";
  *   - Verified + Privacy-protected micro-badges
  *   - Status overlay if monthly-sponsored or queue-full
  *   - "Support [first name] →" CTA → /sponsor/[id]
+ *   - "View profile →" link → /children/[id]  (Session 36)
  *
- * Out of scope this pass (intentional, per Session 17 spec):
- *   - TODO: filtering UI when child count > ~25. The legacy
- *     FilterBar + multi-facet filter machinery in
- *     `src/components/children/{FilterBar,LoadMore}.tsx` and
- *     `getChildrenPage` in `lib/children-data.ts` is preserved
- *     and can be re-wired in one import.
- *   - TODO: pagination / load-more when child count > 30.
- *     Current scale (~10 active) renders all in a single grid.
+ * Session 36 additions:
+ *   - URL-driven filters: status / division / age (see ChildrenFilterBar
+ *     and parseBrowseFilters in lib/children-data.ts).
+ *   - Sort order Awaiting → Prepaid → Monthly within the grid; longest-
+ *     waiting profile first within each category. See sortChildrenByCategory.
+ *   - Dynamic count callout that reflects filter state truthfully
+ *     (e.g. "X of Y children match your filters" when narrowed).
  */
 
 export const dynamic = "force-dynamic";
@@ -51,22 +58,108 @@ const CARD_PATH_KEYS: FramePathKey[] = [
   "circleD",
 ];
 
-export default async function BrowseChildrenPage() {
-  const [children, stats] = await Promise.all([
-    getActiveChildrenForBrowse(),
-    getHomepageStats(),
-  ]);
+type SearchParams = Record<string, string | string[] | undefined>;
 
-  // Bulk-resolve queue state per visible child so cards can render
-  // the "Sponsored monthly" / "Queue full" status badges. Single
-  // round-trip against the visible page IDs (matches the legacy
-  // page's pattern from Session 14.7).
+export default async function BrowseChildrenPage({
+  searchParams,
+}: {
+  // Next.js 16: searchParams is a promise that must be awaited.
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
+  const filters = parseBrowseFilters(sp);
+
+  // Fetch all active children + their queue state. Both queries run
+  // in parallel; current data volume (~10 children) keeps this fast.
+  const allChildren = await getActiveChildrenForBrowse();
   const queueStateByChild = await getMonthlyQueueStateByChild(
-    children.map((c) => c.id),
+    allChildren.map((c) => c.id),
   );
 
+  // Sort first (Awaiting → Prepaid → Monthly), then filter. Order
+  // matters: filtering preserves the input ordering, so the sort has
+  // to be the input.
+  const sorted = sortChildrenByCategory(allChildren, queueStateByChild);
+  const visible = applyBrowseFilters(sorted, queueStateByChild, filters);
+
+  // Awaiting total derived from the UNFILTERED sorted list so the
+  // "no filter" callout can read "X children featured · Y awaiting"
+  // truthfully — independent of any filters the user might apply.
+  const awaitingTotal = sorted.filter(
+    (c) => categorizeChild(queueStateByChild.get(c.id)) === "awaiting",
+  ).length;
+
   const fmt = new Intl.NumberFormat("en-US");
-  const waitingCount = stats.waiting;
+  const anyFilterActive = isAnyBrowseFilterActive(filters);
+
+  // Dynamic count callout (Session 36 Change 5).
+  //
+  //   • no filter             → "X children featured · Y awaiting"
+  //   • status=awaiting       → "Y children currently waiting"
+  //   • status=sponsored      → "Z children currently sponsored"
+  //   • division/age only     → "X of Y children match your filters"
+  //
+  // The point is to never let the callout lie about what the grid
+  // shows. Hidden when the source list is empty (Directus failure
+  // fallback).
+  let callout: { dotClass: string; body: React.ReactNode } | null = null;
+  if (sorted.length > 0) {
+    const dotPulse = "bg-tangerine animate-pulse-dot";
+    const dotMoss = "bg-moss";
+    if (filters.status === "awaiting") {
+      callout = {
+        dotClass: dotPulse,
+        body: (
+          <>
+            <span className="text-ink font-semibold">
+              {fmt.format(visible.length)}
+            </span>{" "}
+            {visible.length === 1 ? "child" : "children"} currently waiting
+          </>
+        ),
+      };
+    } else if (filters.status === "sponsored") {
+      callout = {
+        dotClass: dotMoss,
+        body: (
+          <>
+            <span className="text-ink font-semibold">
+              {fmt.format(visible.length)}
+            </span>{" "}
+            {visible.length === 1 ? "child" : "children"} currently sponsored
+          </>
+        ),
+      };
+    } else if (anyFilterActive) {
+      callout = {
+        dotClass: dotPulse,
+        body: (
+          <>
+            <span className="text-ink font-semibold">
+              {fmt.format(visible.length)}
+            </span>{" "}
+            of {fmt.format(sorted.length)} children match your filters
+          </>
+        ),
+      };
+    } else {
+      callout = {
+        dotClass: dotPulse,
+        body: (
+          <>
+            <span className="text-ink font-semibold">
+              {fmt.format(sorted.length)}
+            </span>{" "}
+            {sorted.length === 1 ? "child" : "children"} featured ·{" "}
+            <span className="text-ink font-semibold">
+              {fmt.format(awaitingTotal)}
+            </span>{" "}
+            awaiting
+          </>
+        ),
+      };
+    }
+  }
 
   return (
     <div className="bg-cream">
@@ -91,10 +184,6 @@ export default async function BrowseChildrenPage() {
             <EyebrowIcon />
             Meet the children
           </div>
-          {/* Session 17.5 (review answer #6) — differentiated from
-              the homepage Featured Children section ("Verified
-              profiles. / Real stories. Real care.") so this page
-              reads as a sibling, not a clone. */}
           <h1 className="mt-4">
             <span className="block font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2.25rem,5vw,4rem)]">
               Every face.
@@ -108,34 +197,33 @@ export default async function BrowseChildrenPage() {
             here is waiting for someone to begin.
           </p>
 
-          {/* Live "currently waiting" callout. Suppressed when the
-              count isn't available (Directus query fallback). */}
-          {waitingCount !== null && waitingCount > 0 ? (
+          {/* Live count callout — see comment block above for the
+              filter-state-driven copy variants. */}
+          {callout ? (
             <div className="mt-7 inline-flex items-center gap-2 font-mono text-[12px] tracking-[0.1em] uppercase text-ink-soft">
-              <span className="w-1.5 h-1.5 rounded-full bg-tangerine animate-pulse-dot" />
-              <span>
-                <span className="text-ink font-semibold">
-                  {fmt.format(waitingCount)}
-                </span>{" "}
-                {waitingCount === 1 ? "child" : "children"} currently
-                waiting
-              </span>
+              <span className={`w-1.5 h-1.5 rounded-full ${callout.dotClass}`} />
+              <span>{callout.body}</span>
             </div>
           ) : null}
         </div>
       </header>
 
-      {/* TODO: filtering UI when child count > ~25. Legacy FilterBar
-          + getChildrenPage filter parsers preserved in
-          src/components/children/FilterBar.tsx + lib/children-data.ts. */}
+      {/* Filter bar — URL-param driven. Empty by default; selecting any
+          filter writes to the URL and re-renders this server component
+          with the new filters parsed. */}
+      <ChildrenFilterBar />
 
       <section className="px-6 pb-16 max-md:pb-12">
         <div className="max-w-[1320px] mx-auto">
-          {children.length === 0 ? (
-            <BrowseEmptyState />
+          {visible.length === 0 ? (
+            // Empty state branches:
+            //   - sorted.length === 0   → genuine "no profiles published yet"
+            //   - sorted.length > 0 but
+            //     visible.length === 0  → filters narrowed to zero results
+            <BrowseEmptyState filtered={anyFilterActive} />
           ) : (
             <div className="grid grid-cols-3 gap-10 max-lg:grid-cols-2 max-md:grid-cols-1 max-md:gap-12">
-              {children.map((c, i) => {
+              {visible.map((c, i) => {
                 const q = queueStateByChild.get(c.id);
                 return (
                   <BrowseChildCard
@@ -150,10 +238,6 @@ export default async function BrowseChildrenPage() {
               })}
             </div>
           )}
-
-          {/* TODO: pagination / load-more when child count > 30.
-              Legacy LoadMore component preserved at
-              src/components/children/LoadMore.tsx. */}
         </div>
       </section>
 
