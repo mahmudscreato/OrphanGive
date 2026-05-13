@@ -95,7 +95,7 @@ export function SponsorshipCard({ s }: Props) {
               ))}
             </div>
             {variant !== "pending" ? (
-              <span className="font-body text-[12px] text-tangerine-deep underline-offset-4 group-hover:underline whitespace-nowrap">
+              <span className="font-body text-[12px] text-tangerine-deeper underline-offset-4 group-hover:underline whitespace-nowrap">
                 View details →
               </span>
             ) : null}

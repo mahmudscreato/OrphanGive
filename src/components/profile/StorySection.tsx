@@ -38,7 +38,7 @@ export function StorySection({
             </p>
             <Link
               href={`/signin?from=/children/${child.id}`}
-              className="inline-flex items-center gap-2.5 text-tangerine-deep font-medium text-[14px] border-b-[1.5px] border-tangerine pb-0.5 transition-[gap] duration-[250ms] hover:gap-3.5 shrink-0"
+              className="inline-flex items-center gap-2.5 text-tangerine-deeper font-medium text-[14px] border-b-[1.5px] border-tangerine pb-0.5 transition-[gap] duration-[250ms] hover:gap-3.5 shrink-0"
             >
               Sign in to read the full story →
             </Link>

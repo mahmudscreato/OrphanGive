@@ -41,7 +41,7 @@ export function AccountSummary({ donor }: { donor: Donor }) {
       </div>
       <Link
         href="/dashboard/profile"
-        className="text-[12.5px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
+        className="text-[12.5px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
       >
         Manage account →
       </Link>

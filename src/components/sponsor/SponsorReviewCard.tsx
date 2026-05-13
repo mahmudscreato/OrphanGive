@@ -95,7 +95,7 @@ export function SponsorReviewCard({
           type="button"
           onClick={onEdit}
           disabled={pending}
-          className="text-[13px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-[13px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Edit selections
         </button>
@@ -186,7 +186,7 @@ export function SponsorReviewCard({
         type="button"
         onClick={onAddToCart}
         disabled={pending}
-        className="mt-5 w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
+        className="mt-5 w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {pending ? (
           <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />

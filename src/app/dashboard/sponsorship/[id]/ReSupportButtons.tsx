@@ -68,7 +68,7 @@ export function ReSupportButtons({
       <div className="flex items-stretch gap-3 max-md:flex-col">
         <Link
           href={primary.href}
-          className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+          className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
         >
           {primary.label}
         </Link>

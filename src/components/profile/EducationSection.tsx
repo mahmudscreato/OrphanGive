@@ -46,7 +46,7 @@ export function EducationSection({ child }: { child: ChildProfile }) {
                 {child.areas_of_interest.map((interest) => (
                   <span
                     key={interest}
-                    className="inline-flex items-center bg-tangerine-mist text-tangerine-deep rounded-full px-3.5 py-1.5 text-[13px] font-medium"
+                    className="inline-flex items-center bg-tangerine-mist text-tangerine-deeper rounded-full px-3.5 py-1.5 text-[13px] font-medium"
                   >
                     {interest}
                   </span>

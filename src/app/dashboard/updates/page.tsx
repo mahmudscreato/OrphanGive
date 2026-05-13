@@ -133,7 +133,7 @@ function ChildBlock({ group }: { group: Group }) {
             )}
           </div>
           <div>
-            <h2 className="font-display text-[22px] text-ink leading-tight tracking-[-0.01em] m-0 group-hover:text-tangerine-deep transition-colors">
+            <h2 className="font-display text-[22px] text-ink leading-tight tracking-[-0.01em] m-0 group-hover:text-tangerine-deeper transition-colors">
               {name}
             </h2>
             <p className="text-[12px] text-slate-soft mt-0.5">

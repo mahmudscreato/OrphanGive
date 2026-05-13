@@ -86,7 +86,7 @@ export function ProfileHero({
           </div>
           {/* Verified badge */}
           <div className="absolute -bottom-6 -right-6 max-w-[280px] flex items-center gap-3.5 bg-white rounded-[20px] px-5 py-4 shadow-lift max-md:right-3 max-md:-bottom-3">
-            <div className="w-10 h-10 rounded-full bg-moss-soft text-moss flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-full bg-moss-soft text-moss-deep flex items-center justify-center shrink-0">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"

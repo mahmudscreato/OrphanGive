@@ -76,7 +76,7 @@ export function ImpactHero({ donor, impact, activeChildren }: Props) {
         {isFirstTime ? (
           <Link
             href="/children"
-            className="inline-flex mt-8 items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-3 text-[14px] hover:bg-tangerine-deep hover:shadow-warm transition-all"
+            className="inline-flex mt-8 items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-3 text-[14px] hover:bg-tangerine-deep hover:shadow-warm transition-all"
           >
             Browse children →
           </Link>

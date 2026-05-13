@@ -33,7 +33,7 @@ export default async function CheckoutSuccessPage({
   const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
 
   return (
-    <main className="min-h-screen bg-cream">
+    <div className="min-h-screen bg-cream">
       <header className="px-6 pt-8 max-md:pt-6">
         <div className="max-w-[1100px] mx-auto">
           <Link
@@ -62,6 +62,6 @@ export default async function CheckoutSuccessPage({
           />
         </div>
       </section>
-    </main>
+    </div>
   );
 }

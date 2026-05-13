@@ -17,7 +17,7 @@ function formatDate(s: string | null): string {
 function tagClasses(type: string | null) {
   switch ((type || "").toLowerCase()) {
     case "academic":
-      return "bg-moss-soft text-moss";
+      return "bg-moss-soft text-moss-deep";
     case "health":
       return "bg-tangerine-soft text-tangerine-deep";
     case "letter":

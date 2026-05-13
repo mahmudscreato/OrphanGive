@@ -216,7 +216,7 @@ function PersonalSection({ donor }: { donor: ProfileSectionsDonor }) {
             <span>{donor.email}</span>
             <a
               href="mailto:hello@orphangive.org?subject=Email%20change%20request"
-              className="ml-3 text-[12px] text-tangerine-deep underline-offset-4 hover:underline"
+              className="ml-3 text-[12px] text-tangerine-deeper underline-offset-4 hover:underline"
             >
               To change your email, contact support →
             </a>
@@ -240,7 +240,7 @@ function PersonalSection({ donor }: { donor: ProfileSectionsDonor }) {
           type="button"
           onClick={onSave}
           disabled={!dirty || pending}
-          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-7 py-3 text-[14px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-7 py-3 text-[14px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
         >
           {pending ? "Saving…" : "Save changes"}
         </button>
@@ -404,7 +404,7 @@ function ProfilePhotoControl({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={busy}
-          className="font-body text-[12.5px] text-tangerine-deep underline-offset-4 hover:underline disabled:opacity-50"
+          className="font-body text-[12.5px] text-tangerine-deeper underline-offset-4 hover:underline disabled:opacity-50"
         >
           {photoUrl ? "Change" : "Upload photo"}
         </button>
@@ -565,7 +565,7 @@ function SecuritySection() {
           <button
             type="submit"
             disabled={pending || !current || !next || !confirm}
-            className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-7 py-3 text-[14px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+            className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-7 py-3 text-[14px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
           >
             {pending ? "Updating…" : "Update password"}
           </button>
@@ -606,7 +606,7 @@ function AccountSection() {
       <form action={signOutAction}>
         <button
           type="submit"
-          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-ink text-cream px-6 py-2.5 text-[13.5px] transition-all duration-[250ms] ease-soft hover:bg-tangerine hover:shadow-warm hover:-translate-y-px"
+          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-ink text-cream px-6 py-2.5 text-[13.5px] transition-all duration-[250ms] ease-soft hover:bg-tangerine hover:text-ink hover:shadow-warm hover:-translate-y-px"
         >
           Sign out
         </button>
@@ -616,7 +616,7 @@ function AccountSection() {
         Need to delete your account?{" "}
         <a
           href="mailto:hello@orphangive.org?subject=Account%20deletion%20request"
-          className="text-tangerine-deep underline-offset-4 hover:underline"
+          className="text-tangerine-deeper underline-offset-4 hover:underline"
         >
           Contact us at hello@orphangive.org →
         </a>

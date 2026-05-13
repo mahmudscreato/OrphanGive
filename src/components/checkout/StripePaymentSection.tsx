@@ -211,7 +211,7 @@ function PayForm({ clientSecrets, sponsorshipIds, totalUsd }: Omit<Props, "publi
         type="button"
         onClick={handlePay}
         disabled={!canPay}
-        className="mt-4 w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
+        className="mt-4 w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {pending ? (
           <>

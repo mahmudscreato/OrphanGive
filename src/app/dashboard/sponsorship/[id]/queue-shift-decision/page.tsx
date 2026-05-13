@@ -65,7 +65,7 @@ export default async function QueueShiftDecisionPage({
       <div className="mb-6">
         <Link
           href={`/dashboard/sponsorship/${id}`}
-          className="text-[13.5px] text-slate-soft hover:text-tangerine-deep transition-colors"
+          className="text-[13.5px] text-slate-soft hover:text-tangerine-deeper transition-colors"
         >
           ← Back to sponsorship
         </Link>

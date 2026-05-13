@@ -56,7 +56,7 @@ export function RecommendedChildren({
           </div>
           <Link
             href="/children"
-            className="text-[13px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
+            className="text-[13px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
           >
             See all ({totalAwaiting}) →
           </Link>
@@ -85,7 +85,7 @@ export function RecommendedChildren({
         </div>
         <Link
           href="/children"
-          className="text-[13px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
+          className="text-[13px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
         >
           See all ({totalAwaiting}) →
         </Link>

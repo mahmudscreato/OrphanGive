@@ -1,290 +1,129 @@
-// Session 19 — FAQ page, brand-aligned with the Session 16 design
-// system. Replaces the prior CMS-driven (Directus `faq` collection)
-// version with 28 hand-written questions across 5 groups. Each
-// group carries a stable `id` anchor so the /help page can deep-
-// link to it (e.g. /faq#payments).
-//
-// If/when Mahmud wants editable FAQ content, the prior `getActiveFaqs`
-// pattern can be reintroduced; the `faq` collection schema in
-// Directus is unchanged.
+// FAQ page (Session 15a). Renders questions from the dedicated
+// `faq` collection — distinct from `site_page` because FAQ is
+// inherently structured (category + question + answer with
+// ordering). Authoring lives in Directus admin; updates go live
+// without a redeploy.
 
 import Link from "next/link";
-import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
-import { buildPageMetadata } from "@/lib/page-metadata";
+import { readItems } from "@directus/sdk";
+import { directusServer } from "@/lib/directus";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = buildPageMetadata({
-  path: "/faq",
-  title: "Frequently asked questions",
+export const metadata = {
+  title: "FAQ — OrphanGive",
   description:
-    "Common questions about sponsorship, verification, payments, privacy, and your account — twenty-eight answers grouped by topic.",
-});
-
-type Faq = { q: string; a: string };
-type FaqGroup = {
-  id: string;
-  title: string;
-  faqs: Faq[];
+    "Answers to common questions about sponsoring a child through OrphanGive — payments, updates, the organisation, and your account.",
 };
 
-const FAQ_GROUPS: FaqGroup[] = [
-  {
-    id: "about-orphangive",
-    title: "About OrphanGive",
-    faqs: [
-      {
-        q: "What is OrphanGive?",
-        a: "OrphanGive is a child sponsorship network for verified orphaned and vulnerable children in Bangladesh. We connect donors with individual children whose profiles have been verified on the ground by our partner field team, and we run the donor-facing service that handles payments, reporting, and ongoing updates.",
-      },
-      {
-        q: "Who runs OrphanGive?",
-        a: "OrphanGive is a project of Goodverse Foundation in collaboration with Children's Heaven Trust. Goodverse oversees governance and financial accountability; Children's Heaven Trust handles ground verification and field delivery in Bangladesh. Both organisations are named on every page.",
-      },
-      {
-        q: "Where do you operate?",
-        a: "Bangladesh, exclusively. Children's Heaven Trust's existing field network is what makes deep verification possible, and that depth would be hard to replicate in another country. Other regions are not on the near-term roadmap.",
-      },
-      {
-        q: "Are you a registered charity?",
-        a: "Yes. Children's Heaven Trust is registered with the NGO Affairs Bureau of Bangladesh (Reg. iv-98/2021), and Goodverse Foundation is the operating entity. Detailed regulatory information is on the Transparency page.",
-      },
-      {
-        q: "How are you different from other child sponsorship organizations?",
-        a: "Most child sponsorship organisations operate as a single charity that handles everything end-to-end. OrphanGive is the donor-facing service for verified partner charities — we don't compete with them, we route donors to them. The result: more donor visibility into individual children, less administrative overhead at the charity level.",
-      },
-    ],
-  },
-  {
-    id: "sponsorship-donation",
-    title: "Sponsorship & Donation",
-    faqs: [
-      {
-        q: "How does monthly sponsorship work?",
-        a: "You choose a child, choose a monthly amount, and complete checkout. The first payment clears immediately; subsequent payments run automatically each month. Funds are tagged to that child's profile and deployed by the field team — schooling, clothing, healthcare, or general care depending on need.",
-      },
-      {
-        q: "What's the minimum monthly amount?",
-        a: "Sponsorships start at BDT 1,500 per month — roughly USD 13 at current rates. That's the floor that lets us deliver meaningful, sustained support; below it, the per-child overhead doesn't make sense.",
-      },
-      {
-        q: "Is my donation Zakat-eligible?",
-        a: "Most of OrphanGive's monthly sponsorship structures are configured to be Zakat-eligible — the children listed are orphans or vulnerable in the categories Zakat traditionally serves. We don't issue a sharia ruling on your behalf. Please consult your own scholar before designating funds as Zakat.",
-      },
-      {
-        q: "Can I make a one-time donation instead?",
-        a: "Yes. One-time gifts can be tagged to specific funds (clothing, healthcare, schooling, general care) and deployed without a recurring commitment. They're welcome alongside or instead of monthly sponsorship.",
-      },
-      {
-        q: "Can I sponsor more than one child?",
-        a: "Yes. There's no cap. Each sponsorship is tracked separately in your donor dashboard, so you can see exactly which child each contribution is funding.",
-      },
-      {
-        q: "Can I cancel my sponsorship?",
-        a: "Yes, anytime. Monthly sponsorships can be paused or cancelled from your donor dashboard with one click. The child re-enters the waiting pool — no friction, no penalty.",
-      },
-      {
-        q: "What happens to my donation if a child is no longer in need?",
-        a: "If a sponsored child's circumstances change — they're adopted, the family becomes self-sufficient, schooling is no longer the support need — the field team flags it and your sponsorship is paused. You're notified, and you can choose to redirect to another waiting child or pause the contribution entirely.",
-      },
-      {
-        q: "Can I get a tax receipt?",
-        a: "Receipts are issued by Children's Heaven Trust as the registered charity. Whether the receipt qualifies for tax relief depends on your jurisdiction and your local tax rules — we aren't able to advise on tax law in your country. Please check with a local accountant.",
-      },
-    ],
-  },
-  {
-    id: "children-privacy",
-    title: "Children & Privacy",
-    faqs: [
-      {
-        q: "How are children verified?",
-        a: "Children's Heaven Trust's field team visits each candidate in person — meets the guardian, sees the household, reviews documents. Identity, guardian status, school enrolment, household situation, and specific support need are all checked before a profile is approved. The full verification process is detailed on the How It Works page.",
-      },
-      {
-        q: "Why are last names hidden?",
-        a: "Last names used to be truncated on public profiles. As of 2026, full display names are shown on the public site — this was a deliberate policy decision after consultation with our partner organisations. Other identifying details (school name, exact address, guardian name) remain protected on the public surface.",
-      },
-      {
-        q: "Can I see photos of the child I sponsor?",
-        a: "Yes — you can see whatever photos the guardian has consented to publish, both on the public profile and in the richer sponsor view inside your donor dashboard. Quarterly reports often include additional photos, again only with consent.",
-      },
-      {
-        q: "Can I meet the child I sponsor?",
-        a: "In-person meetings happen only with explicit guardian consent and are arranged by Children's Heaven Trust's field team. Most sponsorships develop through written quarterly updates and the donor dashboard, but the path exists if both sides want it.",
-      },
-      {
-        q: "What if a child no longer needs sponsorship?",
-        a: "When a child's circumstances change for the better — adoption, family stability, completed schooling — their profile is retired from the active list. The field team flags the change first, and we coordinate with you on whether to redirect or pause your contribution.",
-      },
-      {
-        q: "How do you protect children's privacy?",
-        a: "OrphanGive uses a three-tier information model. Public visitors see name, division, age, and support need. Authenticated donors see a richer profile including more photos and support history. Sponsoring donors with reveal approval can see identifying details for direct contact. Each tier exists because the next one would compromise the child if it were public.",
-      },
-    ],
-  },
-  {
-    id: "payments",
-    title: "Payments",
-    faqs: [
-      {
-        q: "What payment methods do you accept?",
-        a: "Credit and debit cards through Stripe — Visa, Mastercard, American Express. bKash and Nagad payment options are actively being integrated and will be available within approximately one month. In the meantime, donations through international card payments are fully supported via Stripe.",
-      },
-      {
-        q: "Is my payment secure?",
-        a: "Card details are processed by Stripe and never touch OrphanGive's servers. Stripe is PCI-DSS compliant — the same security infrastructure used by most large internet businesses. We don't see, store, or have access to your card number at any point.",
-      },
-      {
-        q: "Will my card be saved?",
-        a: "For monthly sponsorships, yes — Stripe stores a tokenized reference to your card so future payments run automatically. The actual card number stays with Stripe; we only see the token. You can update or remove the saved card from your donor dashboard at any time.",
-      },
-      {
-        q: "When am I charged?",
-        a: "The first payment clears at checkout. Subsequent monthly payments run on the same calendar day each month — if you sign up on the 14th, future payments run on the 14th. Your card statement will show \"OrphanGive\" as the statement descriptor. This is set up directly with our payment processor, Stripe.",
-      },
-      {
-        q: "Can I get a refund?",
-        a: "Yes, within reasonable bounds. If a payment was made in error or you change your mind shortly after donating, contact support and we'll process a refund. After funds have been deployed on the ground, refunds aren't possible — but we'll work with you to redirect to another need.",
-      },
-    ],
-  },
-  {
-    id: "account",
-    title: "Account",
-    faqs: [
-      {
-        q: "How do I sign in?",
-        a: "Sign in is at /signin — donors authenticate with their email address and either a password or a magic-link sent to their inbox. If you've donated before, an account was created automatically; the magic-link flow is the easiest way to access it for the first time.",
-      },
-      {
-        q: "I forgot my password",
-        a: "Use the 'Forgot password' link on the sign-in page — we'll email you a reset link. If you originally signed up via the magic-link flow without setting a password, just use the magic-link option again; no password reset needed.",
-      },
-      {
-        q: "How do I update my payment method?",
-        a: "From your donor dashboard, go to Billing and select 'Update payment method'. Stripe handles the secure card update inline. The new card replaces the saved one for all your active monthly sponsorships in a single step.",
-      },
-      {
-        q: "How do I delete my account?",
-        a: "Email support@orphangive.org with the request. We'll cancel any active sponsorships, delete personal data within 30 days, and send confirmation when complete. Your donation history is retained in aggregate form for the required regulatory period.",
-      },
-    ],
-  },
-  // Session 32 — Mahmud's review answer #6: new group covering
-  // guardian-side profile submission. The contact-form "I know
-  // an orphan" subject (added in this same session) is the entry
-  // point referenced by the first answer.
-  {
-    id: "submitting-profiles",
-    title: "Submitting an orphan profile",
-    faqs: [
-      {
-        q: "I know an orphan child who needs support. Can I submit their profile to OrphanGive?",
-        a: "Yes. If you are a legal guardian of an orphan child, or you know a child whose guardian wants to apply for sponsorship, you can submit a request through our contact form. Choose \"I know an orphan who needs support\" as the subject, fill in a few simple details, and our admin team will call you to discuss next steps. We work closely with Children's Heaven Trust and verified field partners to make sure every profile we publish meets our verification standards.",
-      },
-      {
-        q: "Who can submit a child's profile?",
-        a: "Only legal guardians or close family members of the child should initiate a profile submission. Community members and well-wishers can refer a family by completing our contact form, and our team will reach out to the family directly. We cannot accept profiles submitted without the guardian's knowledge or consent.",
-      },
-      {
-        q: "What information will I need to provide?",
-        a: "For the initial referral, only basic information: your name, contact details, the child's first name, their approximate age, their general location, and a brief description of their situation. After our admin team contacts you, we will guide you through what documents and details are needed for full verification — typically the child's birth certificate, the death certificate of the deceased parent(s), proof of guardianship, and a recent photograph (only with your explicit consent).",
-      },
-      {
-        q: "How long does the verification process take?",
-        a: "From initial referral to a published profile typically takes 4 to 8 weeks. The process includes a phone conversation, document review, a verification visit by Children's Heaven Trust field workers, photograph consent (if applicable), and final review before publication. We do not rush this process — every step protects the child's privacy and dignity.",
-      },
-      {
-        q: "What happens if my submission is not accepted?",
-        a: "If we cannot accept a child's profile, we will explain why clearly and respectfully. The most common reasons are: the child does not meet our orphan or vulnerable child criteria, documentation could not be verified, or the guardian declined photo consent (which we fully respect). In some cases we can refer the family to other Bangladesh-based support organizations.",
-      },
-    ],
-  },
-];
+type FaqRow = {
+  id: string;
+  category: string | null;
+  question: string;
+  answer: string;
+  display_order: number | null;
+  active: boolean | null;
+};
 
-export default function FaqPage() {
+async function getActiveFaqs(): Promise<FaqRow[]> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("faq" as never, {
+        filter: { active: { _eq: true } },
+        fields: ["id", "category", "question", "answer", "display_order", "active"],
+        sort: ["category", "display_order"],
+        limit: 200,
+      } as never),
+    )) as unknown as FaqRow[];
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function groupByCategory(rows: FaqRow[]): Map<string, FaqRow[]> {
+  const out = new Map<string, FaqRow[]>();
+  for (const r of rows) {
+    const cat = r.category?.trim() || "General";
+    const arr = out.get(cat) ?? [];
+    arr.push(r);
+    out.set(cat, arr);
+  }
+  return out;
+}
+
+export default async function FaqPage() {
+  const rows = await getActiveFaqs();
+  const grouped = groupByCategory(rows);
+
   return (
     <div className="bg-cream">
-      {/* Page header. */}
-      <header className="px-6 pt-20 pb-12 max-md:pt-14 max-md:pb-10">
-        <div className="max-w-[860px] mx-auto text-center">
-          <div className="inline-flex items-center text-script-md text-tangerine-deep">
-            <EyebrowIcon />
-            Frequently asked questions
-          </div>
-          <h1 className="mt-4">
-            <span className="block font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2.25rem,5vw,4rem)]">
-              Common questions.
-            </span>
-            <span className="block font-script italic text-tangerine-deep leading-[0.95] tracking-[-0.005em] text-[clamp(2.75rem,6vw,5rem)] mt-2">
-              Real answers.
-            </span>
-          </h1>
-          <p className="mt-6 max-w-2xl mx-auto text-lg text-ink-soft leading-[1.65]">
-            Twenty-eight of the questions donors ask most often.
-            Grouped by topic so you can scan to the part that matters.
-          </p>
-        </div>
-      </header>
-
-      {/* FAQ groups. Each group has an `id` anchor so /help can
-          deep-link (e.g. /faq#payments). */}
-      <section className="px-6 pb-12 max-md:pb-8">
-        <div className="max-w-[860px] mx-auto space-y-12 max-md:space-y-10">
-          {FAQ_GROUPS.map((group) => (
-            <section
-              key={group.id}
-              id={group.id}
-              className="scroll-mt-24"
-              aria-labelledby={`${group.id}-heading`}
-            >
-              <h2
-                id={`${group.id}-heading`}
-                className="font-display font-semibold text-2xl max-md:text-xl text-ink mb-5 tracking-[-0.01em]"
+      <div className="px-6 pt-32 pb-24 max-md:pt-24 max-md:pb-16">
+        <div className="max-w-[820px] mx-auto">
+          <header>
+            <h1 className="font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2.25rem,5vw,4rem)] m-0">
+              Frequently asked questions
+            </h1>
+            <p className="mt-6 text-[18px] text-slate leading-[1.6] max-w-[640px]">
+              Answers to the questions donors ask most often. If
+              yours isn&rsquo;t here,{" "}
+              <a
+                href="mailto:hello@orphangive.org"
+                className="text-tangerine-deeper underline-offset-4 hover:underline"
               >
-                {group.title}
-              </h2>
-              <div className="space-y-3">
-                {group.faqs.map((faq) => (
-                  <details
-                    key={faq.q}
-                    className="group rounded-2xl bg-white border border-ink/[0.06] px-6 py-5 max-md:px-5 max-md:py-4 transition-shadow hover:shadow-md open:shadow-md"
-                  >
-                    <summary className="cursor-pointer list-none flex justify-between items-center gap-4 font-display font-semibold text-lg max-md:text-base text-ink">
-                      <span>{faq.q}</span>
-                      <span
-                        aria-hidden="true"
-                        className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-orange-pale text-tangerine-deep transition-transform duration-200 group-open:rotate-45 text-xl leading-none"
-                      >
-                        +
-                      </span>
-                    </summary>
-                    <p className="mt-4 text-base text-ink-soft leading-[1.65]">
-                      {faq.a}
-                    </p>
-                  </details>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      </section>
+                drop us a note
+              </a>
+              .
+            </p>
+          </header>
 
-      {/* Closing strip. */}
-      <section className="px-6 py-12 max-md:py-10">
-        <div className="max-w-[860px] mx-auto text-center">
-          <p className="text-base text-ink-soft leading-relaxed">
-            Still have questions?{" "}
-            <Link
-              href="/contact"
-              className="text-tangerine-deep font-medium border-b border-tangerine/40 hover:border-tangerine transition-colors duration-200"
-            >
-              Get in touch →
-            </Link>
-          </p>
+          {rows.length === 0 ? (
+            <div className="mt-16 rounded-[18px] bg-tangerine-mist/40 border border-tangerine-soft px-6 py-5">
+              <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-tangerine-deep mb-1">
+                Coming soon
+              </div>
+              <p className="text-[15px] text-slate leading-[1.65] m-0">
+                We&rsquo;re finalising answers to common questions.
+                Check back shortly, or{" "}
+                <Link
+                  href="/children"
+                  className="text-tangerine-deeper underline-offset-4 hover:underline"
+                >
+                  browse children awaiting a sponsor
+                </Link>
+                .
+              </p>
+            </div>
+          ) : (
+            <div className="mt-14 space-y-12">
+              {Array.from(grouped.entries()).map(([cat, items]) => (
+                <section key={cat}>
+                  <h2 className="font-mono text-[11px] tracking-[0.14em] uppercase text-tangerine-deep mb-4">
+                    {cat}
+                  </h2>
+                  <ul className="space-y-3">
+                    {items.map((item) => (
+                      <li key={item.id}>
+                        <details className="group rounded-[14px] bg-white border border-ink/[0.06] px-5 py-4 transition-colors open:bg-white/95">
+                          <summary className="cursor-pointer list-none flex items-baseline gap-3 font-display text-[18px] text-ink leading-snug">
+                            <span className="font-mono text-[14px] text-tangerine-deeper shrink-0 transition-transform group-open:rotate-45">
+                              +
+                            </span>
+                            {item.question}
+                          </summary>
+                          <div className="mt-3 pl-7 text-[15.5px] text-slate leading-[1.7] whitespace-pre-line">
+                            {item.answer}
+                          </div>
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
-      </section>
+      </div>
     </div>
   );
 }

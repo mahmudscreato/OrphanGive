@@ -75,7 +75,7 @@ const PILL_BASE =
 const PILL_INACTIVE =
   "bg-cream text-slate border-ink/[0.08] hover:bg-tangerine-mist hover:text-ink hover:border-tangerine-soft";
 const PILL_ACTIVE =
-  "bg-tangerine text-white border-transparent shadow-warm";
+  "bg-tangerine text-ink border-transparent shadow-warm";
 
 export function FilterBar({ districts }: Props) {
   const router = useRouter();
@@ -231,7 +231,7 @@ export function FilterBar({ districts }: Props) {
             type="button"
             onClick={reset}
             disabled={isDefault(state)}
-            className="text-[13px] font-medium text-slate hover:text-tangerine-deep disabled:text-slate-soft disabled:cursor-not-allowed transition-colors"
+            className="text-[13px] font-medium text-slate hover:text-tangerine-deeper disabled:text-slate-soft disabled:cursor-not-allowed transition-colors"
           >
             Reset filters
           </button>

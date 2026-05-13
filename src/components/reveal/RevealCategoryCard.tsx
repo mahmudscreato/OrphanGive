@@ -175,7 +175,7 @@ export function RevealCategoryCard({
                 </div>
               );
             })}
-            <div className="mt-3 text-[11px] text-moss font-mono tracking-[0.08em] uppercase">
+            <div className="mt-3 text-[11px] text-moss-deep font-mono tracking-[0.08em] uppercase">
               {approvedAgo(approvedAt) ?? "Approved"}
             </div>
           </div>
@@ -200,14 +200,14 @@ export function RevealCategoryCard({
                     setReason("");
                     setModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-2 text-tangerine-deep text-[13px] font-medium transition-[gap] duration-[250ms] hover:gap-3"
+                  className="inline-flex items-center gap-2 text-tangerine-deeper text-[13px] font-medium transition-[gap] duration-[250ms] hover:gap-3"
                 >
                   Request to view →
                 </button>
               ) : (
                 <a
                   href={signInHref}
-                  className="inline-flex items-center gap-2 text-tangerine-deep text-[13px] font-medium transition-[gap] duration-[250ms] hover:gap-3"
+                  className="inline-flex items-center gap-2 text-tangerine-deeper text-[13px] font-medium transition-[gap] duration-[250ms] hover:gap-3"
                 >
                   Sign in to learn more →
                 </a>
@@ -283,7 +283,7 @@ function Modal(props: {
       >
         {props.submitState === "success" ? (
           <div>
-            <div className="w-14 h-14 rounded-full bg-moss-soft text-moss flex items-center justify-center mb-5" aria-hidden="true">
+            <div className="w-14 h-14 rounded-full bg-moss-soft text-moss-deep flex items-center justify-center mb-5" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7">
                 <path
                   d="M5 12l4 4L19 6"
@@ -305,7 +305,7 @@ function Modal(props: {
               <button
                 type="button"
                 onClick={props.onClose}
-                className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-ink text-cream px-6 py-3 text-[14px] hover:bg-tangerine transition-all"
+                className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-ink text-cream px-6 py-3 text-[14px] hover:bg-tangerine hover:text-ink transition-all"
               >
                 Close
               </button>
@@ -360,7 +360,7 @@ function Modal(props: {
                 type="button"
                 onClick={props.onSubmit}
                 disabled={props.submitState === "submitting"}
-                className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-3 text-[14px] hover:bg-tangerine-deep hover:shadow-warm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-3 text-[14px] hover:bg-tangerine-deep hover:shadow-warm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {props.submitState === "submitting" ? "Submitting…" : "Submit request"}
               </button>

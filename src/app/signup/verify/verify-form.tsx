@@ -151,7 +151,7 @@ export function VerifyForm({ initialEmail }: { initialEmail: string }) {
         </div>
       ) : null}
       {resendNotice ? (
-        <div className="mt-5 rounded-xl bg-tangerine-mist border border-tangerine-soft px-4 py-3 text-[14px] text-tangerine-deep">
+        <div className="mt-5 rounded-xl bg-tangerine-mist border border-tangerine-soft px-4 py-3 text-[14px] text-tangerine-deeper">
           {resendNotice}
         </div>
       ) : null}
@@ -160,7 +160,7 @@ export function VerifyForm({ initialEmail }: { initialEmail: string }) {
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pending ? "Verifying…" : "Verify code →"}
         </button>
@@ -168,7 +168,7 @@ export function VerifyForm({ initialEmail }: { initialEmail: string }) {
           type="button"
           onClick={resend}
           disabled={resendCooldown > 0 || resendPending}
-          className="text-[13px] text-slate hover:text-tangerine-deep disabled:text-slate-soft disabled:cursor-not-allowed underline-offset-4 hover:underline"
+          className="text-[13px] text-slate hover:text-tangerine-deeper disabled:text-slate-soft disabled:cursor-not-allowed underline-offset-4 hover:underline"
         >
           {resendCooldown > 0
             ? `Resend code in ${resendCooldown}s`

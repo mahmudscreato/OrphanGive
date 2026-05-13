@@ -30,7 +30,7 @@ export default async function DashboardLayout({
             <form action={signOutAction}>
               <button
                 type="submit"
-                className="text-[12.5px] text-slate-soft hover:text-tangerine-deep transition-colors"
+                className="text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors"
               >
                 Sign out
               </button>

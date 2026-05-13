@@ -34,7 +34,7 @@ export function CharitiesBand() {
           <div className="flex flex-col gap-5 items-start">
             <Link
               href="/for-charities"
-              className="inline-flex items-center gap-2 font-body font-semibold rounded-full cursor-pointer transition-all duration-[250ms] ease-soft px-8 py-[17px] text-base text-white bg-tangerine hover:bg-tangerine-light hover:shadow-[0_8px_32px_-8px_rgba(243,147,34,0.5)] hover:-translate-y-px"
+              className="inline-flex items-center gap-2 font-body font-semibold rounded-full cursor-pointer transition-all duration-[250ms] ease-soft px-8 py-[17px] text-base text-ink bg-tangerine hover:bg-tangerine-light hover:shadow-[0_8px_32px_-8px_rgba(243,147,34,0.5)] hover:-translate-y-px"
             >
               Apply to host a portal →
             </Link>

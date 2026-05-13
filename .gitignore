@@ -39,6 +39,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# Session 32 — Lighthouse report output from local runs
 .unlighthouse/

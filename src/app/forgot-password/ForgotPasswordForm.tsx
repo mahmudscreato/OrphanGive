@@ -1,11 +1,5 @@
 "use client";
 
-// Session 24 — brand pass: pill-shaped OG-orange CTA, refined
-// input chrome (rounded-2xl + tangerine focus ring), tighter
-// success-state copy aligned with the public surfaces. No
-// behavioural change to the submit logic — still POSTs to
-// /api/auth/forgot-password which proxies to Directus.
-
 import Link from "next/link";
 import { useState, useTransition } from "react";
 
@@ -44,7 +38,7 @@ export function ForgotPasswordForm() {
 
   if (submitted) {
     return (
-      <div className="rounded-3xl bg-orange-pale/60 border border-tangerine-soft px-6 py-6">
+      <div className="rounded-[18px] bg-tangerine-mist/40 border border-tangerine-soft px-5 py-5">
         <div className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-tangerine-deep mb-2">
           Check your inbox
         </div>
@@ -53,7 +47,7 @@ export function ForgotPasswordForm() {
           a password reset link within a few minutes. Check your inbox
           and spam folder.
         </p>
-        <p className="mt-4 text-[13.5px] text-ink-soft leading-[1.6] m-0">
+        <p className="mt-4 text-[13.5px] text-slate-soft leading-[1.6] m-0">
           The link expires in 1 hour. If you don&rsquo;t see the email,{" "}
           <button
             type="button"
@@ -61,7 +55,7 @@ export function ForgotPasswordForm() {
               setSubmitted(false);
               setEmail("");
             }}
-            className="text-tangerine-deep underline-offset-4 hover:underline"
+            className="text-tangerine-deeper underline-offset-4 hover:underline"
           >
             try again
           </button>
@@ -69,7 +63,7 @@ export function ForgotPasswordForm() {
         </p>
         <Link
           href="/signin"
-          className="mt-5 inline-flex items-center text-[13.5px] text-tangerine-deep font-medium border-b border-tangerine/40 hover:border-tangerine pb-0.5 transition-colors"
+          className="mt-5 inline-flex items-center text-[13.5px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
         >
           ← Back to sign in
         </Link>
@@ -79,7 +73,7 @@ export function ForgotPasswordForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1.5 text-[13.5px] text-ink-soft">
+      <label className="flex flex-col gap-1.5 text-[13.5px] text-slate">
         <span>Email</span>
         <input
           name="email"
@@ -89,7 +83,7 @@ export function ForgotPasswordForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={pending}
-          className="rounded-xl border border-ink/[0.12] bg-white px-4 py-3 text-base text-ink placeholder:text-ink-soft/70 focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine/20 transition-all duration-200"
+          className="rounded-[10px] border border-ink/[0.16] bg-white px-3 py-2.5 text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine-soft focus:border-tangerine"
         />
       </label>
       {error ? (
@@ -103,23 +97,13 @@ export function ForgotPasswordForm() {
       <button
         type="submit"
         disabled={pending || !email.trim()}
-        className="group inline-flex items-center justify-center gap-2 rounded-full bg-orange-solid text-white font-body font-semibold py-3 px-7 text-base transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+        className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {pending ? "Sending…" : (
-          <>
-            Send reset link
-            <span
-              aria-hidden="true"
-              className="inline-block transition-transform duration-200 group-hover:translate-x-1"
-            >
-              →
-            </span>
-          </>
-        )}
+        {pending ? "Sending…" : "Send reset link"}
       </button>
       <Link
         href="/signin"
-        className="self-start text-[13px] text-ink-soft hover:text-tangerine-deep transition-colors"
+        className="self-start text-[13px] text-slate-soft hover:text-tangerine-deeper transition-colors"
       >
         ← Back to sign in
       </Link>

@@ -197,7 +197,7 @@ function PaymentMethodsSection({
             type="button"
             onClick={() => setShowAdd((v) => !v)}
             disabled={!ready}
-            className="font-body text-[12.5px] text-tangerine-deep underline-offset-4 hover:underline disabled:text-slate-soft disabled:cursor-not-allowed disabled:hover:no-underline"
+            className="font-body text-[12.5px] text-tangerine-deeper underline-offset-4 hover:underline disabled:text-slate-soft disabled:cursor-not-allowed disabled:hover:no-underline"
           >
             {showAdd ? "Cancel" : "+ Add a payment method"}
           </button>
@@ -248,7 +248,7 @@ function PaymentMethodsSection({
                       </div>
                     </div>
                     {pm.isDefault ? (
-                      <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border bg-moss-soft text-moss border-moss/30">
+                      <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border bg-moss-soft text-moss-deep border-moss/30">
                         Default
                       </span>
                     ) : null}
@@ -543,7 +543,7 @@ function AddPaymentMethodInner({
         <button
           type="submit"
           disabled={pending || !cardComplete || !stripe}
-          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-2.5 text-[13.5px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-2.5 text-[13.5px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
         >
           {pending ? "Saving…" : "Save card"}
         </button>
@@ -601,7 +601,7 @@ function InvoiceHistorySection({
               ? undefined
               : "No payment history yet. Make a donation to access your billing portal."
           }
-          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-2.5 text-[13.5px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-2.5 text-[13.5px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
         >
           {pending ? "Opening…" : "Open billing portal →"}
         </button>

@@ -104,7 +104,7 @@ export function SuccessPoller({
         <Confetti />
         <div className="text-center">
           <div
-            className="mx-auto w-20 h-20 rounded-full bg-moss-soft text-moss flex items-center justify-center"
+            className="mx-auto w-20 h-20 rounded-full bg-moss-soft text-moss-deep flex items-center justify-center"
             aria-hidden="true"
           >
             <svg viewBox="0 0 24 24" fill="none" className="w-10 h-10">
@@ -144,7 +144,7 @@ export function SuccessPoller({
                   </span>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border bg-moss-soft text-moss border-moss/30">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border bg-moss-soft text-moss-deep border-moss/30">
                 Active
               </span>
             </li>
@@ -154,7 +154,7 @@ export function SuccessPoller({
         <div className="text-center pt-2">
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-7 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
+            className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-7 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
           >
             View dashboard →
           </Link>

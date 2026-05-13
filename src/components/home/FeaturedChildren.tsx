@@ -215,7 +215,7 @@ function ChildCard({
       <div className="px-1 pt-5">
         {/* Trust micro-badges row. */}
         <div className="flex flex-wrap gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cream text-tangerine-deep text-[11px] font-medium tracking-wide">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cream text-tangerine-deeper text-[11px] font-medium tracking-wide">
             <ShieldCheckIcon className="w-3 h-3" />
             Verified
           </span>
@@ -248,7 +248,7 @@ function ChildCard({
 
         <Link
           href={`/sponsor/${child.id}`}
-          className="group/cta mt-4 inline-flex items-center justify-center w-full gap-2 rounded-full bg-orange-solid text-white font-body font-semibold py-3 px-5 text-base transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
+          className="group/cta mt-4 inline-flex items-center justify-center w-full gap-2 rounded-full bg-orange-solid text-ink font-body font-semibold py-3 px-5 text-base transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
         >
           Support {first}
           <span
@@ -381,7 +381,7 @@ export function FeaturedChildren({
         <div className="mt-10 text-center">
           <Link
             href="/children"
-            className="group/browse inline-flex items-center gap-2 rounded-full bg-white text-tangerine-deep border-[1.5px] border-tangerine px-8 py-4 font-body font-medium transition-all duration-[250ms] ease-soft hover:bg-tangerine hover:text-white hover:shadow-warm hover:-translate-y-px"
+            className="group/browse inline-flex items-center gap-2 rounded-full bg-white text-tangerine-deep border-[1.5px] border-tangerine px-8 py-4 font-body font-medium transition-all duration-[250ms] ease-soft hover:bg-tangerine hover:text-ink hover:shadow-warm hover:-translate-y-px"
           >
             Browse More Children
             <span

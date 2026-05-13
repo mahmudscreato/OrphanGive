@@ -20,7 +20,7 @@ export function InactiveChildNotice({ childName }: Props) {
       </p>
       <Link
         href="/children"
-        className="mt-2 inline-flex items-center gap-1 text-[13px] text-tangerine-deep font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
+        className="mt-2 inline-flex items-center gap-1 text-[13px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
       >
         Browse other children →
       </Link>

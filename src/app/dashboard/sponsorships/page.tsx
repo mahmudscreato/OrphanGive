@@ -107,7 +107,7 @@ export default async function DashboardSponsorshipsPage() {
             You aren&apos;t sponsoring anyone yet.{" "}
             <a
               href="/children"
-              className="text-tangerine-deep underline-offset-4 hover:underline"
+              className="text-tangerine-deeper underline-offset-4 hover:underline"
             >
               Browse children awaiting a sponsor →
             </a>

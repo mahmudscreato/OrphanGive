@@ -32,7 +32,7 @@ export function DocumentsBanner({ docs }: { docs: ChildDocSummary[] }) {
     <section className="px-6 pb-28 bg-cream max-md:pb-20">
       <div className="max-w-[1100px] mx-auto rounded-[28px] bg-linen border border-ink/[0.05] px-8 py-7 max-md:px-6 max-md:py-6">
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-moss-soft text-moss flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-moss-soft text-moss-deep flex items-center justify-center">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
               <path
                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"

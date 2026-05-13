@@ -167,7 +167,7 @@ function DisabledMethodCard({
           className={
             "absolute top-3 right-3 inline-flex items-center px-2 py-0.5 " +
             "rounded-full font-mono text-[9.5px] tracking-[0.12em] uppercase " +
-            "bg-tangerine text-cream font-medium"
+            "bg-tangerine text-ink font-medium"
           }
         >
           Coming soon

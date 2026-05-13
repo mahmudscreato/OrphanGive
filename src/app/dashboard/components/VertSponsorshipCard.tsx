@@ -93,7 +93,7 @@ export function VertSponsorshipCard({ s }: Props) {
 
         {variant !== "pending" ? (
           <div className="mt-3 text-right">
-            <span className="font-body text-[12px] text-tangerine-deep underline-offset-4 group-hover:underline">
+            <span className="font-body text-[12px] text-tangerine-deeper underline-offset-4 group-hover:underline">
               View details →
             </span>
           </div>

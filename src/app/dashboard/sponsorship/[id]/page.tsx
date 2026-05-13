@@ -95,7 +95,7 @@ export default async function SponsorshipDetailPage({
       <div className="flex items-center justify-between gap-4 flex-wrap mb-8">
         <Link
           href="/dashboard/sponsorships"
-          className="text-[13.5px] text-slate-soft hover:text-tangerine-deep transition-colors"
+          className="text-[13.5px] text-slate-soft hover:text-tangerine-deeper transition-colors"
         >
           ← Back to children
         </Link>
@@ -272,7 +272,7 @@ function ChildCard({
         ) : null}
         <Link
           href={`/children/${childId}`}
-          className="inline-flex mt-2 items-center gap-1 text-[13px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline"
+          className="inline-flex mt-2 items-center gap-1 text-[13px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline"
         >
           View profile →
         </Link>
@@ -467,7 +467,7 @@ function PaymentRowItem({ p }: { p: PaymentRow }) {
   const isSucceeded = p.status === "succeeded";
   const isFailed = p.status === "failed";
   const statusClass = isSucceeded
-    ? "bg-moss-soft text-moss border-moss/30"
+    ? "bg-moss-soft text-moss-deep border-moss/30"
     : isFailed
       ? "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]"
       : "bg-tangerine-mist text-tangerine-deep border-tangerine-soft";
@@ -495,7 +495,7 @@ function PaymentRowItem({ p }: { p: PaymentRow }) {
             href={receiptHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[12px] text-tangerine-deep hover:opacity-80 underline-offset-4 hover:underline"
+            className="text-[12px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline"
           >
             Receipt →
           </a>

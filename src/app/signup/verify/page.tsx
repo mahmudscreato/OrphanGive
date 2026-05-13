@@ -22,7 +22,7 @@ export default async function VerifyPage({
         : "";
 
   return (
-    <main className="bg-cream">
+    <div className="bg-cream">
       <section className="px-6 pt-32 pb-20 max-md:pt-28 max-md:pb-16">
         <div className="max-w-[520px] mx-auto">
           <div className="eyebrow-tag">Verify your email</div>
@@ -46,13 +46,13 @@ export default async function VerifyPage({
           <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px]">
             <Link
               href={`/signup${email ? `?email=${encodeURIComponent(email)}` : ""}`}
-              className="text-slate hover:text-tangerine-deep transition-colors"
+              className="text-slate hover:text-tangerine-deeper transition-colors"
             >
               ← Use a different email
             </Link>
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
