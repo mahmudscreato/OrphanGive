@@ -52,15 +52,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const childIds = await getActiveChildIds();
 
+  // Session 21 — priorities tuned per spec:
+  //   1.0   homepage (changefreq weekly per spec, retained `daily`
+  //         in this codebase since the homepage live-data band
+  //         changes that often)
+  //   0.9   /children — re-listed daily as new profiles land
+  //   0.7   foundational marketing pages (about, how-it-works)
+  //   0.6   /faq — content stable, lower change cadence
+  //   0.5   secondary content (contact, help, for-charities,
+  //         transparency)
+  //   0.4   /stories — kept low until the publishing feature lands
+  // /signin removed: no SEO value, only adds noise to the index.
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: now, changeFrequency: "daily", priority: 1.0 },
     { url: `${BASE_URL}/children`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
     { url: `${BASE_URL}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE_URL}/how-it-works`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
-    { url: `${BASE_URL}/for-charities`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
-    { url: `${BASE_URL}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
-    { url: `${BASE_URL}/stories`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
-    { url: `${BASE_URL}/signin`, lastModified: now, changeFrequency: "yearly", priority: 0.4 },
+    { url: `${BASE_URL}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
+    { url: `${BASE_URL}/contact`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/help`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/for-charities`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/transparency`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+    { url: `${BASE_URL}/stories`, lastModified: now, changeFrequency: "weekly", priority: 0.4 },
   ];
 
   // Legal pages — declared in the sitemap even though they

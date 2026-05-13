@@ -49,7 +49,7 @@ const COLUMNS: FooterColumn[] = [
 const CONNECT_LINKS: FooterLink[] = [
   { href: "/contact", label: "Contact" },
   { href: "/signin", label: "Sign In" },
-  { href: "/about", label: "Volunteer" },
+  { href: "/volunteer", label: "Volunteer" },
   { href: "/help", label: "Help Centre" },
 ];
 

@@ -18,7 +18,12 @@
 // stylesheet being injected (which it isn't here). Inline styles
 // only, system fonts only.
 
+// Sentry integration (Session 21): same pattern as error.tsx.
+// `captureException` is a no-op when the DSN env var is unset, so
+// we call it unconditionally.
+
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 type Props = {
   error: Error & { digest?: string };
@@ -29,15 +34,10 @@ export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.error("[global-error]", error.digest ?? error.message, error);
-    if (typeof window !== "undefined") {
-      const w = window as unknown as {
-        Sentry?: { captureException?: (e: unknown) => void };
-      };
-      try {
-        w.Sentry?.captureException?.(error);
-      } catch {
-        /* never let the reporter break the boundary */
-      }
+    try {
+      Sentry.captureException(error);
+    } catch {
+      /* never let the reporter break the boundary */
     }
   }, [error]);
 

@@ -7,15 +7,17 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { CartIconButton } from "@/components/cart/CartIconButton";
 
-// Session 16 REDO — "For charities" moved to the footer.
-// Part 3 Item 4 — "How it works" removed from the top-nav. The
-// /how-it-works route still exists (Hero CTA + footer link to
-// it), it's just no longer surfaced as a top-level nav item.
+// Session 32 — "How It Works" added back between Children and
+// Stories per Mahmud's review. Contact link fixed: was a
+// `mailto:hello@orphangive.org` (no longer the canonical inbox);
+// now routes to the in-app /contact page (built in Session 19,
+// wired to support@orphangive.org via Resend in this session).
 const NAV_LINKS = [
   { href: "/children", label: "Children" },
+  { href: "/how-it-works", label: "How It Works" },
   { href: "/stories", label: "Stories" },
   { href: "/about", label: "About" },
-  { href: "mailto:hello@orphangive.org", label: "Contact" },
+  { href: "/contact", label: "Contact" },
 ];
 
 function isActive(pathname: string, href: string) {

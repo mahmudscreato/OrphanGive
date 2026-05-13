@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { buildPageMetadata } from "@/lib/page-metadata";
 import { ProfileHero } from "@/components/profile/ProfileHero";
 import { StorySection } from "@/components/profile/StorySection";
 import { MomentsGallery } from "@/components/profile/MomentsGallery";
@@ -35,25 +36,38 @@ export const dynamic = "force-dynamic";
 // description does NOT surface the child's story, district,
 // guardian details, or anything else — those live behind the
 // reveal-request flow and shouldn't leak into social previews or
-// search engine snippets. OG image inherits the site default (no
-// child photo in social cards — same privacy concern).
+// search engine snippets. OG image stays on the site default
+// (no child photo in social cards — same privacy concern).
+//
+// Session 21 — full Metadata block (openGraph + twitter + canonical
+// URL) via the shared `buildPageMetadata` helper, so social-share
+// cards render with the right URL and image.
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  let name: string | null = null;
   try {
     const child = await getChildById(id, "admin");
-    const name = child?.display_name?.trim() ?? null;
-    return {
-      title: name ? `Sponsor ${name}` : "Sponsor a child",
-      description:
-        "Help a child in Bangladesh through verified sponsorship. Operated by Children's Heaven Trust.",
-    };
+    name = child?.display_name?.trim() ?? null;
   } catch {
-    return { title: "Sponsor a child" };
+    // Fall through to the generic metadata below.
   }
+
+  const title = name
+    ? `${name} — Sponsor a verified child`
+    : "Sponsor a verified child";
+  const description = name
+    ? `Help ${name} in Bangladesh through monthly sponsorship. Profile verified by Children's Heaven Trust — name and photo published only with the guardian's consent.`
+    : "Help a verified child in Bangladesh through monthly sponsorship. All profiles reviewed by Children's Heaven Trust before publication.";
+
+  return buildPageMetadata({
+    path: `/children/${id}`,
+    title,
+    description,
+  });
 }
 
 export default async function ChildProfilePage({
