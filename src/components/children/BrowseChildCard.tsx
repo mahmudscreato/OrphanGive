@@ -95,6 +95,29 @@ function LockIcon({ className = "" }: { className?: string }) {
   );
 }
 
+// Session 36 — placeholder asset blocklist. The homepage uses the
+// same env var to drop logo-as-placeholder rows from the carousel
+// (see FeaturedChildren). On /children every active child must show
+// up regardless, so instead we treat blocklisted IDs as "no photo"
+// and route them through the dignified placeholder branch below.
+// process.env.NEXT_PUBLIC_* is inlined at build time, so reading it
+// here in a client component is safe.
+const PLACEHOLDER_BLOCKLIST: ReadonlySet<string> = new Set(
+  (process.env.NEXT_PUBLIC_PLACEHOLDER_ASSET_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0),
+);
+
+function isUsablePhotoId(id: string | null | undefined): id is string {
+  if (typeof id !== "string") return false;
+  const trimmed = id.trim();
+  // Directus UUIDs are 36 chars; anything shorter is almost certainly garbage.
+  if (trimmed.length < 8) return false;
+  if (PLACEHOLDER_BLOCKLIST.has(trimmed)) return false;
+  return true;
+}
+
 function ChildPhoto({
   photo,
   name,
@@ -104,7 +127,7 @@ function ChildPhoto({
   name: string;
   preload: boolean;
 }) {
-  const src = directusAssetUrl(photo);
+  const src = isUsablePhotoId(photo) ? directusAssetUrl(photo) : null;
   if (src) {
     return (
       <ProtectedChildImage
@@ -259,10 +282,14 @@ export function BrowseChildCard({
 
         {/* Support button — sits OUTSIDE the profile link wrapper so
             its click target routes to /sponsor/[id], not the profile.
-            See the click-model note in the file docstring. */}
+            See the click-model note in the file docstring.
+            Session 35 contrast fix: text-ink (was text-white). Was
+            missed in the original Session 35 sweep — the homepage
+            FeaturedChildren CTA was caught by the regex but this one
+            wasn't. Same 5.91:1 ink-on-orange-solid as the homepage. */}
         <Link
           href={`/sponsor/${child.id}`}
-          className="group/cta mt-4 inline-flex items-center justify-center w-full gap-2 rounded-full bg-orange-solid text-white font-body font-semibold py-3 px-5 text-base transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
+          className="group/cta mt-4 inline-flex items-center justify-center w-full gap-2 rounded-full bg-orange-solid text-ink font-body font-semibold py-3 px-5 text-base transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
         >
           Support {first}
           <span
@@ -272,6 +299,28 @@ export function BrowseChildCard({
             →
           </span>
         </Link>
+
+        {/* Session 36 — secondary "View profile" link. Routes to the
+            same /children/[id] page the photo + name already link to,
+            but surfaces it as an explicit action so donors who want
+            to read about a child before deciding to support don't
+            have to discover it. Centred under the primary CTA, smaller
+            text weight, OG-orange. Same visual treatment as the
+            homepage "Browse More Children →" outline-style link. */}
+        <div className="mt-3 text-center">
+          <Link
+            href={`/children/${child.id}`}
+            className="group/profile inline-flex items-center gap-1.5 text-[13.5px] text-tangerine-deeper font-medium underline-offset-4 hover:underline transition-colors"
+          >
+            View profile
+            <span
+              aria-hidden="true"
+              className="inline-block transition-transform duration-200 group-hover/profile:translate-x-0.5"
+            >
+              →
+            </span>
+          </Link>
+        </div>
       </div>
     </motion.div>
   );

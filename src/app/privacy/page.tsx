@@ -22,7 +22,7 @@ export async function generateMetadata() {
     title: page?.title ? `${page.title} — OrphanGive` : "Privacy policy — OrphanGive",
     description:
       page?.meta_description ??
-      "How OrphanGive collects, uses, and protects donor and child data. Operated by Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
+      "How OrphanGive collects, uses, and protects donor and child data. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
   };
 }
 
@@ -64,8 +64,8 @@ export default async function PrivacyPage() {
                 Bangladesh-registered organization (registered
                 address: Ta 135/B, Gulshan Badda Link Road, Dhaka
                 1212, Bangladesh), in partnership with{" "}
-                <strong>Children&apos;s Heaven Trust</strong> (NGO
-                Affairs Bureau registration: Reg. iv-98/2021).
+                <strong>Children&apos;s Heaven Trust</strong> (Reg.
+                iv-98/2021).
                 Goodverse Foundation is the operating entity that
                 holds donor data and runs the donor-facing service;
                 Children&apos;s Heaven Trust performs ground

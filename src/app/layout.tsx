@@ -71,7 +71,7 @@ const DEFAULT_OG_IMAGE =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/v1778388529/OG_Logo_SVG_vdmpqc.svg";
 
 const DEFAULT_DESCRIPTION =
-  "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Children's Heaven Trust (Reg. iv-98/2021), an NGO Affairs Bureau registered charity.";
+  "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021).";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

@@ -667,6 +667,13 @@ export type ChildQueueBadge = {
   hasActiveSponsor: boolean;
   queuedCount: number;
   isFull: boolean;
+  // Session 36 — payment_schedule of the ACTIVE sponsorship (queue_position=0).
+  // Lets the /children sort distinguish Prepaid (`monthly_prepaid`) from
+  // recurring Monthly (`monthly` or null). Null when no active sponsor.
+  // The queued sponsorships' schedules are not tracked here — by definition
+  // a queued donor hasn't started paying, so their schedule doesn't affect
+  // how the card is currently sponsored.
+  activeSchedule: "monthly" | "monthly_prepaid" | null;
 };
 
 export async function getMonthlyQueueStateByChild(
@@ -685,12 +692,13 @@ export async function getMonthlyQueueStateByChild(
             { payment_mode: { _eq: "monthly" } },
           ],
         },
-        fields: ["child", "queue_position"],
+        fields: ["child", "queue_position", "payment_schedule"],
         limit: -1,
       } as never),
     )) as unknown as Array<{
       child: string | { id: string };
       queue_position: number | null;
+      payment_schedule: "monthly" | "monthly_prepaid" | null;
     }>;
     for (const r of rows ?? []) {
       const id = typeof r.child === "string" ? r.child : r.child?.id;
@@ -700,9 +708,14 @@ export async function getMonthlyQueueStateByChild(
         hasActiveSponsor: false,
         queuedCount: 0,
         isFull: false,
+        activeSchedule: null,
       };
-      if (pos === 0) cur.hasActiveSponsor = true;
-      else cur.queuedCount += 1;
+      if (pos === 0) {
+        cur.hasActiveSponsor = true;
+        cur.activeSchedule = r.payment_schedule ?? null;
+      } else {
+        cur.queuedCount += 1;
+      }
       cur.isFull = cur.queuedCount >= QUEUE_DEPTH_LIMIT_LOCAL;
       out.set(id, cur);
     }
