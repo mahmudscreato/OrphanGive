@@ -1,5 +1,5 @@
-// LEGAL DRAFT — Mahmud: review with Bangladesh legal counsel before
-// merging to main. Do NOT publish without legal sign-off.
+// Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
+// Any further changes should be reviewed before publication.
 
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
@@ -42,7 +42,7 @@ export default async function TermsPage() {
       headlinePart1="The rules of the road."
       headlinePart2="Plainly written."
       subCopy="By using OrphanGive you agree to the terms below. They cover what we offer, what we ask of you, and what either of us can do if something goes wrong. Written to be understood — not to hide behind."
-      lastUpdated="[Date TBD upon legal review]"
+      lastUpdated="13 May 2026"
       closingTopic="these terms"
       sections={[
         {
@@ -64,9 +64,14 @@ export default async function TermsPage() {
               </p>
               <p>
                 These terms form a binding agreement between you and{" "}
-                <strong>Goodverse Foundation</strong>, the operating entity
-                behind OrphanGive.
+                <strong>Goodverse Foundation</strong>, the operating
+                entity behind OrphanGive. Goodverse Foundation is a
+                Bangladesh-registered organization with its
+                registered address at Ta 135/B, Gulshan Badda Link
+                Road, Dhaka 1212, Bangladesh.
               </p>
+              {/* TODO: Goodverse Foundation statutory registration
+                  number — to be added before final publication. */}
             </>
           ),
         },
@@ -137,6 +142,22 @@ export default async function TermsPage() {
                 </a>
                 . By donating, you acknowledge that funds may be deployed on
                 the ground before any refund request can be processed.
+              </p>
+              <p>
+                <strong>International donors and tax treatment:</strong>{" "}
+                OrphanGive accepts donations from international
+                donors via Stripe. Donations are processed in your
+                local currency.{" "}
+                <strong>
+                  OrphanGive does not provide tax receipts valid in
+                  jurisdictions other than Bangladesh.
+                </strong>{" "}
+                Whether your donation is tax-deductible in your
+                country is governed by your local tax law and the
+                registration status of Goodverse Foundation in your
+                jurisdiction (currently registered in Bangladesh
+                only). Donors should consult their local tax advisor
+                before claiming any deduction.
               </p>
             </>
           ),
@@ -220,14 +241,16 @@ export default async function TermsPage() {
                 particular child, sponsorship, or donor experience.
               </p>
               <p>
-                To the maximum extent permitted by applicable law, Goodverse
-                Foundation and Children&apos;s Heaven Trust are not liable for
-                indirect, incidental, consequential, or punitive damages
-                arising out of your use of the service. Our aggregate
-                liability for any direct loss attributable to our gross
-                negligence will not exceed the total amount you have donated
-                through the service in the twelve (12) months preceding the
-                event giving rise to the claim.
+                To the maximum extent permitted by applicable law,
+                Goodverse Foundation and Children&apos;s Heaven Trust
+                are not liable for indirect, incidental,
+                consequential, or punitive damages arising out of
+                your use of the service. Our aggregate liability for
+                any direct loss attributable to our gross negligence
+                is capped at <strong>the lower of (a)</strong> the
+                total amount you have donated through the service in
+                the twelve (12) months preceding the event giving
+                rise to the claim, <strong>or (b) BDT 100,000</strong>.
               </p>
               <p>
                 We are not liable for delays or failures caused by

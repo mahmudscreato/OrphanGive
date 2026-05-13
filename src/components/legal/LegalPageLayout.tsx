@@ -72,20 +72,11 @@ export function LegalPageLayout({
             {subCopy}
           </p>
 
-          {/* Last-updated chip + DRAFT badge */}
+          {/* Last-updated chip. Session 33 — Draft badge removed
+              after Bangladesh counsel review (13 May 2026). */}
           <div className="mt-6 flex items-center gap-3 flex-wrap">
             <span className="inline-flex items-center gap-2 rounded-full bg-white border border-ink/[0.08] px-3 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase text-ink-soft">
               Last updated: {lastUpdated}
-            </span>
-            <span
-              className="inline-flex items-center gap-2 rounded-full bg-[#FEEFEF] border border-[#F4C7C7] px-3 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase text-[#A02B2B] print:hidden"
-              title="This page is a draft pending legal review. Do not treat as final policy until reviewed."
-            >
-              <span
-                aria-hidden="true"
-                className="w-1.5 h-1.5 rounded-full bg-[#A02B2B]"
-              />
-              Draft — pending legal review
             </span>
           </div>
         </div>

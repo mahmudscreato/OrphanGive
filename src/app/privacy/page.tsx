@@ -1,11 +1,11 @@
-// LEGAL DRAFT — Mahmud: review with Bangladesh legal counsel before
-// merging to main. Do NOT publish without legal sign-off.
+// Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
+// Any further changes should be reviewed before publication.
 //
 // Session 26 — drafted privacy policy with CMS escape hatch. If a
 // published row exists in the Directus `site_page` collection with
 // slug='privacy' AND a non-empty `content` field, the CMS version
 // renders (legal can edit copy without a code commit). Otherwise
-// the hardcoded draft below renders.
+// the hardcoded counsel-reviewed version below renders.
 
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
@@ -50,7 +50,7 @@ export default async function PrivacyPage() {
       headlinePart1="How we protect your data."
       headlinePart2="And theirs."
       subCopy="OrphanGive holds donor information and child profiles with care. This policy explains what we collect, why we collect it, who we share it with, and the rights you and the guardians of children on this site retain over that information."
-      lastUpdated="[Date TBD upon legal review]"
+      lastUpdated="13 May 2026"
       closingTopic="privacy"
       sections={[
         {
@@ -59,15 +59,20 @@ export default async function PrivacyPage() {
           content: (
             <>
               <p>
-                OrphanGive is a verified child sponsorship network operated as a
-                project of <strong>Goodverse Foundation</strong> in
-                collaboration with <strong>Children&apos;s Heaven Trust</strong>{" "}
-                (registered with the NGO Affairs Bureau of Bangladesh,
-                Reg. iv-98/2021). Goodverse Foundation is the operating entity
-                that holds donor data and runs the donor-facing service;
-                Children&apos;s Heaven Trust performs ground verification of
-                every listed child.
+                OrphanGive is a child-sponsorship service operated by{" "}
+                <strong>Goodverse Foundation</strong>, a
+                Bangladesh-registered organization (registered
+                address: Ta 135/B, Gulshan Badda Link Road, Dhaka
+                1212, Bangladesh), in partnership with{" "}
+                <strong>Children&apos;s Heaven Trust</strong> (NGO
+                Affairs Bureau registration: Reg. iv-98/2021).
+                Goodverse Foundation is the operating entity that
+                holds donor data and runs the donor-facing service;
+                Children&apos;s Heaven Trust performs ground
+                verification of every listed child.
               </p>
+              {/* TODO: Goodverse Foundation statutory registration
+                  number — to be added before final publication. */}
               <p>
                 For the purposes of this policy, &quot;we,&quot; &quot;us,&quot;
                 and &quot;OrphanGive&quot; refer to Goodverse Foundation acting
@@ -161,14 +166,26 @@ export default async function PrivacyPage() {
                     sponsor-queue state, broader narrative).
                   </>,
                   <>
-                    <strong>Tier 3 — sponsoring donor with reveal approval:</strong>{" "}
-                    identifying details (exact address, school name, guardian
-                    name and contact) for direct contact with the guardian.
-                    Reveal approvals expire after 90 days and can be revoked
-                    by the donor or by the guardian at any time.
+                    <strong>Tier 3 — sponsoring donor with approved reveal:</strong>{" "}
+                    visible only after a donor sponsors a specific
+                    child AND requests + receives approval to view
+                    more details. Includes Tier 2 plus: more
+                    detailed family situation, direct progress
+                    updates from the field team, and approved
+                    photographs over time.
                   </>,
                 ]}
               />
+              <p>
+                <strong>
+                  Never visible to donors at any tier:
+                </strong>{" "}
+                the child&apos;s school name, exact home address,
+                full date of birth, guardian&apos;s name and contact
+                information, or precise geographic location. These
+                fields are held internally for operational purposes
+                only and are protected by encryption at rest.
+              </p>
             </>
           ),
         },
@@ -307,11 +324,15 @@ export default async function PrivacyPage() {
             <>
               <p>
                 OrphanGive operates under the laws of the People&apos;s
-                Republic of Bangladesh. Where applicable we observe the{" "}
-                <strong>Digital Security Act 2018</strong> with respect to
-                personal-data handling, and the protections available under
-                the <strong>Children Act 2013</strong> with respect to child
-                welfare and identifying information.
+                Republic of Bangladesh. Where applicable we observe{" "}
+                <strong>
+                  applicable Bangladesh law including the Cyber Security
+                  Ordinance, 2025
+                </strong>{" "}
+                with respect to personal-data handling, and the
+                protections available under the{" "}
+                <strong>Children Act, 2013</strong> with respect to
+                child welfare and identifying information.
               </p>
               <p>
                 This policy is not framed by, and does not claim compliance

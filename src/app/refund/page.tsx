@@ -1,5 +1,5 @@
-// LEGAL DRAFT — Mahmud: review with Bangladesh legal counsel before
-// merging to main. Do NOT publish without legal sign-off.
+// Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
+// Any further changes should be reviewed before publication.
 
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
@@ -42,7 +42,7 @@ export default async function RefundPage() {
       headlinePart1="Donations support real children."
       headlinePart2="Refunds are limited."
       subCopy="We treat every donation as a real commitment to a real child. Funds are usually deployed quickly, which limits when a refund is possible. This policy explains the cases where a refund is available, and how to request one."
-      lastUpdated="[Date TBD upon legal review]"
+      lastUpdated="13 May 2026"
       closingTopic="a donation"
       sections={[
         {
@@ -118,7 +118,7 @@ export default async function RefundPage() {
                 items={[
                   "Change of mind after the donation has been deployed on the ground.",
                   "Completed monthly cycles in a recurring sponsorship — once a month's payment has been delivered to the child, it cannot be reclaimed.",
-                  "Donations for which a tax-relief claim has already been filed in your jurisdiction. Reversing the donation would also require reversing the tax claim; we cannot facilitate that.",
+                  "Donations for which the donor has already claimed a tax-deductible benefit in any jurisdiction.",
                   "Donations made more than 90 days prior to the refund request, except in cases of demonstrable fraud.",
                   "Foreign-exchange losses arising from the FX rate Stripe applied at the time of the original charge. Where a refund is approved it will be issued in your original payment currency at the rate Stripe applies at the time of refund — which may differ from the original.",
                 ]}
@@ -194,11 +194,10 @@ export default async function RefundPage() {
                 un-deployed months.
               </p>
               <p>
-                Pro-rated refunds are offered at OrphanGive&apos;s discretion
-                and are based on the number of monthly cycles that had not
-                yet been allocated at the moment of cancellation. We aim to
-                be generous in this judgement; in practice most
-                cancellation-with-unused-months requests are honoured.
+                Pro-rated refunds for unused prepaid months are
+                issued at OrphanGive&apos;s discretion, subject to
+                verification that the funds have not yet been
+                deployed for the child&apos;s support.
               </p>
             </>
           ),

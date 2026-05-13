@@ -1,11 +1,10 @@
-// LEGAL DRAFT — Mahmud: review with Bangladesh legal counsel before
-// merging to main. Do NOT publish without legal sign-off.
+// Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
+// Any further changes should be reviewed before publication.
 //
 // Safeguarding is the most important legal page on a child-
-// focused service. The draft below is intentionally conservative
-// and avoids commitments OrphanGive may not currently be able to
-// keep. Please walk through it with Children's Heaven Trust's
-// designated safeguarding lead before publishing.
+// focused service. Walk through any future changes with
+// Children's Heaven Trust's designated safeguarding lead
+// (Sarmin Sultana) before publishing.
 
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
@@ -50,7 +49,7 @@ export default async function SafeguardingPage() {
       headlinePart1="Children come first."
       headlinePart2="Always."
       subCopy="OrphanGive is committed to safeguarding the welfare, dignity, and privacy of every child whose profile appears on this service. This policy describes how we and our partner organisations meet that commitment — and how anyone with a concern can raise it."
-      lastUpdated="[Date TBD upon legal review]"
+      lastUpdated="13 May 2026"
       closingTopic="safeguarding"
       sections={[
         {
@@ -190,17 +189,29 @@ export default async function SafeguardingPage() {
                 ]}
               />
               <p>
-                Email{" "}
+                <strong>Email:</strong>{" "}
                 <a
-                  href="mailto:support@orphangive.org"
+                  href="mailto:support@orphangive.org?subject=Safeguarding%20concern"
                   className="text-tangerine-deep underline-offset-4 hover:underline font-medium"
                 >
                   support@orphangive.org
                 </a>{" "}
-                with subject line beginning &quot;Safeguarding:&quot;. Provide
-                as much detail as you can. You may report anonymously,
-                although a contact address helps us follow up if more
-                information is needed.
+                (with &quot;Safeguarding concern&quot; in the subject
+                line). Provide as much detail as you can. You may
+                report anonymously, although a contact address helps
+                us follow up if more information is needed.
+              </p>
+              <p>
+                <strong>Designated safeguarding lead:</strong> Sarmin
+                Sultana, Children&apos;s Heaven Trust.
+                <br />
+                <strong>Direct contact:</strong>{" "}
+                <a
+                  href="mailto:childrens.hvn@gmail.com"
+                  className="text-tangerine-deep underline-offset-4 hover:underline font-medium"
+                >
+                  childrens.hvn@gmail.com
+                </a>
               </p>
               <p>
                 <strong>Urgent concerns:</strong> for any concern requiring
@@ -289,13 +300,16 @@ export default async function SafeguardingPage() {
           content: (
             <>
               <p>
-                This policy operates within the framework of the laws of
-                the People&apos;s Republic of Bangladesh, in particular the{" "}
-                <strong>Children Act 2013</strong>, which sets out the
-                rights of children and the obligations of those who work
-                with them, and the relevant provisions of the{" "}
-                <strong>Digital Security Act 2018</strong> with respect to
-                the handling of children&apos;s personal data.
+                OrphanGive operates in compliance with applicable
+                Bangladesh law, including the{" "}
+                <strong>Children Act, 2013</strong> and other
+                applicable child protection laws, and{" "}
+                <strong>
+                  applicable Bangladesh law including the Cyber Security
+                  Ordinance, 2025
+                </strong>{" "}
+                with respect to the handling of children&apos;s
+                personal data.
               </p>
               <p>
                 Where this policy and applicable Bangladesh law diverge in

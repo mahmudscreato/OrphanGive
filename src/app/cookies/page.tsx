@@ -1,5 +1,5 @@
-// LEGAL DRAFT — Mahmud: review with Bangladesh legal counsel before
-// merging to main. Do NOT publish without legal sign-off.
+// Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
+// Any further changes should be reviewed before publication.
 
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
@@ -41,7 +41,7 @@ export default async function CookiesPage() {
       headlinePart1="Strictly necessary."
       headlinePart2="Nothing else."
       subCopy="OrphanGive uses a small number of cookies — only those required to keep you signed in, to process your donation safely, and to defend against common web attacks. No advertising trackers, no analytics scripts, no third-party data brokers."
-      lastUpdated="[Date TBD upon legal review]"
+      lastUpdated="13 May 2026"
       closingTopic="cookies"
       sections={[
         {
@@ -102,6 +102,19 @@ export default async function CookiesPage() {
                   </>,
                 ]}
               />
+              <p>
+                <strong>
+                  By using OrphanGive, you acknowledge that essential
+                  cookies (authentication, session management, CSRF
+                  protection) are necessary for the service to
+                  function and are set when you visit the site.
+                  These cookies do not require separate consent
+                  under applicable Bangladesh law. You may disable
+                  cookies in your browser settings, but doing so
+                  will prevent sign-in and donation features from
+                  working.
+                </strong>
+              </p>
             </>
           ),
         },
