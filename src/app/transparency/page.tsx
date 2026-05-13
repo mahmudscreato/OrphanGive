@@ -1,31 +1,25 @@
 // =====================================================================
-// Session 20 — /transparency page.
+// Session 20 — /transparency page (Session 32 review applied).
 //
 //   ⚠️  TODO: confirm with Mahmud BEFORE pushing public.
 //
-//   The numbers and regulatory identifiers below are placeholders
-//   provided in the Session 20 brief, not authoritative figures.
-//   They MUST be confirmed before this page goes live, because the
-//   page itself is a public commitment to accuracy.
+//   Per Session 32 review: TBD-NGOAB and TBD-BB-FXCLEAR removed
+//   entirely. Goodverse and Children's Heaven Trust are the
+//   regulated parties (referenced in the operating-entity +
+//   verification-partner rows of the Regulatory Standing block);
+//   OrphanGive itself is not separately regulated. TBD-AUDITOR
+//   replaced with stable copy referencing a Bangladesh Chartered
+//   Accountant firm (no individual auditor named).
 //
-//   Items needing sign-off (search for `TBD-*` markers in this file):
+//   Remaining items needing sign-off:
 //
 //     - TBD-ALLOCATION:   85 / 10 / 5 split between child support,
 //                         operations, and service infra. Confirm with
 //                         the finance team that these numbers reflect
 //                         actual fund allocation.
 //
-//     - TBD-AUDITOR:      External auditor name + contact. Currently
-//                         renders as "TBD".
-//
-//     - TBD-NGOAB:        NGO Affairs Bureau registration number.
-//                         Currently renders as "TBD".
-//
-//     - TBD-BB-FXCLEAR:   Bangladesh Bank foreign exchange clearance
-//                         reference. Currently renders as "TBD".
-//
-//   Until each TBD-* is filled in OR removed (with the corresponding
-//   block in the page also removed), this page is in draft.
+//   Until TBD-ALLOCATION is filled in OR the percentages are
+//   removed, this page is in draft.
 //
 // =====================================================================
 
@@ -275,11 +269,11 @@ export default function TransparencyPage() {
                 <ChartIcon className="w-4 h-4" />
               </span>
               <span className="text-base text-ink leading-[1.6]">
-                <strong className="font-semibold">External auditor:</strong>{" "}
-                {/* TBD-AUDITOR — fill in before publish. */}
-                <span className="font-mono text-sm text-ink-soft">
-                  TBD
-                </span>
+                <strong className="font-semibold">External audit:</strong>{" "}
+                OrphanGive&apos;s annual financial accounts are
+                reviewed by a Bangladesh-based Chartered Accountant
+                firm. Audit findings inform our annual transparency
+                report.
               </span>
             </li>
             <li className="flex gap-4 items-start">
@@ -310,24 +304,12 @@ export default function TransparencyPage() {
                 Goodverse Foundation, registered in Bangladesh.
               </dd>
             </div>
-            <div>
-              <dt className="font-display font-semibold text-base text-ink">
-                NGO Affairs Bureau registration
-              </dt>
-              <dd className="mt-1 text-base text-ink-soft leading-[1.55]">
-                {/* TBD-NGOAB — fill in before publish. */}
-                <span className="font-mono text-sm">TBD</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="font-display font-semibold text-base text-ink">
-                Bangladesh Bank FX clearance
-              </dt>
-              <dd className="mt-1 text-base text-ink-soft leading-[1.55]">
-                {/* TBD-BB-FXCLEAR — fill in before publish. */}
-                <span className="font-mono text-sm">TBD</span>
-              </dd>
-            </div>
+            {/* Session 32 — NGOAB + BB-FXCLEAR rows removed per
+                Mahmud's review. Goodverse and Children's Heaven
+                Trust are the regulated parties; OrphanGive surfaces
+                them via the operating-entity + verification-partner
+                rows below rather than re-stating their registration
+                numbers as if they were OrphanGive's own. */}
             <div>
               <dt className="font-display font-semibold text-base text-ink">
                 Verification partner

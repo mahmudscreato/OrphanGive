@@ -129,7 +129,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     faqs: [
       {
         q: "What payment methods do you accept?",
-        a: "Credit and debit cards through Stripe — Visa, Mastercard, American Express. Local Bangladesh payment methods (bKash, Nagad) are on the roadmap but not live yet. International cards work for donors based outside Bangladesh.",
+        a: "Credit and debit cards through Stripe — Visa, Mastercard, American Express. bKash and Nagad payment options are actively being integrated and will be available within approximately one month. In the meantime, donations through international card payments are fully supported via Stripe.",
       },
       {
         q: "Is my payment secure?",
@@ -141,7 +141,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: "When am I charged?",
-        a: "The first payment clears at checkout. Subsequent monthly payments run on the same calendar day each month — if you sign up on the 14th, future payments run on the 14th. The charge appears on your card statement as 'OrphanGive' or 'CH Trust'.",
+        a: "The first payment clears at checkout. Subsequent monthly payments run on the same calendar day each month — if you sign up on the 14th, future payments run on the 14th. Your card statement will show \"OrphanGive\" as the statement descriptor. This is set up directly with our payment processor, Stripe.",
       },
       {
         q: "Can I get a refund?",
@@ -168,6 +168,36 @@ const FAQ_GROUPS: FaqGroup[] = [
       {
         q: "How do I delete my account?",
         a: "Email support@orphangive.org with the request. We'll cancel any active sponsorships, delete personal data within 30 days, and send confirmation when complete. Your donation history is retained in aggregate form for the required regulatory period.",
+      },
+    ],
+  },
+  // Session 32 — Mahmud's review answer #6: new group covering
+  // guardian-side profile submission. The contact-form "I know
+  // an orphan" subject (added in this same session) is the entry
+  // point referenced by the first answer.
+  {
+    id: "submitting-profiles",
+    title: "Submitting an orphan profile",
+    faqs: [
+      {
+        q: "I know an orphan child who needs support. Can I submit their profile to OrphanGive?",
+        a: "Yes. If you are a legal guardian of an orphan child, or you know a child whose guardian wants to apply for sponsorship, you can submit a request through our contact form. Choose \"I know an orphan who needs support\" as the subject, fill in a few simple details, and our admin team will call you to discuss next steps. We work closely with Children's Heaven Trust and verified field partners to make sure every profile we publish meets our verification standards.",
+      },
+      {
+        q: "Who can submit a child's profile?",
+        a: "Only legal guardians or close family members of the child should initiate a profile submission. Community members and well-wishers can refer a family by completing our contact form, and our team will reach out to the family directly. We cannot accept profiles submitted without the guardian's knowledge or consent.",
+      },
+      {
+        q: "What information will I need to provide?",
+        a: "For the initial referral, only basic information: your name, contact details, the child's first name, their approximate age, their general location, and a brief description of their situation. After our admin team contacts you, we will guide you through what documents and details are needed for full verification — typically the child's birth certificate, the death certificate of the deceased parent(s), proof of guardianship, and a recent photograph (only with your explicit consent).",
+      },
+      {
+        q: "How long does the verification process take?",
+        a: "From initial referral to a published profile typically takes 4 to 8 weeks. The process includes a phone conversation, document review, a verification visit by Children's Heaven Trust field workers, photograph consent (if applicable), and final review before publication. We do not rush this process — every step protects the child's privacy and dignity.",
+      },
+      {
+        q: "What happens if my submission is not accepted?",
+        a: "If we cannot accept a child's profile, we will explain why clearly and respectfully. The most common reasons are: the child does not meet our orphan or vulnerable child criteria, documentation could not be verified, or the guardian declined photo consent (which we fully respect). In some cases we can refer the family to other Bangladesh-based support organizations.",
       },
     ],
   },

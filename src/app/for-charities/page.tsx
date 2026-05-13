@@ -29,10 +29,11 @@ const CH_LOGO =
 const GOODVERSE_URL = "https://www.goodverse.org";
 const CH_URL = "https://childrensheaventrust.org/";
 
-// Partnerships email — falls back to /contact route if Mahmud
-// hasn't set up the address. The mailto opens the user's mail
-// client; the route is a graceful fallback we link to elsewhere.
-const PARTNERSHIPS_MAILTO = "mailto:partnerships@orphangive.org";
+// Session 32 — partnerships@ collapsed to support@ per Mahmud's
+// review. All enquiries (general support, partnerships, press,
+// volunteer applications, orphan referrals) route through the
+// single support inbox.
+const PARTNERSHIPS_MAILTO = "mailto:support@orphangive.org";
 
 type ValueProp = {
   kind: "verified" | "privacy" | "transparent";

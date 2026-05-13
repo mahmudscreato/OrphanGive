@@ -23,7 +23,10 @@ export const metadata = buildPageMetadata({
 
 const SUPPORT_EMAIL = "support@orphangive.org";
 // TODO: confirm with Mahmud before publish.
-const PARTNERSHIPS_EMAIL = "partnerships@orphangive.org";
+// Session 32 — collapsed to support@ per Mahmud's review.
+// `partnerships@` mailbox doesn't exist; routing all enquiries
+// through the single support inbox.
+const PARTNERSHIPS_EMAIL = "support@orphangive.org";
 
 function MailIcon({ className = "" }: { className?: string }) {
   return (
@@ -131,9 +134,8 @@ export default function ContactPage() {
                 </div>
               </a>
 
-              {/* TODO-ADDRESS — confirm Goodverse Foundation
-                  Bangladesh registered address with Mahmud before
-                  publish. Currently renders as a visible TBD. */}
+              {/* Session 32 — real address + phone replace the
+                  earlier TBD placeholders. */}
               <div className="flex gap-4 items-start py-3 -mx-2 px-2">
                 <span className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl bg-orange-pale text-tangerine-deep">
                   <PinIcon className="w-5 h-5" />
@@ -142,15 +144,18 @@ export default function ContactPage() {
                   <div className="text-xs uppercase tracking-wider text-ink-soft font-medium mb-0.5">
                     Address
                   </div>
-                  <div className="font-mono text-sm text-ink-soft">
-                    TBD — Goodverse Foundation, Bangladesh
+                  <div className="text-sm text-ink leading-snug">
+                    Ta 135/B, Gulshan Badda Link Road,
+                    <br />
+                    Dhaka 1212, Bangladesh
                   </div>
                 </div>
               </div>
 
-              {/* TODO-PHONE — confirm whether a public-facing
-                  phone exists. If not, this row can be deleted. */}
-              <div className="flex gap-4 items-start py-3 -mx-2 px-2">
+              <a
+                href="tel:+8801713086508"
+                className="group flex gap-4 items-start py-3 -mx-2 px-2 rounded-xl hover:bg-cream transition-colors duration-200"
+              >
                 <span className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl bg-orange-pale text-tangerine-deep">
                   <PhoneIcon className="w-5 h-5" />
                 </span>
@@ -158,11 +163,11 @@ export default function ContactPage() {
                   <div className="text-xs uppercase tracking-wider text-ink-soft font-medium mb-0.5">
                     Phone
                   </div>
-                  <div className="font-mono text-sm text-ink-soft">
-                    TBD
+                  <div className="font-display font-semibold text-base text-ink group-hover:text-tangerine-deep transition-colors">
+                    +880 1713 086508
                   </div>
                 </div>
-              </div>
+              </a>
             </div>
 
             <div className="pt-5 border-t border-ink/[0.08]">
