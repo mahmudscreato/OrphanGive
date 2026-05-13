@@ -17,13 +17,50 @@
 // (Tracked in Session 17.5 Bucket C.)
 
 import { NextResponse, type NextRequest } from "next/server";
+import { createItem } from "@directus/sdk";
 import { sendEmail } from "@/lib/email";
+import { directusServer } from "@/lib/directus";
 import {
   OperationalNoticeEmail,
   type OperationalSection,
 } from "@/emails/OperationalNoticeEmail";
 
 export const runtime = "nodejs";
+
+// Session 34 Part B — every form submission also writes to the
+// Directus `form_submission` collection. The Resend email and the
+// Directus write are independent; either succeeding is enough for
+// the user to see a success state. See
+// DIRECTUS_FORM_SUBMISSION_SCHEMA.md for the collection shape.
+type FormSubmissionType =
+  | "contact_general"
+  | "orphan_referral"
+  | "volunteer_application";
+
+async function writeFormSubmission(args: {
+  submission_type: FormSubmissionType;
+  submitter_name: string;
+  submitter_email: string;
+  submitter_phone?: string;
+  subject: string;
+  message: string;
+  payload_json: unknown;
+}): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    await directusServer().request(
+      createItem("form_submission" as never, {
+        ...args,
+        status: "new",
+      } as never),
+    );
+    return { success: true };
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "unknown form_submission error";
+    console.error("[/api/contact] form_submission write failed:", msg);
+    return { success: false, error: msg };
+  }
+}
 
 const SUPPORT_EMAIL = "support@orphangive.org";
 
@@ -189,31 +226,87 @@ export async function POST(req: NextRequest) {
     ];
   }
 
-  // --- send via Resend --------------------------------------------
-  const result = await sendEmail({
-    to: SUPPORT_EMAIL,
-    subject,
-    template: OperationalNoticeEmail({
-      heading,
-      eyebrow,
-      intro,
-      sections,
-      replyToNudge: senderEmail,
-    }),
-    replyTo: senderEmail,
-  });
+  // --- Session 34 Part B — derive the form_submission row shape
+  //     from the same payload the email used. payload_json is the
+  //     full original `body`; structured fields surface the common
+  //     filterable values for the admin panel.
+  const submissionType: FormSubmissionType =
+    kind === "contact"
+      ? "contact_general"
+      : kind === "orphan_referral"
+        ? "orphan_referral"
+        : "volunteer_application";
 
-  if (!result.success) {
-    console.warn("[/api/contact] send failed:", result.error);
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Sorry, we couldn't send your message right now. Please email us directly at support@orphangive.org.",
-      },
-      { status: 502 },
-    );
+  const phone =
+    kind === "volunteer" && isString((p as Partial<VolunteerPayload>).phone)
+      ? (p as Partial<VolunteerPayload>).phone!.trim()
+      : undefined;
+
+  const messageField =
+    kind === "contact"
+      ? (p as Partial<GeneralPayload>).message?.trim() ?? ""
+      : kind === "orphan_referral"
+        ? (p as Partial<OrphanReferralPayload>).orphan?.description?.trim() ??
+          ""
+        : (p as Partial<VolunteerPayload>).motivation?.trim() ?? "";
+
+  // --- run email + DB write in parallel; treat as independent --
+  // Either succeeding is enough for the user to see success.
+  const [emailResult, dbResult] = await Promise.all([
+    sendEmail({
+      to: SUPPORT_EMAIL,
+      subject,
+      template: OperationalNoticeEmail({
+        heading,
+        eyebrow,
+        intro,
+        sections,
+        replyToNudge: senderEmail,
+      }),
+      replyTo: senderEmail,
+    }),
+    writeFormSubmission({
+      submission_type: submissionType,
+      submitter_name: senderName,
+      submitter_email: senderEmail,
+      ...(phone ? { submitter_phone: phone } : {}),
+      subject,
+      message: messageField,
+      payload_json: body,
+    }),
+  ]);
+
+  if (!emailResult.success) {
+    console.error("[/api/contact] Resend send failed:", {
+      kind,
+      to: SUPPORT_EMAIL,
+      subject,
+      error: emailResult.error,
+    });
+  }
+  if (!dbResult.success) {
+    console.error("[/api/contact] form_submission write failed:", dbResult.error);
   }
 
-  return NextResponse.json({ ok: true });
+  // Success if EITHER channel succeeded — Mahmud always has at
+  // least one record of the submission.
+  if (emailResult.success || dbResult.success) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // BOTH failed — only then surface a user-facing error. Surface
+  // the real cause in dev so the developer sees it; production
+  // keeps the user-friendly fallback message so we don't leak
+  // internals (quota / domain verification / DB schema).
+  const isProd = process.env.NODE_ENV === "production";
+  const debugMsg = `email=${emailResult.success ? "ok" : (emailResult as { error: string }).error} | db=${dbResult.success ? "ok" : dbResult.error}`;
+  return NextResponse.json(
+    {
+      ok: false,
+      error: isProd
+        ? "Sorry, we couldn't send your message right now. Please email us directly at support@orphangive.org."
+        : `[dev] Both channels failed. ${debugMsg}`,
+    },
+    { status: 502 },
+  );
 }
