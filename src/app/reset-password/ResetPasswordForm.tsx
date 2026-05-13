@@ -61,7 +61,7 @@ export function ResetPasswordForm({ token }: Props) {
         </p>
         <Link
           href="/signin"
-          className="mt-5 inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+          className="mt-5 inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
         >
           Go to sign in →
         </Link>
@@ -110,13 +110,13 @@ export function ResetPasswordForm({ token }: Props) {
       <button
         type="submit"
         disabled={pending || !password || !confirm}
-        className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
+        className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {pending ? "Updating…" : "Update password"}
       </button>
       <Link
         href="/signin"
-        className="self-start text-[13px] text-slate-soft hover:text-tangerine-deep transition-colors"
+        className="self-start text-[13px] text-slate-soft hover:text-tangerine-deeper transition-colors"
       >
         ← Back to sign in
       </Link>

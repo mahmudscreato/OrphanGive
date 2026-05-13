@@ -29,7 +29,7 @@ export default function SignUpPage() {
             Already have an account?{" "}
             <Link
               href="/signin"
-              className="text-tangerine-deep font-medium border-b-[1.5px] border-tangerine pb-0.5"
+              className="text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5"
             >
               Sign in →
             </Link>

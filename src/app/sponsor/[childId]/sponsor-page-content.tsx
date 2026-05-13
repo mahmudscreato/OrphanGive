@@ -494,7 +494,7 @@ export function SponsorPageContent({
           ) : null}
           <Link
             href={`/children/${child.id}`}
-            className="mt-5 inline-flex items-center gap-2 text-[13px] text-tangerine-deep font-medium border-b-[1.5px] border-tangerine pb-0.5"
+            className="mt-5 inline-flex items-center gap-2 text-[13px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5"
           >
             ← Back to {child.display_name.split(" ")[0]}&apos;s profile
           </Link>
@@ -573,7 +573,7 @@ export function SponsorPageContent({
                 className="mt-4 rounded-[14px] bg-white border border-ink/[0.08] px-4 py-3"
               >
                 <summary
-                  className="cursor-pointer text-[13px] text-tangerine-deep font-medium select-none"
+                  className="cursor-pointer text-[13px] text-tangerine-deeper font-medium select-none"
                   onClick={() => selectTier(OTHER_TIER_ID)}
                 >
                   Or choose another amount →
@@ -595,7 +595,7 @@ export function SponsorPageContent({
                   type="button"
                   onClick={confirmAmount}
                   disabled={amount === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue →
                 </button>
@@ -614,7 +614,7 @@ export function SponsorPageContent({
                   type="button"
                   onClick={confirmDuration}
                   disabled={!isDurationSelectionValid(duration)}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue →
                 </button>
@@ -641,7 +641,7 @@ export function SponsorPageContent({
                   type="button"
                   onClick={confirmSchedule}
                   disabled={schedule === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue →
                 </button>
@@ -671,7 +671,7 @@ export function SponsorPageContent({
                 <button
                   type="button"
                   onClick={confirmCause}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
                 >
                   Continue →
                 </button>
@@ -699,7 +699,7 @@ export function SponsorPageContent({
                 <button
                   type="button"
                   onClick={confirmVisibility}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
                 >
                   Continue →
                 </button>
@@ -778,7 +778,7 @@ export function SponsorPageContent({
           {cartItemCount > 0 && !success ? (
             <Link
               href="/cart"
-              className="inline-flex items-center gap-2 text-[13px] text-slate hover:text-tangerine-deep transition-colors"
+              className="inline-flex items-center gap-2 text-[13px] text-slate hover:text-tangerine-deeper transition-colors"
             >
               View cart ({cartItemCount}{" "}
               {cartItemCount === 1 ? "item" : "items"}) →
@@ -897,7 +897,7 @@ function SelfActiveMonthlyNote({
       </p>
       <Link
         href={`/dashboard/sponsorship/${sponsorshipId}`}
-        className="mt-2 inline-flex items-center gap-1 text-[13px] text-tangerine-deep font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
+        className="mt-2 inline-flex items-center gap-1 text-[13px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
       >
         Manage your monthly sponsorship →
       </Link>
@@ -910,7 +910,7 @@ function BackLink({ onClick, label }: { onClick: () => void; label: string }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deep transition-colors mb-3"
+      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors mb-3"
     >
       ← {label}
     </button>

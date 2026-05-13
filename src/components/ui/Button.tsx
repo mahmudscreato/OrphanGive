@@ -13,12 +13,23 @@ import type {
 // "white" is a solid white pill with ink text, the inverse of
 // `primary`; "outline-white" is its outline twin for secondary
 // CTAs on the same backgrounds.
+//
+// Session 35 — WCAG AA contrast fix (Option A):
+//   • `tangerine` variant: text-white → text-ink. White on tangerine
+//     was 2.33:1; ink on tangerine is 5.91:1 — passes AA body text.
+//     Hover bg (tangerine-deep #D97A0F) under ink is ~5:1 — also
+//     passes. The visual character is unchanged: still a pill, still
+//     orange, still reads as "click me" — just with dark text.
+//   • `primary` variant: hover state used to be cream-on-tangerine
+//     (same 2.33:1 fail). Added hover:text-ink so hover becomes
+//     ink-on-tangerine. Resting state (cream-on-ink) was already
+//     fine.
 type Variant = "primary" | "tangerine" | "outline" | "white" | "outline-white";
 type Size = "default" | "lg";
 
 const variantClasses: Record<Variant, string> = {
-  primary: "bg-ink text-cream hover:bg-tangerine",
-  tangerine: "bg-tangerine text-white hover:bg-tangerine-deep",
+  primary: "bg-ink text-cream hover:bg-tangerine hover:text-ink",
+  tangerine: "bg-tangerine text-ink hover:bg-tangerine-deep",
   outline:
     "bg-transparent text-ink border-[1.5px] border-ink hover:bg-ink hover:text-cream",
   white: "bg-white text-ink hover:bg-cream",

@@ -10,7 +10,7 @@ export default function PendingPage() {
       <section className="px-6 pt-32 pb-24 max-md:pt-28 max-md:pb-16">
         <div className="max-w-[640px] mx-auto text-center">
           <div
-            className="mx-auto w-16 h-16 rounded-full bg-moss-soft text-moss flex items-center justify-center"
+            className="mx-auto w-16 h-16 rounded-full bg-moss-soft text-moss-deep flex items-center justify-center"
             aria-hidden="true"
           >
             <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8">
@@ -41,13 +41,13 @@ export default function PendingPage() {
           <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
             <Link
               href="/children"
-              className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
+              className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px"
             >
               Browse children →
             </Link>
             <Link
               href="/signin"
-              className="text-[14px] text-slate hover:text-tangerine-deep transition-colors underline-offset-4 hover:underline"
+              className="text-[14px] text-slate hover:text-tangerine-deeper transition-colors underline-offset-4 hover:underline"
             >
               Sign in
             </Link>

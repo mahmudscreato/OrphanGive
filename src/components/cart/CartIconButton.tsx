@@ -54,7 +54,7 @@ export function CartIconButton() {
       </svg>
       <span
         aria-hidden="true"
-        className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-tangerine text-white font-mono text-[10px] font-semibold"
+        className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-tangerine text-ink font-mono text-[10px] font-semibold"
       >
         {count}
       </span>

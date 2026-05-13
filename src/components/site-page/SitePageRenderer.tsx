@@ -289,7 +289,7 @@ function ComingSoon({ fallbackDescription }: { fallbackDescription: string }) {
           We&rsquo;re finalising this page. Check back shortly, or{" "}
           <Link
             href="/children"
-            className="text-tangerine-deep underline-offset-4 hover:underline"
+            className="text-tangerine-deeper underline-offset-4 hover:underline"
           >
             browse children awaiting a sponsor
           </Link>{" "}

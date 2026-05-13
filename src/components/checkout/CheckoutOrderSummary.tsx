@@ -52,7 +52,7 @@ function ItemRow({
             className={`inline-flex mt-1 items-center gap-1 px-2 py-0.5 rounded-full font-mono text-[9.5px] tracking-[0.12em] uppercase font-medium border ${
               isMonthly
                 ? "bg-tangerine-mist text-tangerine-deep border-tangerine-soft"
-                : "bg-moss-soft text-moss border-moss/30"
+                : "bg-moss-soft text-moss-deep border-moss/30"
             }`}
           >
             {isMonthly ? "Monthly" : "One-time"}
@@ -91,7 +91,7 @@ export function CheckoutOrderSummary({
         </h2>
         <Link
           href="/cart"
-          className="text-[12px] text-tangerine-deep border-b border-tangerine pb-0.5 hover:opacity-80"
+          className="text-[12px] text-tangerine-deeper border-b border-tangerine pb-0.5 hover:opacity-80"
         >
           Edit cart
         </Link>

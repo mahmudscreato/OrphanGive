@@ -46,7 +46,7 @@ export default async function VerifyPage({
           <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px]">
             <Link
               href={`/signup${email ? `?email=${encodeURIComponent(email)}` : ""}`}
-              className="text-slate hover:text-tangerine-deep transition-colors"
+              className="text-slate hover:text-tangerine-deeper transition-colors"
             >
               ← Use a different email
             </Link>

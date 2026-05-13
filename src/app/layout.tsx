@@ -154,7 +154,7 @@ export default async function RootLayout({
             to the page body. */}
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-5 focus:py-2.5 focus:rounded-full focus:bg-orange-solid focus:text-white focus:font-body focus:font-semibold focus:text-sm focus:shadow-warm focus:outline-none focus:ring-4 focus:ring-orange-pale"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-5 focus:py-2.5 focus:rounded-full focus:bg-orange-solid focus:text-ink focus:font-body focus:font-semibold focus:text-sm focus:shadow-warm focus:outline-none focus:ring-4 focus:ring-orange-pale"
         >
           Skip to main content
         </a>

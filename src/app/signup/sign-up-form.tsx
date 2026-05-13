@@ -212,11 +212,11 @@ export function SignUpForm() {
           />
           <span className="text-[14px] text-slate leading-[1.55]">
             I agree to the{" "}
-            <a href="/legal/terms" className="text-tangerine-deep border-b border-tangerine">
+            <a href="/legal/terms" className="text-tangerine-deeper border-b border-tangerine">
               Terms of Service
             </a>{" "}
             and{" "}
-            <a href="/legal/privacy" className="text-tangerine-deep border-b border-tangerine">
+            <a href="/legal/privacy" className="text-tangerine-deeper border-b border-tangerine">
               Privacy Policy
             </a>
             .
@@ -237,7 +237,7 @@ export function SignUpForm() {
         <button
           type="submit"
           disabled={!isValid || pending}
-          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+          className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
         >
           {pending ? "Creating account…" : "Create account →"}
         </button>

@@ -83,7 +83,7 @@ export function QueuedActions({
       {shiftDecisionRequired ? (
         <a
           href={`/dashboard/sponsorship/${sponsorshipId}/queue-shift-decision`}
-          className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep mr-3"
+          className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep mr-3"
         >
           Review start-date update
         </a>

@@ -103,7 +103,7 @@ export function Pill({
 //
 // Solid tangerine for ACTIVE recurring (indefinite + fixed-term) — same
 // brand orange as primary buttons, "your support is alive".
-const ACTIVE_PALETTE = "bg-tangerine text-white border-tangerine";
+const ACTIVE_PALETTE = "bg-tangerine text-ink border-tangerine";
 // Solid sky-deep for ONE-TIME — a contrasting blue, distinct from the
 // orange/moss families so a single completed gift reads instantly.
 const ONE_TIME_PALETTE = "bg-sky-deep text-white border-sky-deep";

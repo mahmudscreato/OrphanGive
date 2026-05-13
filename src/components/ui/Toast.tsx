@@ -102,7 +102,7 @@ function ToastBubble({
       className={
         "pointer-events-auto rounded-[14px] px-4 py-3 shadow-card cursor-pointer text-[13.5px] leading-[1.5] max-w-[360px] border " +
         (isSuccess
-          ? "bg-moss-soft text-moss border-moss/30"
+          ? "bg-moss-soft text-moss-deep border-moss/30"
           : "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]")
       }
     >

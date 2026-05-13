@@ -89,7 +89,7 @@ export function CartItemCard({ item, editable = true, onChanged }: Props) {
           <div className="mt-2 flex justify-end gap-3 text-[12px]">
             <Link
               href={editHref}
-              className="text-slate hover:text-tangerine-deep transition-colors underline-offset-4 hover:underline"
+              className="text-slate hover:text-tangerine-deeper transition-colors underline-offset-4 hover:underline"
             >
               Edit
             </Link>

@@ -69,7 +69,7 @@ export default async function FaqPage() {
               yours isn&rsquo;t here,{" "}
               <a
                 href="mailto:hello@orphangive.org"
-                className="text-tangerine-deep underline-offset-4 hover:underline"
+                className="text-tangerine-deeper underline-offset-4 hover:underline"
               >
                 drop us a note
               </a>
@@ -87,7 +87,7 @@ export default async function FaqPage() {
                 Check back shortly, or{" "}
                 <Link
                   href="/children"
-                  className="text-tangerine-deep underline-offset-4 hover:underline"
+                  className="text-tangerine-deeper underline-offset-4 hover:underline"
                 >
                   browse children awaiting a sponsor
                 </Link>
@@ -106,7 +106,7 @@ export default async function FaqPage() {
                       <li key={item.id}>
                         <details className="group rounded-[14px] bg-white border border-ink/[0.06] px-5 py-4 transition-colors open:bg-white/95">
                           <summary className="cursor-pointer list-none flex items-baseline gap-3 font-display text-[18px] text-ink leading-snug">
-                            <span className="font-mono text-[14px] text-tangerine-deep shrink-0 transition-transform group-open:rotate-45">
+                            <span className="font-mono text-[14px] text-tangerine-deeper shrink-0 transition-transform group-open:rotate-45">
                               +
                             </span>
                             {item.question}

@@ -92,13 +92,13 @@ export function CartContent({
         />
         <Link
           href="/checkout"
-          className="w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-6 py-[14px] text-[15px] hover:bg-tangerine-deep hover:shadow-warm transition-all"
+          className="w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[14px] text-[15px] hover:bg-tangerine-deep hover:shadow-warm transition-all"
         >
           Proceed to checkout →
         </Link>
         <Link
           href="/children"
-          className="w-full inline-flex items-center justify-center gap-2 text-[13px] text-slate hover:text-tangerine-deep transition-colors"
+          className="w-full inline-flex items-center justify-center gap-2 text-[13px] text-slate hover:text-tangerine-deeper transition-colors"
         >
           ← Continue browsing
         </Link>

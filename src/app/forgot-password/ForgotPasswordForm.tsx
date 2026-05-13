@@ -55,7 +55,7 @@ export function ForgotPasswordForm() {
               setSubmitted(false);
               setEmail("");
             }}
-            className="text-tangerine-deep underline-offset-4 hover:underline"
+            className="text-tangerine-deeper underline-offset-4 hover:underline"
           >
             try again
           </button>
@@ -63,7 +63,7 @@ export function ForgotPasswordForm() {
         </p>
         <Link
           href="/signin"
-          className="mt-5 inline-flex items-center text-[13.5px] text-tangerine-deep font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
+          className="mt-5 inline-flex items-center text-[13.5px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
         >
           ← Back to sign in
         </Link>
@@ -97,13 +97,13 @@ export function ForgotPasswordForm() {
       <button
         type="submit"
         disabled={pending || !email.trim()}
-        className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
+        className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {pending ? "Sending…" : "Send reset link"}
       </button>
       <Link
         href="/signin"
-        className="self-start text-[13px] text-slate-soft hover:text-tangerine-deep transition-colors"
+        className="self-start text-[13px] text-slate-soft hover:text-tangerine-deeper transition-colors"
       >
         ← Back to sign in
       </Link>

@@ -65,7 +65,7 @@ export default function RouteError({ error, reset }: Props) {
           drop us a note at{" "}
           <a
             href="mailto:hello@orphangive.org"
-            className="text-tangerine-deep underline-offset-4 hover:underline"
+            className="text-tangerine-deeper underline-offset-4 hover:underline"
           >
             hello@orphangive.org
           </a>
@@ -80,13 +80,13 @@ export default function RouteError({ error, reset }: Props) {
           <button
             type="button"
             onClick={() => reset()}
-            className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-cream px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
+            className="inline-flex items-center justify-center font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center font-body font-medium text-[14px] text-slate hover:text-tangerine-deep transition-colors border-b-[1.5px] border-ink/[0.2] hover:border-tangerine pb-0.5"
+            className="inline-flex items-center font-body font-medium text-[14px] text-slate hover:text-tangerine-deeper transition-colors border-b-[1.5px] border-ink/[0.2] hover:border-tangerine pb-0.5"
           >
             Back to home
           </a>

@@ -81,7 +81,7 @@ export default async function StoriesIndexPage() {
               <p className="mt-3 text-[15px] text-slate leading-[1.65] m-0">
                 <Link
                   href="/children"
-                  className="text-tangerine-deep underline-offset-4 hover:underline"
+                  className="text-tangerine-deeper underline-offset-4 hover:underline"
                 >
                   Browse children awaiting a sponsor
                 </Link>{" "}
@@ -98,7 +98,7 @@ export default async function StoriesIndexPage() {
                       href={`/stories/${s.slug}`}
                       className="group block rounded-[20px] bg-white border border-ink/[0.06] px-6 py-5 transition-all hover:shadow-warm hover:-translate-y-0.5"
                     >
-                      <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0 group-hover:text-tangerine-deep transition-colors">
+                      <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0 group-hover:text-tangerine-deeper transition-colors">
                         {s.title}
                       </h2>
                       {s.excerpt ? (

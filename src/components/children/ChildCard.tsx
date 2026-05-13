@@ -106,10 +106,10 @@ export function ChildCard({
           </p>
         ) : null}
         <div className="mt-5 pt-4 border-t border-ink/[0.06] flex justify-between items-center">
-          <span className="text-[13px] font-medium text-tangerine-deep">
+          <span className="text-[13px] font-medium text-tangerine-deeper">
             Begin to sponsor →
           </span>
-          <span className="w-8 h-8 rounded-full bg-cream flex items-center justify-center transition-all duration-[250ms] ease-soft group-hover:bg-tangerine group-hover:text-white group-hover:-rotate-45">
+          <span className="w-8 h-8 rounded-full bg-cream flex items-center justify-center transition-all duration-[250ms] ease-soft group-hover:bg-tangerine group-hover:text-ink group-hover:-rotate-45">
             →
           </span>
         </div>

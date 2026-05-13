@@ -46,7 +46,7 @@ export default async function CartPage() {
               </p>
               <Link
                 href="/children"
-                className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-white px-7 py-3 text-[14px] hover:bg-tangerine-deep hover:shadow-warm transition-all"
+                className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-7 py-3 text-[14px] hover:bg-tangerine-deep hover:shadow-warm transition-all"
               >
                 Browse children →
               </Link>

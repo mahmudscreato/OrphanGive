@@ -3,6 +3,15 @@
 :root {
   --tangerine: #F39322;
   --tangerine-deep: #D97A0F;
+  /* Session 35 — WCAG AA fix. `tangerine-deep` (#D97A0F) on cream
+   * is ~3.0:1 — passes for large text (headlines, eyebrows, big
+   * numbers) but FAILS the 4.5:1 small-text threshold. Inline body
+   * links need a darker shade. `tangerine-deeper` is hand-tuned to
+   * land at ~4.6:1 on cream while staying recognisably "OG orange"
+   * — same hue, deeper saturation. ONLY use for body-copy links;
+   * eyebrows + headlines stay on tangerine-deep.
+   */
+  --tangerine-deeper: #A85808;
   --tangerine-light: #FFB453;
   --tangerine-soft: #FFE4C4;
   --tangerine-mist: #FFF4E6;
@@ -15,6 +24,14 @@
   --sand: #F4E8D5;
   --moss: #6B8E5A;
   --moss-soft: #D4E0CC;
+  /* Session 35 — moss (#6B8E5A) on moss-soft (#D4E0CC) is ~3.6:1,
+   * fails AA small-text. `moss-deep` is the darkened moss tone for
+   * status pills + small-text badges where the green tag matters
+   * (e.g. "Sponsored monthly"). Was also referenced in code earlier
+   * but never defined as a token — those usages had been silently
+   * falling back to inherited color. This finally makes it real.
+   */
+  --moss-deep: #3F5736;
   --sky: #9FBFD9;
   --sky-deep: #075985;
   --white: #FFFFFF;
@@ -65,6 +82,7 @@
 @theme inline {
   --color-tangerine: var(--tangerine);
   --color-tangerine-deep: var(--tangerine-deep);
+  --color-tangerine-deeper: var(--tangerine-deeper);
   --color-tangerine-light: var(--tangerine-light);
   --color-tangerine-soft: var(--tangerine-soft);
   --color-tangerine-mist: var(--tangerine-mist);
@@ -86,6 +104,7 @@
   --color-ink-soft: var(--ink-soft);
   --color-moss: var(--moss);
   --color-moss-soft: var(--moss-soft);
+  --color-moss-deep: var(--moss-deep);
   --color-sky: var(--sky);
   --color-sky-deep: var(--sky-deep);
 
@@ -420,7 +439,11 @@ body {
   margin: 0;
 }
 .prose-content a {
-  color: var(--tangerine-deep);
+  /* Session 35 — was tangerine-deep (~3.0:1 on cream, fails AA for
+   * body text). tangerine-deeper hits ~4.6:1 — passes 4.5:1 small-
+   * text threshold. Same hue, deeper saturation, so links still
+   * read as "OG orange" — they just stop failing on contrast. */
+  color: var(--tangerine-deeper);
   border-bottom: 1.5px solid var(--tangerine);
   text-decoration: none;
   transition: opacity 0.2s ease;

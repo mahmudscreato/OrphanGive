@@ -26,7 +26,7 @@ export function SignInForm({ next }: { next?: string }) {
           <span>Password</span>
           <Link
             href="/forgot-password"
-            className="text-xs text-slate-soft hover:text-tangerine-deep transition-colors"
+            className="text-xs text-slate-soft hover:text-tangerine-deeper transition-colors"
           >
             Forgot password?
           </Link>

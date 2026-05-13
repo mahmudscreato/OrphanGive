@@ -28,7 +28,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_PILL: Record<string, string> = {
   pending: "bg-tangerine-mist text-tangerine-deep border-tangerine-soft",
-  approved: "bg-moss-soft text-moss border-moss/30",
+  approved: "bg-moss-soft text-moss-deep border-moss/30",
   denied: "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]",
   revoked: "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]",
   expired: "bg-ink/[0.04] text-slate-soft border-ink/[0.08]",
@@ -113,7 +113,7 @@ export function RevealRequestsSection({ requests }: Props) {
                     {child.id ? (
                       <Link
                         href={`/children/${child.id}`}
-                        className="font-medium hover:text-tangerine-deep transition-colors underline-offset-4 hover:underline"
+                        className="font-medium hover:text-tangerine-deeper transition-colors underline-offset-4 hover:underline"
                       >
                         {child.name}
                       </Link>

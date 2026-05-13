@@ -44,7 +44,7 @@ export function MomentRow({ moment }: { moment: ChildMoment }) {
           {moment.child_id ? (
             <Link
               href={`/children/${moment.child_id}`}
-              className="font-display text-[18px] text-ink leading-tight hover:text-tangerine-deep transition-colors"
+              className="font-display text-[18px] text-ink leading-tight hover:text-tangerine-deeper transition-colors"
             >
               {childName}
             </Link>

@@ -49,7 +49,7 @@ export default async function ResetPasswordPage({
                 your password-reset email. If you came here directly,{" "}
                 <Link
                   href="/forgot-password"
-                  className="text-tangerine-deep underline-offset-4 hover:underline"
+                  className="text-tangerine-deeper underline-offset-4 hover:underline"
                 >
                   request a new reset link
                 </Link>

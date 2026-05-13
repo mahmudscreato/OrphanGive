@@ -240,7 +240,7 @@ function ButtonOutline({
     tone === "danger"
       ? "border-[#A02B2B] text-[#A02B2B] hover:bg-[#A02B2B] hover:text-cream"
       : tone === "tangerine"
-        ? "border-tangerine text-tangerine-deep hover:bg-tangerine hover:text-cream"
+        ? "border-tangerine text-tangerine-deep hover:bg-tangerine hover:text-ink"
         : "border-ink/[0.16] text-ink hover:bg-ink hover:text-cream";
   return (
     <button
@@ -268,7 +268,7 @@ function ButtonFilled({
   const colors =
     tone === "danger"
       ? "bg-[#A02B2B] text-cream hover:opacity-90"
-      : "bg-tangerine text-cream hover:bg-tangerine-deep";
+      : "bg-tangerine text-ink hover:bg-tangerine-deep";
   return (
     <button
       type={type}
@@ -460,7 +460,7 @@ function ModifyModal({
               {" · "}
               <span
                 className={
-                  delta > 0 ? "text-moss font-medium" : "text-[#A02B2B] font-medium"
+                  delta > 0 ? "text-moss-deep font-medium" : "text-[#A02B2B] font-medium"
                 }
               >
                 {delta > 0 ? "+" : ""}
