@@ -67,8 +67,14 @@ const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://orphangive.org"
 ).replace(/\/$/, "");
 
+// Session 39 — must be a raster format. WhatsApp, iMessage, Facebook,
+// and Twitter all reject SVG og:image and fall back to a default
+// placeholder (the triangle icon Mahmud was seeing on shares). This
+// is the homepage ClosingCTA hero PNG — confirmed-working, properly
+// branded, ~1200×630 aspect. Consumed by both openGraph.images[0].url
+// and twitter.images[0] below.
 const DEFAULT_OG_IMAGE =
-  "https://res.cloudinary.com/dh9w1apsk/image/upload/v1778388529/OG_Logo_SVG_vdmpqc.svg";
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778529921/_OrphanGive_CG_V2_25_khxro8.png";
 
 const DEFAULT_DESCRIPTION =
   "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021).";
