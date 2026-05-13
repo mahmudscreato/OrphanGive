@@ -1,0 +1,914 @@
+# =====================================================================
+# Session 41 — Directus schema snapshot (role + permissions)
+# Spec: docs/DI_DASHBOARD_SPEC_v2.md (section 3 — Permission Matrix)
+# Apply: see APPLY.md — `npx directus schema apply` OR manual import via
+#        Directus Admin UI (Settings → Data Model → … → Import)
+# =====================================================================
+#
+# Directus version target: 11.x (per `@directus/sdk: ^21.3.0` in
+# package.json; Directus 11 / SDK 21 is the matching pair).
+#
+# ⚠ This file is a HAND-CRAFTED snapshot rather than one produced by
+# `npx directus schema snapshot` against a live instance. Some envelope
+# fields (`version`, `directus`, `vendor`) are best-guesses based on
+# Directus 11 snapshot examples. If `schema apply` rejects the file
+# with a version-mismatch error, Mahmud should:
+#   1. Run `npx directus schema snapshot ./current.yaml` against the
+#      live instance to capture the exact format header.
+#   2. Replace the version/directus/vendor block at the top of THIS
+#      file with the captured one.
+#   3. Re-run schema apply.
+# See ship report flag #9.
+#
+# ─── What's in this snapshot ──────────────────────────────────────────
+#
+# 1. The six new collections (just enough metadata for the Admin UI to
+#    render them sensibly — display templates, icons, sort order).
+# 2. The new fields added to `child` and `directus_users`.
+# 3. The `data_inputter` role.
+# 4. Per-collection permissions for the data_inputter role.
+# 5. Field-level READ whitelists where the spec demands it.
+#
+# What's NOT in this snapshot (you do these by hand in Directus Admin):
+#   * The `system` Directus user — see 003-system-user-note.md.
+#   * Test data — none seeded this session.
+#   * Notifications/webhooks — deferred to Session 46.
+# =====================================================================
+
+version: 1
+directus: 11.0.0
+vendor: postgres
+
+collections:
+  # ─── 1. pending_changes ────────────────────────────────────────────
+  - collection: pending_changes
+    meta:
+      collection: pending_changes
+      icon: pending_actions
+      note: "DI-originated mutation requests awaiting admin approval. Status flow: pending → approved | rejected | withdrawn | expired."
+      display_template: "{{collection_name}} · {{operation}} · {{status}}"
+      hidden: false
+      singleton: false
+      sort_field: created_at
+      archive_field: null
+      archive_value: null
+      unarchive_value: null
+      accountability: all
+      color: "#ED8B3F"
+      group: null
+      collapse: open
+      preview_url: null
+      versioning: false
+    schema:
+      name: pending_changes
+
+  # ─── 2. tasks ──────────────────────────────────────────────────────
+  - collection: tasks
+    meta:
+      collection: tasks
+      icon: task_alt
+      note: "Admin-assigned work items for the data_inputter role. di_status owned by DI; admin_status owned by admin."
+      display_template: "{{title}} · {{di_status}}"
+      sort_field: due_date
+      accountability: all
+      color: "#F4B400"
+    schema:
+      name: tasks
+
+  # ─── 3. audit_log ──────────────────────────────────────────────────
+  - collection: audit_log
+    meta:
+      collection: audit_log
+      icon: receipt_long
+      note: "Append-only audit trail. DI role has zero access. Wired narrowly in Session 41 (cron only); broader wiring in Session 46."
+      display_template: "{{timestamp}} · {{actor_role}} · {{action}}"
+      sort_field: timestamp
+      accountability: null # don't audit the audit log itself
+      hidden: false
+      color: "#5C5C5E"
+    schema:
+      name: audit_log
+
+  # ─── 4. moments (v2) ───────────────────────────────────────────────
+  - collection: moments
+    meta:
+      collection: moments
+      icon: photo_camera_back
+      note: "Short dated media (photo or video, ≤60s) showing a sponsored child's life. Pending → published | rejected."
+      display_template: "{{moment_date}} · {{caption}}"
+      sort_field: moment_date
+      accountability: all
+      color: "#6B8E5A"
+    schema:
+      name: moments
+
+  # ─── 5. child_reports ──────────────────────────────────────────────
+  - collection: child_reports
+    meta:
+      collection: child_reports
+      icon: description
+      note: "Periodic narrative reports about a child (school + health + wellbeing)."
+      display_template: "{{report_period}} — {{child_id.display_name}}"
+      sort_field: submitted_at
+      accountability: all
+      color: "#075985"
+    schema:
+      name: child_reports
+
+  # ─── 6. aid_deliveries ─────────────────────────────────────────────
+  - collection: aid_deliveries
+    meta:
+      collection: aid_deliveries
+      icon: redeem
+      note: "Photographic record of aid delivered to a child. Pending → verified | rejected."
+      display_template: "{{delivery_date}} · {{aid_type}}"
+      sort_field: delivery_date
+      accountability: all
+      color: "#9FBFD9"
+    schema:
+      name: aid_deliveries
+
+# =====================================================================
+# FIELDS — Directus metadata for each column. Only the new
+# collections + new fields on existing collections are described
+# here. Postgres types are already established by 001-schema.sql.
+# This block teaches Directus how to render each column in the Admin
+# UI.
+# =====================================================================
+
+fields:
+  # ─── pending_changes ───────────────────────────────────────────────
+  - collection: pending_changes
+    field: id
+    type: uuid
+    meta: { interface: input, readonly: true, hidden: false, special: ["uuid"] }
+  - collection: pending_changes
+    field: created_by
+    type: uuid
+    meta:
+      interface: select-dropdown-m2o
+      special: ["m2o", "user-created"]
+      display: user
+      readonly: true
+      width: half
+    schema: { foreign_key_table: directus_users }
+  - collection: pending_changes
+    field: created_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, special: ["date-created"], width: half }
+  - collection: pending_changes
+    field: collection_name
+    type: string
+    meta: { interface: input, required: true, width: half }
+  - collection: pending_changes
+    field: record_id
+    type: string
+    meta:
+      interface: input
+      note: "Null for CREATE operations; UUID of target row for UPDATE."
+      width: half
+  - collection: pending_changes
+    field: operation
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Create", value: "create" }
+          - { text: "Update", value: "update" }
+      required: true
+      width: half
+  - collection: pending_changes
+    field: payload
+    type: json
+    meta: { interface: input-code, options: { language: "JSON" }, required: true }
+  - collection: pending_changes
+    field: status
+    type: string
+    meta:
+      interface: select-dropdown
+      display: labels
+      display_options:
+        choices:
+          - { text: "Pending",   value: "pending",   foreground: "#ED8B3F" }
+          - { text: "Approved",  value: "approved",  foreground: "#6B8E5A" }
+          - { text: "Rejected",  value: "rejected",  foreground: "#A02B2B" }
+          - { text: "Withdrawn", value: "withdrawn", foreground: "#8B8B8E" }
+          - { text: "Expired",   value: "expired",   foreground: "#5C5C5E" }
+      options:
+        choices:
+          - { text: "Pending",   value: "pending" }
+          - { text: "Approved",  value: "approved" }
+          - { text: "Rejected",  value: "rejected" }
+          - { text: "Withdrawn", value: "withdrawn" }
+          - { text: "Expired",   value: "expired" }
+      required: true
+      width: half
+  - collection: pending_changes
+    field: reviewed_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, readonly: false, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: pending_changes
+    field: reviewed_at
+    type: timestamp
+    meta: { interface: datetime, width: half }
+  - collection: pending_changes
+    field: review_reason
+    type: text
+    meta: { interface: input-multiline }
+  - collection: pending_changes
+    field: applied_record_id
+    type: string
+    meta:
+      interface: input
+      note: "Set after admin approval: UUID of the row created/updated in the target collection."
+      width: half
+  - collection: pending_changes
+    field: expires_at
+    type: timestamp
+    meta:
+      interface: datetime
+      note: "Auto-set to created_at + 30 days. The /api/cron/expire-pending-changes route flips status='pending' rows past this point to 'expired'."
+      width: half
+
+  # ─── tasks ─────────────────────────────────────────────────────────
+  - collection: tasks
+    field: id
+    type: uuid
+    meta: { interface: input, readonly: true, hidden: false, special: ["uuid"] }
+  - collection: tasks
+    field: title
+    type: string
+    meta: { interface: input, required: true }
+  - collection: tasks
+    field: description
+    type: text
+    meta: { interface: input-multiline }
+  - collection: tasks
+    field: child_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: related-values, display_options: { template: "{{display_name}}" }, width: half }
+    schema: { foreign_key_table: child }
+  - collection: tasks
+    field: assignee_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, required: true, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: tasks
+    field: created_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o", "user-created"], display: user, readonly: true, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: tasks
+    field: created_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, special: ["date-created"], width: half }
+  - collection: tasks
+    field: due_date
+    type: date
+    meta: { interface: datetime, width: half }
+  - collection: tasks
+    field: priority
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Low",    value: "low" }
+          - { text: "Normal", value: "normal" }
+          - { text: "High",   value: "high" }
+          - { text: "Urgent", value: "urgent" }
+      width: half
+  - collection: tasks
+    field: di_status
+    type: string
+    meta:
+      interface: select-dropdown
+      note: "Owned by the data_inputter assignee. DI can move between open / in_progress / completed_pending_verification."
+      options:
+        choices:
+          - { text: "Open",                            value: "open" }
+          - { text: "In progress",                     value: "in_progress" }
+          - { text: "Completed (pending verification)", value: "completed_pending_verification" }
+      width: half
+  - collection: tasks
+    field: admin_status
+    type: string
+    meta:
+      interface: select-dropdown
+      note: "Owned by admin. DI cannot edit. Flow: open → verified_complete | rejected_redo."
+      options:
+        choices:
+          - { text: "Open",               value: "open" }
+          - { text: "Verified complete",  value: "verified_complete" }
+          - { text: "Rejected — redo",    value: "rejected_redo" }
+      width: half
+  - collection: tasks
+    field: completed_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, width: half }
+  - collection: tasks
+    field: verified_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, width: half }
+  - collection: tasks
+    field: verified_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, readonly: true, width: half }
+    schema: { foreign_key_table: directus_users }
+
+  # ─── audit_log ─────────────────────────────────────────────────────
+  - collection: audit_log
+    field: id
+    type: uuid
+    meta: { interface: input, readonly: true, hidden: false, special: ["uuid"] }
+  - collection: audit_log
+    field: timestamp
+    type: timestamp
+    meta: { interface: datetime, readonly: true, width: half }
+  - collection: audit_log
+    field: actor_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, required: true, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: audit_log
+    field: actor_role
+    type: string
+    meta: { interface: input, required: true, width: half }
+  - collection: audit_log
+    field: action
+    type: string
+    meta: { interface: input, required: true, width: half }
+  - collection: audit_log
+    field: collection
+    type: string
+    meta: { interface: input, width: half }
+  - collection: audit_log
+    field: record_id
+    type: string
+    meta: { interface: input, width: half }
+  - collection: audit_log
+    field: diff
+    type: json
+    meta: { interface: input-code, options: { language: "JSON" } }
+  - collection: audit_log
+    field: ip
+    type: string
+    meta: { interface: input, width: half }
+  - collection: audit_log
+    field: user_agent
+    type: text
+    meta: { interface: input-multiline }
+  - collection: audit_log
+    field: metadata
+    type: json
+    meta: { interface: input-code, options: { language: "JSON" } }
+
+  # ─── moments ───────────────────────────────────────────────────────
+  - collection: moments
+    field: id
+    type: uuid
+    meta: { interface: input, readonly: true, hidden: false, special: ["uuid"] }
+  - collection: moments
+    field: child_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: related-values, display_options: { template: "{{display_name}}" }, required: true }
+    schema: { foreign_key_table: child }
+  - collection: moments
+    field: caption
+    type: text
+    meta:
+      interface: input-multiline
+      required: true
+      note: "Max 200 chars."
+  - collection: moments
+    field: media_url
+    type: string
+    meta: { interface: input, required: true }
+  - collection: moments
+    field: media_type
+    type: string
+    meta:
+      interface: select-dropdown
+      required: true
+      options:
+        choices:
+          - { text: "Image", value: "image" }
+          - { text: "Video", value: "video" }
+      width: half
+  - collection: moments
+    field: duration_seconds
+    type: integer
+    meta:
+      interface: input
+      note: "Required for video (1–60 seconds); must be null for image."
+      width: half
+  - collection: moments
+    field: moment_date
+    type: date
+    meta: { interface: datetime, required: true, width: half }
+  - collection: moments
+    field: uploaded_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o", "user-created"], display: user, readonly: true, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: moments
+    field: uploaded_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, special: ["date-created"], width: half }
+  - collection: moments
+    field: status
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Pending",   value: "pending" }
+          - { text: "Published", value: "published" }
+          - { text: "Rejected",  value: "rejected" }
+      width: half
+  - collection: moments
+    field: approved_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: moments
+    field: approved_at
+    type: timestamp
+    meta: { interface: datetime, width: half }
+
+  # ─── child_reports ─────────────────────────────────────────────────
+  - collection: child_reports
+    field: id
+    type: uuid
+    meta: { interface: input, readonly: true, hidden: false, special: ["uuid"] }
+  - collection: child_reports
+    field: child_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: related-values, display_options: { template: "{{display_name}}" }, required: true }
+    schema: { foreign_key_table: child }
+  - collection: child_reports
+    field: report_period
+    type: string
+    meta:
+      interface: input
+      required: true
+      note: "Application-defined; typically YYYY-Q# (e.g. '2026-Q2')."
+  - collection: child_reports
+    field: narrative
+    type: text
+    meta:
+      interface: input-multiline
+      required: true
+      note: "50–1000 chars."
+  - collection: child_reports
+    field: photo_url
+    type: string
+    meta: { interface: input }
+  - collection: child_reports
+    field: school_status
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Excellent",         value: "excellent" }
+          - { text: "Good",              value: "good" }
+          - { text: "Needs attention",   value: "needs_attention" }
+          - { text: "Not in school",     value: "not_in_school" }
+      width: half
+  - collection: child_reports
+    field: health_status
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Excellent",       value: "excellent" }
+          - { text: "Good",            value: "good" }
+          - { text: "Needs attention", value: "needs_attention" }
+      width: half
+  - collection: child_reports
+    field: wellbeing_note
+    type: text
+    meta: { interface: input-multiline }
+  - collection: child_reports
+    field: submitted_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o", "user-created"], display: user, readonly: true }
+    schema: { foreign_key_table: directus_users }
+  - collection: child_reports
+    field: submitted_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, special: ["date-created"] }
+  - collection: child_reports
+    field: status
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Pending",   value: "pending" }
+          - { text: "Published", value: "published" }
+          - { text: "Rejected",  value: "rejected" }
+      width: half
+  - collection: child_reports
+    field: approved_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: child_reports
+    field: approved_at
+    type: timestamp
+    meta: { interface: datetime, width: half }
+
+  # ─── aid_deliveries ────────────────────────────────────────────────
+  - collection: aid_deliveries
+    field: id
+    type: uuid
+    meta: { interface: input, readonly: true, hidden: false, special: ["uuid"] }
+  - collection: aid_deliveries
+    field: child_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: related-values, display_options: { template: "{{display_name}}" }, required: true }
+    schema: { foreign_key_table: child }
+  - collection: aid_deliveries
+    field: sponsorship_id
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: related-values, width: half }
+    schema: { foreign_key_table: sponsorship }
+  - collection: aid_deliveries
+    field: aid_type
+    type: string
+    meta:
+      interface: select-dropdown
+      required: true
+      options:
+        choices:
+          - { text: "Education",     value: "education" }
+          - { text: "Food",          value: "food" }
+          - { text: "Healthcare",    value: "healthcare" }
+          - { text: "Clothing",      value: "clothing" }
+          - { text: "General care",  value: "general_care" }
+          - { text: "Other",         value: "other" }
+      width: half
+  - collection: aid_deliveries
+    field: description
+    type: text
+    meta: { interface: input-multiline, required: true }
+  - collection: aid_deliveries
+    field: delivery_date
+    type: date
+    meta: { interface: datetime, required: true, width: half }
+  - collection: aid_deliveries
+    field: photo_url
+    type: string
+    meta: { interface: input, required: true, width: half }
+  - collection: aid_deliveries
+    field: recipient_acknowledgment
+    type: text
+    meta: { interface: input-multiline }
+  - collection: aid_deliveries
+    field: delivered_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o", "user-created"], display: user, readonly: true }
+    schema: { foreign_key_table: directus_users }
+  - collection: aid_deliveries
+    field: submitted_at
+    type: timestamp
+    meta: { interface: datetime, readonly: true, special: ["date-created"] }
+  - collection: aid_deliveries
+    field: status
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Pending",  value: "pending" }
+          - { text: "Verified", value: "verified" }
+          - { text: "Rejected", value: "rejected" }
+      width: half
+  - collection: aid_deliveries
+    field: verified_by
+    type: uuid
+    meta: { interface: select-dropdown-m2o, special: ["m2o"], display: user, width: half }
+    schema: { foreign_key_table: directus_users }
+  - collection: aid_deliveries
+    field: verified_at
+    type: timestamp
+    meta: { interface: datetime, width: half }
+
+  # ─── New fields on existing collections ────────────────────────────
+  - collection: child
+    field: uploaded_by_di_id
+    type: uuid
+    meta:
+      interface: select-dropdown-m2o
+      special: ["m2o"]
+      display: user
+      readonly: true
+      note: "Set by the pending_changes approval flow when an admin approves a DI-originated CREATE."
+    schema: { foreign_key_table: directus_users }
+
+  - collection: child
+    field: assigned_di_id
+    type: uuid
+    meta:
+      interface: select-dropdown-m2o
+      special: ["m2o"]
+      display: user
+      note: "Admin-assigned. Nullable. Reassignable. Controls DI READ scope on this child alongside uploaded_by_di_id."
+    schema: { foreign_key_table: directus_users }
+
+  - collection: child
+    field: district_internal
+    type: string
+    meta:
+      interface: input
+      note: "Internal-only district label. NEVER exposed at Tier 1 (public). Coexists with bd_district relation for now — DI-side input flow."
+      hidden: false
+
+  - collection: child
+    field: region_division
+    type: string
+    meta:
+      interface: select-dropdown
+      required: true
+      options:
+        choices:
+          - { text: "Dhaka",       value: "Dhaka" }
+          - { text: "Chattogram",  value: "Chattogram" }
+          - { text: "Khulna",      value: "Khulna" }
+          - { text: "Rajshahi",    value: "Rajshahi" }
+          - { text: "Sylhet",      value: "Sylhet" }
+          - { text: "Barishal",    value: "Barishal" }
+          - { text: "Rangpur",     value: "Rangpur" }
+          - { text: "Mymensingh",  value: "Mymensingh" }
+      note: "DI Dashboard input target. Constrained to the 8 Bangladesh divisions via Postgres CHECK constraint. See migrations/session-41/001-schema.sql §2.2 for the schema-gap note about coexistence with bd_division."
+
+  - collection: directus_users
+    field: assigned_divisions
+    type: json
+    meta:
+      interface: tags
+      special: ["cast-json"]
+      note: "Array of Bangladesh division names the DI can CREATE new children in. Does NOT govern READ scope (that's enforced via uploaded_by_di_id/assigned_di_id filters on child). Null for non-DI users. Example: [\"Dhaka\", \"Chattogram\"]."
+
+# =====================================================================
+# RELATIONS — Directus needs explicit relation rows so the Admin UI
+# can render M2O selectors and so the SDK exposes joined fields.
+# =====================================================================
+
+relations:
+  - collection: pending_changes
+    field: created_by
+    related_collection: directus_users
+  - collection: pending_changes
+    field: reviewed_by
+    related_collection: directus_users
+  - collection: tasks
+    field: child_id
+    related_collection: child
+  - collection: tasks
+    field: assignee_id
+    related_collection: directus_users
+  - collection: tasks
+    field: created_by
+    related_collection: directus_users
+  - collection: tasks
+    field: verified_by
+    related_collection: directus_users
+  - collection: audit_log
+    field: actor_id
+    related_collection: directus_users
+  - collection: moments
+    field: child_id
+    related_collection: child
+  - collection: moments
+    field: uploaded_by
+    related_collection: directus_users
+  - collection: moments
+    field: approved_by
+    related_collection: directus_users
+  - collection: child_reports
+    field: child_id
+    related_collection: child
+  - collection: child_reports
+    field: submitted_by
+    related_collection: directus_users
+  - collection: child_reports
+    field: approved_by
+    related_collection: directus_users
+  - collection: aid_deliveries
+    field: child_id
+    related_collection: child
+  - collection: aid_deliveries
+    field: sponsorship_id
+    related_collection: sponsorship
+  - collection: aid_deliveries
+    field: delivered_by
+    related_collection: directus_users
+  - collection: aid_deliveries
+    field: verified_by
+    related_collection: directus_users
+  - collection: child
+    field: uploaded_by_di_id
+    related_collection: directus_users
+  - collection: child
+    field: assigned_di_id
+    related_collection: directus_users
+
+# =====================================================================
+# ROLES — the data_inputter role itself.
+# =====================================================================
+
+roles:
+  - name: data_inputter
+    description: "Field-side or content-team role. Uploads child profiles, moments, reports, deliveries. All mutations gated by admin approval. Cannot access donor PII or audit log."
+    app_access: false
+    admin_access: false
+    enforce_tfa: false # match the existing donor role; flip to true in admin if donor enforces TFA
+    icon: assignment_ind
+    ip_access: null # any IP
+
+# =====================================================================
+# PERMISSIONS — per spec section 3.
+#
+# Notes on the syntax used here:
+#   * `role: data_inputter` resolves at apply time to the role
+#     created above. If you're importing via the Admin UI, attach
+#     these to the role explicitly.
+#   * `$CURRENT_USER` is Directus's built-in user variable.
+#   * `fields: ["*"]` means "all fields"; an array of field names
+#     means "only these fields". For DENIED fields, omit them from
+#     the whitelist — Directus's permission model is allow-list-based.
+# =====================================================================
+
+permissions:
+  # ─── child ─────────────────────────────────────────────────────────
+  # READ scope: rows the DI uploaded OR is assigned to, excluding
+  # withdrawn rows. Field-level READ is restricted via the fields[]
+  # whitelist — anything not listed is denied.
+  - role: data_inputter
+    collection: child
+    action: read
+    permissions:
+      _and:
+        - _or:
+            - uploaded_by_di_id: { _eq: "$CURRENT_USER" }
+            - assigned_di_id:    { _eq: "$CURRENT_USER" }
+        - status: { _neq: "withdrawn" }
+    fields:
+      - display_name
+      - age_years          # ⚠ field does not exist today; flagged in ship report
+      - region_division
+      - district_internal
+      - photo_url          # ⚠ production uses `Photo` (capital P) M2O to files
+      - support_type       # ⚠ field does not exist today
+      - monthly_cost       # ⚠ field does not exist today
+      - status
+      - assigned_di_id
+      - uploaded_by_di_id
+      - education_level
+      - guardian_summary_internal   # ⚠ field does not exist today
+      - background_story_excerpt    # ⚠ field does not exist today
+      - sponsor_count               # ⚠ field does not exist today (derive at app layer)
+      - sponsor_queue_depth         # ⚠ field does not exist today (derive at app layer)
+      - created_at
+      - updated_at
+      - last_visit_date             # ⚠ field does not exist today
+
+  # CREATE/UPDATE/DELETE on `child` — DENIED. No permission rows
+  # = Directus denies by default. Listed here as documentation.
+  # (Do NOT add `create`, `update`, `delete` rows for the
+  # data_inputter role on the child collection.)
+
+  # ─── sponsorship ───────────────────────────────────────────────────
+  # READ scope: rows whose child is in the DI's READ scope on child.
+  # Implemented via relational filter `child.uploaded_by_di_id` /
+  # `child.assigned_di_id`. Field whitelist excludes ALL donor PII +
+  # payment provider IDs.
+  #
+  # ⚠ The spec assumes `donor_display_name` and `country` are
+  # denormalised on sponsorship. They are NOT today — sponsorship
+  # joins to `donor` via relation. The fields listed here are written
+  # against the spec's intended schema; if those columns don't exist
+  # at apply time, Directus will quietly skip them in the whitelist
+  # (DI gets the rest, donor PII still blocked). See ship report
+  # flag #3.
+  - role: data_inputter
+    collection: sponsorship
+    action: read
+    permissions:
+      _and:
+        - _or:
+            - child:
+                uploaded_by_di_id: { _eq: "$CURRENT_USER" }
+            - child:
+                assigned_di_id:    { _eq: "$CURRENT_USER" }
+    fields:
+      - id
+      - donor_display_name   # ⚠ may not exist today — see flag #3
+      - sponsor_category     # ⚠ may map to `cause`
+      - amount               # exact amount per spec 2.6
+      - country              # ⚠ may not exist today — see flag #3
+      - start_date           # ⚠ maps to `started_at`
+      - end_date             # ⚠ maps to `ended_at` or `scheduled_end_date`
+      - status
+      - queue_position
+
+  # ─── donor ─────────────────────────────────────────────────────────
+  # No permissions = all denied. Listed explicitly for grep-ability.
+  # data_inputter cannot read, create, update, or delete any donor row.
+
+  # ─── pending_changes ───────────────────────────────────────────────
+  # CREATE: allowed for rows where created_by = self.
+  # READ:   only DI's own rows.
+  # UPDATE/DELETE: not granted.
+  - role: data_inputter
+    collection: pending_changes
+    action: create
+    permissions:
+      created_by: { _eq: "$CURRENT_USER" }
+    fields:
+      - collection_name
+      - record_id
+      - operation
+      - payload
+      # created_by, created_at, status default values handled by DB.
+  - role: data_inputter
+    collection: pending_changes
+    action: read
+    permissions:
+      created_by: { _eq: "$CURRENT_USER" }
+    fields: ["*"]
+
+  # ─── tasks ─────────────────────────────────────────────────────────
+  # READ: tasks assigned to self.
+  # UPDATE: only on assigned-to-self rows; only `di_status` field.
+  - role: data_inputter
+    collection: tasks
+    action: read
+    permissions:
+      assignee_id: { _eq: "$CURRENT_USER" }
+    fields: ["*"]
+  - role: data_inputter
+    collection: tasks
+    action: update
+    permissions:
+      assignee_id: { _eq: "$CURRENT_USER" }
+    fields:
+      - di_status
+
+  # ─── moments ───────────────────────────────────────────────────────
+  # READ: scoped to DI's child READ scope via relational filter.
+  - role: data_inputter
+    collection: moments
+    action: read
+    permissions:
+      _or:
+        - child_id:
+            uploaded_by_di_id: { _eq: "$CURRENT_USER" }
+        - child_id:
+            assigned_di_id:    { _eq: "$CURRENT_USER" }
+    fields: ["*"]
+
+  # ─── child_reports ─────────────────────────────────────────────────
+  - role: data_inputter
+    collection: child_reports
+    action: read
+    permissions:
+      _or:
+        - child_id:
+            uploaded_by_di_id: { _eq: "$CURRENT_USER" }
+        - child_id:
+            assigned_di_id:    { _eq: "$CURRENT_USER" }
+    fields: ["*"]
+
+  # ─── aid_deliveries ────────────────────────────────────────────────
+  - role: data_inputter
+    collection: aid_deliveries
+    action: read
+    permissions:
+      _or:
+        - child_id:
+            uploaded_by_di_id: { _eq: "$CURRENT_USER" }
+        - child_id:
+            assigned_di_id:    { _eq: "$CURRENT_USER" }
+    fields: ["*"]
+
+  # ─── audit_log ─────────────────────────────────────────────────────
+  # No permissions = all denied. data_inputter has ZERO access to the
+  # audit log. Listed explicitly for grep-ability.
+
+  # ─── site_page, faq, content CMS ───────────────────────────────────
+  # No permissions = all denied. data_inputter cannot read CMS content.
+
+  # ─── payment_intent / Stripe-related ───────────────────────────────
+  # No permissions = all denied. data_inputter cannot read payment data.
+
+  # ─── directus_users (other rows) ───────────────────────────────────
+  # No permissions = all denied. data_inputter cannot list other users.
+  # (Reading own user row is handled by Directus's built-in `/users/me`
+  # endpoint and doesn't require an explicit permission.)
