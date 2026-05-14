@@ -89,7 +89,7 @@ export async function loginDi(email: string, password: string): Promise<LoginRes
   // Now fetch the user metadata WITH role.name expanded so we can
   // verify they're a DI before completing the login.
   const meRes = await fetch(
-    `${url}/users/me?fields=id,first_name,last_name,email,assigned_divisions,role.name`,
+    `${url}/users/me?fields=id,first_name,last_name,email,role.name`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!meRes.ok) {
@@ -167,7 +167,7 @@ export async function getDirectusSession(): Promise<DiSession | null> {
   let res: Response;
   try {
     res = await fetch(
-      `${url}/users/me?fields=id,first_name,last_name,email,assigned_divisions,role.name`,
+      `${url}/users/me?fields=id,first_name,last_name,email,role.name`,
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
   } catch {
