@@ -1,9 +1,11 @@
 // Session 43 — DI Dashboard Child Detail page.
+// Session 45 — Moments / Reports / Deliveries tabs wired to real data
+// (replaced the three ComingSoonPanel placeholders).
 //
-// Server component. Fetches the child (with scope guard) and the
-// redacted sponsorship list, pre-renders all six tab panels server-
-// side, and hands them to the client tab shell. Switching tabs is
-// then a pure client UI toggle — no per-tab fetch.
+// Server component. Fetches the child (with scope guard), the
+// redacted sponsorship list, and the three additive content lists
+// in parallel. Pre-renders all six tab panels server-side; the
+// client tab shell just toggles which is visible.
 //
 // notFound() collapses both "doesn't exist" and "out of scope" into
 // a single 404 — we never reveal which child IDs the DI is or isn't
@@ -11,20 +13,20 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  Camera,
-  ChevronLeft,
-  FileBarChart,
-  History,
-  Truck,
-} from "lucide-react";
+import { ChevronLeft, History } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import { getDiChildById, getDiChildSponsorships } from "@/lib/di-children";
+import { listMomentsForChild } from "@/lib/di-moments";
+import { listReportsForChild } from "@/lib/di-reports";
+import { listDeliveriesForChild } from "@/lib/di-deliveries";
 import { ChildDetailHeader } from "@/components/di/ChildDetailHeader";
 import { ChildDetailTabs } from "@/components/di/ChildDetailTabs";
 import { ProfilePanel } from "@/components/di/ProfilePanel";
 import { SponsorshipPanel } from "@/components/di/SponsorshipPanel";
 import { ComingSoonPanel } from "@/components/di/ComingSoonPanel";
+import { MomentsPanel } from "@/components/di/MomentsPanel";
+import { ReportsPanel } from "@/components/di/ReportsPanel";
+import { DeliveriesPanel } from "@/components/di/DeliveriesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +41,18 @@ export default async function DiChildDetailPage({
   const child = await getDiChildById(id, session.userId);
   if (!child) notFound();
 
-  // Sponsorships: getDiChildSponsorships also enforces scope, but we
-  // already know the child is in scope (otherwise we 404'd above), so
-  // the guard there is belt-and-braces. A null return here would be
-  // a race condition — treat as empty list rather than rethrowing.
-  const sponsorships = (await getDiChildSponsorships(id, session.userId)) ?? [];
+  // Five parallel reads. Each scope-guards independently (belt-and-
+  // braces — the parent already 404'd if out of scope, so any null
+  // returns here would be a race condition). All read functions
+  // return [] (or empty list) on miss, never throw, so partial
+  // failures degrade gracefully (e.g. moments unreachable doesn't
+  // break the Profile tab).
+  const [sponsorships, moments, reports, deliveries] = await Promise.all([
+    getDiChildSponsorships(id, session.userId).then((s) => s ?? []),
+    listMomentsForChild(session.userId, id),
+    listReportsForChild(session.userId, id),
+    listDeliveriesForChild(session.userId, id),
+  ]);
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
@@ -63,28 +72,13 @@ export default async function DiChildDetailPage({
       <ChildDetailTabs
         profileContent={<ProfilePanel child={child} />}
         sponsorshipContent={<SponsorshipPanel sponsorships={sponsorships} />}
-        momentsContent={
-          <ComingSoonPanel
-            title="Moments"
-            description="Photos and short videos from visits with this child."
-            icon={Camera}
-          />
-        }
-        reportsContent={
-          <ComingSoonPanel
-            title="Reports"
-            description="Monthly progress notes you'll submit for this child."
-            icon={FileBarChart}
-          />
-        }
+        momentsContent={<MomentsPanel moments={moments} childId={id} />}
+        reportsContent={<ReportsPanel reports={reports} childId={id} />}
         deliveriesContent={
-          <ComingSoonPanel
-            title="Deliveries"
-            description="Aid handed to the family — school supplies, food, clothing, healthcare."
-            icon={Truck}
-          />
+          <DeliveriesPanel deliveries={deliveries} childId={id} />
         }
         historyContent={
+          // History is Session 46 — keep the placeholder.
           <ComingSoonPanel
             title="History"
             description="Audit trail of changes to this child's record."

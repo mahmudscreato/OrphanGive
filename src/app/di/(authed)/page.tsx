@@ -210,19 +210,24 @@ export default async function DiHomePage() {
             href="/di/children/new"
             icon={Plus}
           />
+          {/* Session 45 — moment / report / delivery uploads live on
+              the Child Detail page (each child has its own tab). The
+              quick action funnels DI through "pick the child first"
+              by routing to the children list. A dedicated picker
+              flow is a polish for a future session. */}
           <QuickAction
             label="Upload moment"
-            href="/di/moments/new"
+            href="/di/children"
             icon={Camera}
           />
           <QuickAction
             label="Submit report"
-            href="/di/reports/new"
+            href="/di/children"
             icon={FileText}
           />
           <QuickAction
             label="Mark delivery"
-            href="/di/deliveries/new"
+            href="/di/children"
             icon={Truck}
           />
         </div>
