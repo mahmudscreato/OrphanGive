@@ -39,7 +39,8 @@ Step-by-step for taking the artifacts in `migrations/session-41-v3/` +
   ```
   Expected: 0 rows. (If you see rows, run the surgical drop again before
   proceeding.)
-- `bootstrap/.env` has:
+- `bootstrap/.env` (under `public-site/bootstrap/.env` after Session
+  41-v3-FIX1's move) has:
   ```
   DIRECTUS_URL=http://localhost:8055
   ADMIN_EMAIL=<your VPS admin email — restored into local DB>
@@ -63,6 +64,20 @@ ls -la backups/ | tail -3
 ```
 
 Expected: a fresh `~4 MB` SQL file alongside the prior backup.
+
+## 1.5 — Install bootstrap dependencies (one-time after Session 41-v3-FIX1 move)
+
+`bootstrap/` was moved from a sibling directory of `public-site/` into
+`public-site/bootstrap/` in Session 41-v3-FIX1. Its `node_modules/` did
+not survive the move — install once before Steps 4 + 6:
+
+```bash
+cd ~/Desktop/Claude/OrphanGive/public-site/bootstrap
+npm install
+```
+
+Expected: ~30 seconds, no errors. Creates `bootstrap/node_modules/`
+(gitignored). Skip this step on subsequent runs.
 
 ## 2 — Apply 001-schema.sql
 
@@ -169,7 +184,7 @@ to new inserts).
 ## 4 — Register collections + fields in Directus metadata
 
 ```bash
-cd ~/Desktop/Claude/OrphanGive/bootstrap
+cd ~/Desktop/Claude/OrphanGive/public-site/bootstrap
 npm run v3-register-collections
 ```
 
@@ -196,7 +211,7 @@ Expected: 4 rows. Each with the icon + note from
 ## 6 — Update Data Inputter + Admin policy permissions
 
 ```bash
-cd ~/Desktop/Claude/OrphanGive/bootstrap
+cd ~/Desktop/Claude/OrphanGive/public-site/bootstrap
 npm run v3-update-permissions
 ```
 

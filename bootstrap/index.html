@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OrphanGive Prototypes — v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --tangerine:#F39322; --tangerine-deep:#D97A0F;
+  --tangerine-soft:#FFE4C4; --tangerine-mist:#FFF4E6;
+  --ink:#2A2A2C; --slate:#5C5C5E; --slate-soft:#8B8B8E;
+  --cream:#FFFAF2; --linen:#F8F1E4;
+  --moss:#6B8E5A;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-body:'Inter',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+  --ease-soft:cubic-bezier(0.32,0.72,0,1);
+  --shadow-card:0 1px 2px rgba(42,42,44,0.04),0 8px 24px -8px rgba(42,42,44,0.08);
+  --shadow-lift:0 2px 4px rgba(42,42,44,0.06),0 16px 40px -12px rgba(42,42,44,0.12);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--font-body); background:var(--cream); color:var(--ink);
+  -webkit-font-smoothing:antialiased; min-height:100vh; padding:80px 32px; }
+::selection { background:var(--tangerine); color:white; }
+.wrap { max-width:1080px; margin:0 auto; }
+
+header { display:flex; align-items:center; gap:20px; margin-bottom:64px; }
+header img { width:64px; height:64px; }
+.brand-name {
+  font-family:var(--font-display); font-size:36px;
+  font-weight:500; color:var(--ink); letter-spacing:-0.02em;
+}
+.brand-tag {
+  font-family:var(--font-mono); font-size:11px;
+  letter-spacing:0.16em; color:var(--slate-soft);
+  text-transform:uppercase; margin-top:6px;
+}
+
+.intro {
+  font-family:var(--font-display);
+  font-size:clamp(2rem, 4vw, 3rem);
+  font-weight:400;
+  letter-spacing:-0.025em;
+  line-height:1.1;
+  margin-bottom:24px;
+}
+.intro em { font-style:italic; color:var(--tangerine); }
+.lead {
+  font-size:18px; color:var(--slate); line-height:1.6;
+  max-width:680px; margin-bottom:64px;
+}
+.tag-band {
+  display:flex; gap:24px; flex-wrap:wrap; margin-bottom:48px;
+  font-family:var(--font-mono); font-size:11px;
+  color:var(--slate-soft); letter-spacing:0.12em;
+  text-transform:uppercase;
+}
+.tag-band span { display:inline-flex; align-items:center; gap:8px; }
+.tag-band span::before {
+  content:''; width:6px; height:6px; border-radius:50%;
+  background:var(--tangerine);
+}
+
+.grid {
+  display:grid; grid-template-columns:repeat(2, 1fr);
+  gap:24px; margin-bottom:80px;
+}
+.page-card {
+  background:white; border-radius:24px;
+  padding:32px;
+  border:1px solid rgba(42,42,44,0.05);
+  transition:all 350ms var(--ease-soft);
+  text-decoration:none; color:var(--ink);
+  display:flex; flex-direction:column;
+  position:relative; overflow:hidden;
+}
+.page-card:hover {
+  transform:translateY(-4px);
+  box-shadow:var(--shadow-lift);
+  border-color:var(--tangerine-soft);
+}
+.page-card.featured {
+  background:linear-gradient(135deg, var(--tangerine-mist), var(--tangerine-soft));
+  border-color:transparent;
+}
+.page-num {
+  font-family:var(--font-mono); font-size:11px;
+  letter-spacing:0.14em; color:var(--tangerine-deep);
+  text-transform:uppercase; font-weight:500;
+}
+.page-card h3 {
+  font-family:var(--font-display);
+  font-size:1.85rem; font-weight:400;
+  letter-spacing:-0.015em;
+  margin:14px 0 10px;
+  line-height:1.1;
+}
+.page-card h3 em { font-style:italic; color:var(--tangerine); }
+.page-card p {
+  font-size:14.5px; color:var(--slate); line-height:1.6;
+  margin-bottom:24px; flex:1;
+}
+.page-card .open {
+  display:inline-flex; align-items:center; gap:8px;
+  color:var(--tangerine-deep); font-weight:500; font-size:14px;
+  margin-top:auto;
+  transition:gap 250ms var(--ease-soft);
+}
+.page-card:hover .open { gap:12px; }
+
+.foot {
+  padding-top:48px;
+  border-top:1px solid rgba(42,42,44,0.08);
+  font-size:13px; color:var(--slate-soft); line-height:1.6;
+}
+.foot strong { color:var(--ink); font-weight:600; }
+
+@media (max-width:720px) {
+  body { padding:48px 20px; }
+  .grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img src="logo-mark.png" alt="OrphanGive" />
+    <div>
+      <div class="brand-name">OrphanGive</div>
+      <div class="brand-tag">Prototypes · v3 · May 2026</div>
+    </div>
+  </header>
+
+  <h1 class="intro">A bright, painterly direction.<br/>Built around your <em>actual</em> brand.</h1>
+  <p class="lead">Four prototype pages in the rebuilt direction. Cream backgrounds. Tangerine drawn straight from your logo. Fraunces italic for the editorial moments. The figure from your logo used as a recurring motif. Tap any card to open the full page.</p>
+
+  <div class="tag-band">
+    <span>Logo-derived palette</span>
+    <span>Fraunces + Inter typography</span>
+    <span>Painterly accents</span>
+    <span>Bright, never dark</span>
+  </div>
+
+  <div class="grid">
+    <a href="01-homepage.html" class="page-card featured">
+      <div class="page-num">01 · Public</div>
+      <h3>Homepage with <em>live data</em></h3>
+      <p>Hero · live stat band (4.8M / 247 / 156 / 42) · how it works · featured children · editorial story · faith section · for-charities band · footer with full legal links.</p>
+      <span class="open">Open homepage →</span>
+    </a>
+
+    <a href="02-child-profile.html" class="page-card">
+      <div class="page-num">02 · Public</div>
+      <h3>Child profile with <em>privacy</em></h3>
+      <p>Photo + name + meta pills · privacy explanation · field-by-field detail with locked fields shown as dashed-border tangerine pills + "request to view" links · documents banner · story · updates bento.</p>
+      <span class="open">Open child profile →</span>
+    </a>
+
+    <a href="03-donor-dashboard.html" class="page-card">
+      <div class="page-num">03 · Authenticated</div>
+      <h3>Donor dashboard <em>bento</em></h3>
+      <p>Sidebar nav · 8 tile bento: sponsored children, this-year impact, upcoming payment, latest update (photo-dominant), stories, reveal approved, Q1 report with thumbnail, previously-sponsored archive (4 children with status).</p>
+      <span class="open">Open dashboard →</span>
+    </a>
+
+    <a href="04-checkout.html" class="page-card">
+      <div class="page-num">04 · Authenticated</div>
+      <h3>Checkout, two <em>steps</em></h3>
+      <p>Transparency block ("how money flows here") · tier (1500/3000/5000) · duration (6/12/24/∞) · one-time gifts to Rana (Eid clothes, supplies, medical) · flexible running-costs contribution (skip / 100 / 250 / 500 / 1000 / custom) · message to caretaker · agreement · sticky summary with running total and live BDT figure.</p>
+      <span class="open">Open checkout →</span>
+    </a>
+  </div>
+
+  <div class="foot">
+    <p><strong>Pages still to build, on confirmation:</strong> Browse children with filters · Sign up / sign in · For Charities (B2B pitch with white-label mockup) · Story article · Static legal pages (Privacy, Cookies, Terms, Safeguarding).</p>
+    <p style="margin-top:16px;"><strong>Logo files in this folder:</strong> logo-mark.png (figure only) · logo-full.png (figure + Orphan Give horizontal) · logo-stacked.png (Orphan + figure + Give arrangement).</p>
+  </div>
+
+</div>
+</body>
+</html>
