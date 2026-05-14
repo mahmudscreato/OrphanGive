@@ -16,16 +16,22 @@ export function StatTile({
   href,
   icon: Icon,
   hint,
+  tooltip,
 }: {
   label: string;
   value: number | string;
   href: string;
   icon?: LucideIcon;
   hint?: string;
+  // Session 46 — optional native browser tooltip. Used by the home
+  // page's Pending submissions tile to show the per-collection
+  // breakdown without pulling in a tooltip library.
+  tooltip?: string;
 }) {
   return (
     <Link
       href={href}
+      title={tooltip}
       className="group block rounded-2xl bg-white border border-ink/[0.06] p-5 transition-all duration-200 hover:border-tangerine-soft hover:shadow-card hover:-translate-y-px min-h-[112px]"
     >
       <div className="flex items-start justify-between gap-3 mb-3">

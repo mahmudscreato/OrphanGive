@@ -28,6 +28,9 @@ import {
   OutOfScopeError,
   type ProposalStatus,
 } from "@/lib/di-proposals";
+// Session 46 — audit + admin notification on every successful submission.
+import { recordAuditEvent } from "@/lib/di-audit";
+import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -172,6 +175,35 @@ export async function POST(req: NextRequest) {
 
   try {
     const { proposalId } = await createProposal(session.userId, parsed.data);
+    // Session 46 — audit + admin notify, in that order. Both are
+    // best-effort: failures are logged but don't break the user
+    // submission (recordAuditEvent + notifyAdminOfPendingSubmission
+    // both swallow internally).
+    const childIdForMeta =
+      parsed.data.operation === "update"
+        ? parsed.data.childId
+        : null;
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_submitted_proposal",
+      collection: "child_proposal",
+      recordId: proposalId,
+      metadata: {
+        operation: parsed.data.operation,
+        ...(childIdForMeta ? { childId: childIdForMeta } : {}),
+      },
+      request: req,
+    });
+    await notifyAdminOfPendingSubmission({
+      collection: "child_proposal",
+      recordId: proposalId,
+      submittedByUserId: session.userId,
+      ...(childIdForMeta ? { childId: childIdForMeta } : {}),
+      summary:
+        parsed.data.operation === "create"
+          ? `New child proposal: ${parsed.data.fields.display_name}`
+          : "Edit-profile proposal",
+    });
     return NextResponse.json({ proposalId });
   } catch (err) {
     if (err instanceof OutOfScopeError) {

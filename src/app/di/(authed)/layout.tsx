@@ -31,9 +31,10 @@ export default async function DiAuthedLayout({
       {/* Desktop-only sidebar (240px wide, fixed left). On desktop
           we offset main by 240px to avoid the sidebar's column. */}
       <DiSidebar />
-      {/* Main content area. pb-20 on mobile leaves room for the
-          fixed bottom nav (~64px tall + comfortable spacing). */}
-      <main className="md:pl-[240px] pb-20 md:pb-12 min-h-screen">
+      {/* Main content area. pb-24 on mobile leaves room for the fixed
+          bottom nav (56px min per tab + iOS Home-Indicator safe-area
+          ~34px on PWA install — pb-20 was tight there). Session 46 polish. */}
+      <main className="md:pl-[240px] pb-24 md:pb-12 min-h-screen">
         {children}
       </main>
       {/* Mobile-only bottom nav */}

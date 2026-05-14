@@ -15,11 +15,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getDirectusSession } from "@/lib/di-auth";
 import { withdrawProposal } from "@/lib/di-proposals";
+// Session 46 — audit on every successful withdrawal.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getDirectusSession();
@@ -35,6 +37,19 @@ export async function POST(
     if (!ok) {
       return NextResponse.json({ error: "cannot_withdraw" }, { status: 400 });
     }
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_withdrew_proposal",
+      collection: "child_proposal",
+      recordId: id,
+      // No childId metadata — by the time we audit, the proposal row
+      // is deleted (withdrawal = DELETE per Session 44 design). The
+      // proposal row is gone so we can't resolve the target child.
+      // History tab on Child Detail won't show withdrawals; that's
+      // acceptable since withdrawn proposals never made it to the
+      // child anyway.
+      request: req,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error(

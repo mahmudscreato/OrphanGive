@@ -20,6 +20,9 @@ import {
   OutOfScopeError,
   SponsorshipNotMatchingError,
 } from "@/lib/di-deliveries";
+// Session 46 — audit + admin notify on every successful delivery.
+import { recordAuditEvent } from "@/lib/di-audit";
+import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +74,27 @@ export async function POST(req: NextRequest) {
 
   try {
     const { deliveryId } = await createDelivery(session.userId, parsed.data);
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_marked_delivery",
+      collection: "aid_delivery",
+      recordId: deliveryId,
+      metadata: {
+        childId: parsed.data.childId,
+        aidType: parsed.data.aidType,
+        ...(parsed.data.sponsorshipId
+          ? { sponsorshipId: parsed.data.sponsorshipId }
+          : {}),
+      },
+      request: req,
+    });
+    await notifyAdminOfPendingSubmission({
+      collection: "aid_delivery",
+      recordId: deliveryId,
+      submittedByUserId: session.userId,
+      childId: parsed.data.childId,
+      summary: `New ${parsed.data.aidType} delivery: "${parsed.data.description.slice(0, 60)}"`,
+    });
     return NextResponse.json({ deliveryId });
   } catch (err) {
     if (err instanceof OutOfScopeError) {

@@ -19,6 +19,9 @@ import {
   InvalidInputError,
   OutOfScopeError,
 } from "@/lib/di-moments";
+// Session 46 — audit + admin notify on every successful moment.
+import { recordAuditEvent } from "@/lib/di-audit";
+import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +76,30 @@ export async function POST(req: NextRequest) {
       { userId: session.userId, accessToken: session.accessToken },
       parsed.data,
     );
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_uploaded_moment",
+      collection: "child_moment",
+      recordId: momentId,
+      metadata: {
+        childId: parsed.data.childId,
+        mediaType: parsed.data.mediaType,
+        ...(parsed.data.durationSeconds
+          ? { durationSeconds: parsed.data.durationSeconds }
+          : {}),
+      },
+      request: req,
+    });
+    await notifyAdminOfPendingSubmission({
+      collection: "child_moment",
+      recordId: momentId,
+      submittedByUserId: session.userId,
+      childId: parsed.data.childId,
+      summary:
+        parsed.data.mediaType === "video"
+          ? `New video moment: "${parsed.data.caption.slice(0, 60)}"`
+          : `New photo moment: "${parsed.data.caption.slice(0, 60)}"`,
+    });
     return NextResponse.json({ momentId });
   } catch (err) {
     if (err instanceof OutOfScopeError) {
