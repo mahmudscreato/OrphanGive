@@ -1,20 +1,29 @@
 /**
- * OrphanGive — Session 41-v3 — register collections + fields
- * ----------------------------------------------------------
- * Registers the 4 new DI Dashboard collections in Directus's
- * metadata (directus_collections + directus_fields) so they appear
- * in the admin UI with proper field interfaces, options, and
- * display templates. Also registers the new fields added to
- * existing collections (child, directus_users, child_moment).
+ * OrphanGive — Session 41-v3 — register collections + fields + relations
+ * ----------------------------------------------------------------------
+ * Creates the 4 new DI Dashboard collections (`child_proposal`,
+ * `aid_delivery`, `task`, `audit_log`) end-to-end via @directus/sdk
+ * — table + metadata + fields + relations all in one pass. Mirrors
+ * the C1 bootstrap pattern in `src/index.ts` exactly:
  *
- * Why this exists separately from 001-schema.sql:
- * 001-schema.sql creates the underlying Postgres tables + columns
- * via raw DDL. Directus doesn't auto-introspect new tables — its
- * metadata layer needs explicit registration to render the
- * collections in admin and to serve them via the SDK with proper
- * field interfaces. This script is the second half.
+ *   Phase 1 — createCollection (with id PK in fields[])
+ *   Phase 2 — createField for each non-id field
+ *   Phase 3 — createField for the new fields on existing collections
+ *             (child, directus_users, child_moment) whose underlying
+ *             columns were already added by 001-schema.sql
+ *   Phase 4 — createRelation for each FK on the new collections
+ *             (FKs on the existing-collection extensions are already
+ *             set at the Postgres level by 001-schema.sql; Directus
+ *             auto-introspects them — no explicit relation needed
+ *             unless the admin UI dropdown breaks)
  *
- * Idempotent: safe to re-run.
+ * Field defs use the shared `f.*` helpers from `./lib/field-helpers`.
+ * The bd_division FK column needs custom handling because its target
+ * PK is varchar `code`, not uuid `id` — defined inline as
+ * `bdDivisionFkField()` below.
+ *
+ * Idempotent: safe to re-run. Existing collections / fields / relations
+ * are detected and skipped.
  *
  * Run with:
  *     npm run v3-register-collections
@@ -27,9 +36,12 @@ import {
   authentication,
   createCollection,
   createField,
+  createRelation,
   readCollections,
   readFieldsByCollection,
+  readRelations,
 } from '@directus/sdk';
+import { f, type FieldDef } from './lib/field-helpers';
 
 const URL = process.env.DIRECTUS_URL;
 const EMAIL = process.env.ADMIN_EMAIL;
@@ -53,38 +65,46 @@ const log = (msg: string, tone: 'info' | 'ok' | 'skip' | 'err' = 'info') => {
   console.log(`${colors[tone]}[${time}] ${msg}\x1b[0m`);
 };
 
-// ─── Collection metadata definitions ───────────────────────────────
+// ─── bd_division FK column (custom — non-uuid target) ──────────────
 //
-// Each entry is a Directus collection registration payload + the
-// fields to register on it. The schema for the underlying Postgres
-// table is created separately by 001-schema.sql; here we just teach
-// Directus how to render each column in admin.
+// `bd_division` PK is varchar `code` (slugs: 'dhaka', 'chittagong', …),
+// not uuid `id`. C1's `f.m2o` assumes uuid. Don't touch the helper —
+// hand-craft the field def for this one column.
+function bdDivisionFkField(opts: { required?: boolean } = {}): FieldDef {
+  return {
+    field: 'bd_division',
+    type: 'string',
+    meta: {
+      interface: 'select-dropdown-m2o',
+      special: ['m2o'],
+      required: opts.required ?? false,
+      display: 'related-values',
+      display_options: { template: '{{name}}' },
+    },
+    schema: { is_nullable: !(opts.required ?? false) },
+  };
+}
 
-type FieldDef = {
-  field: string;
-  type:
-    | 'uuid'
-    | 'string'
-    | 'text'
-    | 'integer'
-    | 'date'
-    | 'timestamp'
-    | 'json'
-    | 'boolean';
-  meta?: Record<string, unknown>;
-  schema?: Record<string, unknown>;
-};
+// ─── Photo M2O (capital P, custom field name) ──────────────────────
+// Same shape as `f.file` but with the C1-era 'Photo' field name.
+function photoFkField(opts: { required?: boolean } = {}): FieldDef {
+  return {
+    field: 'Photo',
+    type: 'uuid',
+    meta: { interface: 'file-image', special: ['file'] },
+    schema: { is_nullable: !(opts.required ?? false) },
+  };
+}
+
+// ─── Collection definitions (mirrors C1's `collections` map shape) ─
 
 type CollectionDef = {
-  collection: string;
   meta: Record<string, unknown>;
   fields: FieldDef[];
 };
 
-const NEW_COLLECTIONS: CollectionDef[] = [
-  // ─── child_proposal ──────────────────────────────────────────────
-  {
-    collection: 'child_proposal',
+const NEW_COLLECTIONS: Record<string, CollectionDef> = {
+  child_proposal: {
     meta: {
       icon: 'pending_actions',
       color: '#ED8B3F',
@@ -94,37 +114,33 @@ const NEW_COLLECTIONS: CollectionDef[] = [
       accountability: 'all',
     },
     fields: [
-      { field: 'id', type: 'uuid', meta: { interface: 'input', readonly: true, hidden: false, special: ['uuid'] } },
-      { field: 'proposal_type', type: 'string', meta: { interface: 'select-dropdown', required: true, width: 'half', options: { choices: [{ text: 'Create', value: 'create' }, { text: 'Update', value: 'update' }] } } },
-      { field: 'target_child', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', display_options: { template: '{{display_name}}' }, width: 'half', note: 'Null for create proposals; UUID of target row for update.' } },
-      { field: 'display_name', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'first_name', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'date_of_birth', type: 'date', meta: { interface: 'datetime', width: 'half' } },
-      { field: 'gender', type: 'string', meta: { interface: 'input', width: 'half' } },
-      // bd_division PK is varchar `code` (e.g. 'dhaka'), not uuid `id`.
-      { field: 'bd_division', type: 'string', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', display_options: { template: '{{name}}' }, width: 'half' } },
-      { field: 'district_internal', type: 'string', meta: { interface: 'input', width: 'half', note: 'Internal-only district label. Never exposed at Tier 1.' } },
-      { field: 'Photo', type: 'uuid', meta: { interface: 'file-image', special: ['file'], width: 'half' } },
-      { field: 'story', type: 'text', meta: { interface: 'input-multiline' } },
-      { field: 'education_level', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'class_grade', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'support_type', type: 'string', meta: { interface: 'select-dropdown', width: 'half', options: { choices: [{ text: 'Education', value: 'education' }, { text: 'Food', value: 'food' }, { text: 'Healthcare', value: 'healthcare' }, { text: 'Clothing', value: 'clothing' }, { text: 'General care', value: 'general_care' }, { text: 'Other', value: 'other' }] } } },
-      { field: 'monthly_cost', type: 'integer', meta: { interface: 'input', width: 'half', note: 'Monthly support amount in BDT. Nullable.' } },
-      { field: 'guardian_summary_internal', type: 'text', meta: { interface: 'input-multiline', note: 'Internal-only family context. Never exposed at any donor tier.' } },
-      { field: 'last_visit_date', type: 'date', meta: { interface: 'datetime', width: 'half' } },
-      { field: 'status', type: 'string', meta: { interface: 'select-dropdown', display: 'labels', width: 'half', options: { choices: [{ text: 'Draft', value: 'draft' }, { text: 'Pending', value: 'pending' }, { text: 'Approved', value: 'approved' }, { text: 'Rejected', value: 'rejected' }] } } },
-      { field: 'rejection_reason', type: 'text', meta: { interface: 'input-multiline' } },
-      { field: 'created_by', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o', 'user-created'], display: 'user', readonly: true, width: 'half' } },
-      { field: 'approved_by', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', readonly: true, width: 'half' } },
-      { field: 'date_created', type: 'timestamp', meta: { interface: 'datetime', readonly: true, special: ['date-created'], width: 'half' } },
-      { field: 'published_at', type: 'timestamp', meta: { interface: 'datetime', readonly: true, width: 'half' } },
-      { field: 'previous_snapshot', type: 'json', meta: { interface: 'input-code', options: { language: 'JSON' }, note: 'JSONB capture of affected child row pre-mutation. Set when status moves to pending.' } },
+      f.enum('proposal_type', ['create', 'update'], { required: true }),
+      f.m2o('target_child', { required: false }),
+      f.str('display_name'),
+      f.str('first_name'),
+      f.date('date_of_birth'),
+      f.str('gender'),
+      bdDivisionFkField({ required: false }),
+      f.str('district_internal'),
+      photoFkField({ required: false }),
+      f.text('story'),
+      f.str('education_level'),
+      f.str('class_grade'),
+      f.enum('support_type', ['education', 'food', 'healthcare', 'clothing', 'general_care', 'other']),
+      f.int('monthly_cost', true),
+      f.text('guardian_summary_internal'),
+      f.date('last_visit_date'),
+      f.enum('status', ['draft', 'pending', 'approved', 'rejected'], { required: true, def: 'draft' }),
+      f.text('rejection_reason'),
+      f.m2o('created_by', { required: true }),
+      f.m2o('approved_by', { required: false }),
+      f.dt('date_created'),
+      f.dt('published_at'),
+      f.json('previous_snapshot'),
     ],
   },
 
-  // ─── aid_delivery ────────────────────────────────────────────────
-  {
-    collection: 'aid_delivery',
+  aid_delivery: {
     meta: {
       icon: 'redeem',
       color: '#9FBFD9',
@@ -134,26 +150,23 @@ const NEW_COLLECTIONS: CollectionDef[] = [
       accountability: 'all',
     },
     fields: [
-      { field: 'id', type: 'uuid', meta: { interface: 'input', readonly: true, hidden: false, special: ['uuid'] } },
-      { field: 'child', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', display_options: { template: '{{display_name}}' }, required: true } },
-      { field: 'sponsorship', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', width: 'half', note: 'Optional — null for general-fund deliveries.' } },
-      { field: 'aid_type', type: 'string', meta: { interface: 'select-dropdown', required: true, width: 'half', options: { choices: [{ text: 'Education', value: 'education' }, { text: 'Food', value: 'food' }, { text: 'Healthcare', value: 'healthcare' }, { text: 'Clothing', value: 'clothing' }, { text: 'General care', value: 'general_care' }, { text: 'Other', value: 'other' }] } } },
-      { field: 'description', type: 'text', meta: { interface: 'input-multiline', required: true } },
-      { field: 'delivery_date', type: 'date', meta: { interface: 'datetime', required: true, width: 'half' } },
-      { field: 'photo', type: 'uuid', meta: { interface: 'file-image', special: ['file'], required: true, width: 'half' } },
-      { field: 'recipient_acknowledgment', type: 'text', meta: { interface: 'input-multiline' } },
-      { field: 'status', type: 'string', meta: { interface: 'select-dropdown', display: 'labels', width: 'half', options: { choices: [{ text: 'Pending', value: 'pending' }, { text: 'Verified', value: 'verified' }, { text: 'Rejected', value: 'rejected' }] } } },
-      { field: 'rejection_reason', type: 'text', meta: { interface: 'input-multiline' } },
-      { field: 'delivered_by', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o', 'user-created'], display: 'user', readonly: true, width: 'half' } },
-      { field: 'verified_by', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', readonly: true, width: 'half' } },
-      { field: 'date_created', type: 'timestamp', meta: { interface: 'datetime', readonly: true, special: ['date-created'], width: 'half' } },
-      { field: 'verified_at', type: 'timestamp', meta: { interface: 'datetime', readonly: true, width: 'half' } },
+      f.m2o('child', { required: true }),
+      f.m2o('sponsorship', { required: false }),
+      f.enum('aid_type', ['education', 'food', 'healthcare', 'clothing', 'general_care', 'other'], { required: true }),
+      f.text('description'),
+      f.date('delivery_date'),
+      f.file('photo'),
+      f.text('recipient_acknowledgment'),
+      f.enum('status', ['pending', 'verified', 'rejected'], { required: true, def: 'pending' }),
+      f.text('rejection_reason'),
+      f.m2o('delivered_by', { required: true }),
+      f.m2o('verified_by', { required: false }),
+      f.dt('date_created'),
+      f.dt('verified_at'),
     ],
   },
 
-  // ─── task ────────────────────────────────────────────────────────
-  {
-    collection: 'task',
+  task: {
     meta: {
       icon: 'task_alt',
       color: '#F4B400',
@@ -163,26 +176,23 @@ const NEW_COLLECTIONS: CollectionDef[] = [
       accountability: 'all',
     },
     fields: [
-      { field: 'id', type: 'uuid', meta: { interface: 'input', readonly: true, hidden: false, special: ['uuid'] } },
-      { field: 'title', type: 'string', meta: { interface: 'input', required: true } },
-      { field: 'description', type: 'text', meta: { interface: 'input-multiline' } },
-      { field: 'child', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', display_options: { template: '{{display_name}}' }, width: 'half' } },
-      { field: 'assignee', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', required: true, width: 'half' } },
-      { field: 'created_by', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o', 'user-created'], display: 'user', readonly: true, width: 'half' } },
-      { field: 'date_created', type: 'timestamp', meta: { interface: 'datetime', readonly: true, special: ['date-created'], width: 'half' } },
-      { field: 'due_date', type: 'date', meta: { interface: 'datetime', width: 'half' } },
-      { field: 'priority', type: 'string', meta: { interface: 'select-dropdown', width: 'half', options: { choices: [{ text: 'Low', value: 'low' }, { text: 'Normal', value: 'normal' }, { text: 'High', value: 'high' }, { text: 'Urgent', value: 'urgent' }] } } },
-      { field: 'di_status', type: 'string', meta: { interface: 'select-dropdown', width: 'half', note: 'DI owns this. Open → in_progress → completed_pending_verification.', options: { choices: [{ text: 'Open', value: 'open' }, { text: 'In progress', value: 'in_progress' }, { text: 'Completed (pending verification)', value: 'completed_pending_verification' }] } } },
-      { field: 'admin_status', type: 'string', meta: { interface: 'select-dropdown', width: 'half', note: 'Admin owns this. DI cannot edit.', options: { choices: [{ text: 'Open', value: 'open' }, { text: 'Verified complete', value: 'verified_complete' }, { text: 'Rejected — redo', value: 'rejected_redo' }] } } },
-      { field: 'completed_at', type: 'timestamp', meta: { interface: 'datetime', readonly: true, width: 'half' } },
-      { field: 'verified_at', type: 'timestamp', meta: { interface: 'datetime', readonly: true, width: 'half' } },
-      { field: 'verified_by', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', readonly: true, width: 'half' } },
+      f.str('title', { required: true }),
+      f.text('description'),
+      f.m2o('child', { required: false }),
+      f.m2o('assignee', { required: true }),
+      f.m2o('created_by', { required: true }),
+      f.dt('date_created'),
+      f.date('due_date'),
+      f.enum('priority', ['low', 'normal', 'high', 'urgent'], { def: 'normal' }),
+      f.enum('di_status', ['open', 'in_progress', 'completed_pending_verification'], { def: 'open' }),
+      f.enum('admin_status', ['open', 'verified_complete', 'rejected_redo'], { def: 'open' }),
+      f.dt('completed_at'),
+      f.dt('verified_at'),
+      f.m2o('verified_by', { required: false }),
     ],
   },
 
-  // ─── audit_log ───────────────────────────────────────────────────
-  {
-    collection: 'audit_log',
+  audit_log: {
     meta: {
       icon: 'receipt_long',
       color: '#5C5C5E',
@@ -192,52 +202,101 @@ const NEW_COLLECTIONS: CollectionDef[] = [
       accountability: null, // do not audit the audit log itself
     },
     fields: [
-      { field: 'id', type: 'uuid', meta: { interface: 'input', readonly: true, hidden: false, special: ['uuid'] } },
-      { field: 'timestamp', type: 'timestamp', meta: { interface: 'datetime', readonly: true, width: 'half' } },
-      { field: 'actor', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', required: true, width: 'half' } },
-      { field: 'actor_role', type: 'string', meta: { interface: 'input', required: true, width: 'half' } },
-      { field: 'action', type: 'string', meta: { interface: 'input', required: true, width: 'half' } },
-      { field: 'collection', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'record_id', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'diff', type: 'json', meta: { interface: 'input-code', options: { language: 'JSON' } } },
-      { field: 'ip', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'user_agent', type: 'text', meta: { interface: 'input-multiline' } },
-      { field: 'metadata', type: 'json', meta: { interface: 'input-code', options: { language: 'JSON' } } },
+      f.dt('timestamp'),
+      f.m2o('actor', { required: true }),
+      f.str('actor_role', { required: true }),
+      f.str('action', { required: true }),
+      f.str('collection'),
+      f.str('record_id'),
+      f.json('diff'),
+      f.str('ip'),
+      f.text('user_agent'),
+      f.json('metadata'),
     ],
   },
+};
+
+// ─── Relations to register in Phase 4 ──────────────────────────────
+//
+// One entry per FK on the new collections. C1's pattern: type the
+// target table; Directus + Postgres figure out the FK column itself.
+// All point at uuid `id` PKs except bd_division which uses varchar
+// `code` — Directus's auto-discovery handles the column-type mismatch
+// because we declared the field's column type as 'string' above.
+
+type RelationDef = {
+  collection: string;
+  field: string;
+  related_collection: string;
+};
+
+const NEW_RELATIONS: RelationDef[] = [
+  // child_proposal
+  { collection: 'child_proposal', field: 'target_child',  related_collection: 'child' },
+  { collection: 'child_proposal', field: 'bd_division',   related_collection: 'bd_division' },
+  { collection: 'child_proposal', field: 'Photo',         related_collection: 'directus_files' },
+  { collection: 'child_proposal', field: 'created_by',    related_collection: 'directus_users' },
+  { collection: 'child_proposal', field: 'approved_by',   related_collection: 'directus_users' },
+  // aid_delivery
+  { collection: 'aid_delivery',   field: 'child',         related_collection: 'child' },
+  { collection: 'aid_delivery',   field: 'sponsorship',   related_collection: 'sponsorship' },
+  { collection: 'aid_delivery',   field: 'photo',         related_collection: 'directus_files' },
+  { collection: 'aid_delivery',   field: 'delivered_by',  related_collection: 'directus_users' },
+  { collection: 'aid_delivery',   field: 'verified_by',   related_collection: 'directus_users' },
+  // task
+  { collection: 'task',           field: 'child',         related_collection: 'child' },
+  { collection: 'task',           field: 'assignee',      related_collection: 'directus_users' },
+  { collection: 'task',           field: 'created_by',    related_collection: 'directus_users' },
+  { collection: 'task',           field: 'verified_by',   related_collection: 'directus_users' },
+  // audit_log
+  { collection: 'audit_log',      field: 'actor',         related_collection: 'directus_users' },
 ];
 
-// ─── Field additions to existing collections ────────────────────────
+// ─── Field additions to existing collections (Phase 3) ─────────────
+//
+// These columns were already added at the Postgres level by
+// 001-schema.sql (with their FK constraints if applicable). Here we
+// register the Directus metadata so the admin UI knows about them.
+// Each helper produces a schema block — Directus ignores most schema
+// fields when the column already exists, but `is_nullable` /
+// `default_value` / `is_unique` get reconciled.
 
 const EXISTING_COLLECTION_FIELDS: { collection: string; fields: FieldDef[] }[] = [
   {
     collection: 'child',
     fields: [
-      { field: 'uploaded_by_di', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', readonly: true, note: 'Set on admin approval of a child_proposal create.' } },
-      { field: 'assigned_di', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'user', note: 'Admin-assigned. Reassignable. Controls DI READ scope.' } },
-      { field: 'district_internal', type: 'string', meta: { interface: 'input', note: 'Internal-only district label. Never exposed at Tier 1.' } },
-      { field: 'support_type', type: 'string', meta: { interface: 'select-dropdown', width: 'half', options: { choices: [{ text: 'Education', value: 'education' }, { text: 'Food', value: 'food' }, { text: 'Healthcare', value: 'healthcare' }, { text: 'Clothing', value: 'clothing' }, { text: 'General care', value: 'general_care' }, { text: 'Other', value: 'other' }] } } },
-      { field: 'monthly_cost', type: 'integer', meta: { interface: 'input', width: 'half', note: 'Monthly support amount in BDT. Nullable. Existing rows backfilled to 1500.' } },
-      { field: 'guardian_summary_internal', type: 'text', meta: { interface: 'input-multiline', note: 'Internal-only family context. Never exposed at any donor tier.' } },
-      { field: 'last_visit_date', type: 'date', meta: { interface: 'datetime', note: 'Date of DI most recent in-person visit. Nullable.' } },
+      // Both DI tracking columns are uuid FKs → directus_users.
+      // Use f.m2o for the metadata; FK already enforced at Postgres
+      // level by 001-schema.sql. No createRelation needed unless the
+      // admin UI's m2o dropdown picker fails to populate.
+      f.m2o('uploaded_by_di'),
+      f.m2o('assigned_di'),
+      f.str('district_internal'),
+      f.enum('support_type', ['education', 'food', 'healthcare', 'clothing', 'general_care', 'other']),
+      f.int('monthly_cost', true),
+      f.text('guardian_summary_internal'),
+      f.date('last_visit_date'),
     ],
   },
   {
     collection: 'directus_users',
     fields: [
-      { field: 'assigned_divisions', type: 'json', meta: { interface: 'tags', special: ['cast-json'], note: 'Array of bd_division.code values (slug strings like "dhaka", "chittagong"). Constrains DI CREATE scope. Does NOT govern READ.' } },
+      // assigned_divisions is jsonb storing array of bd_division.code
+      // slugs. Use f.json for the editor; could also be f.tags but
+      // tags is csv-backed and we want jsonb.
+      f.json('assigned_divisions'),
     ],
   },
   {
     collection: 'child_moment',
     fields: [
-      { field: 'media_type', type: 'string', meta: { interface: 'select-dropdown', required: true, width: 'half', options: { choices: [{ text: 'Image', value: 'image' }, { text: 'Video', value: 'video' }] } } },
-      { field: 'duration_seconds', type: 'integer', meta: { interface: 'input', width: 'half', note: 'Required for video (1–60s); must be null for image.' } },
+      f.enum('media_type', ['image', 'video']),
+      f.int('duration_seconds', true),
     ],
   },
 ];
 
-// ─── Main ───────────────────────────────────────────────────────────
+// ─── SDK helpers ────────────────────────────────────────────────────
 
 async function login() {
   log(`Logging in to ${URL} as ${EMAIL}...`);
@@ -245,16 +304,10 @@ async function login() {
   log('Logged in.', 'ok');
 }
 
-async function fetchCollections() {
-  // Directus auto-detects raw Postgres tables and reports them via the
-  // /collections endpoint even when they have no row in
-  // `directus_collections` (i.e. no explicit metadata registration).
-  // Auto-detected entries return with `meta: null`; explicitly-registered
-  // ones return a populated `meta` object. We only count "registered" if
-  // meta is non-null — otherwise the field-creation phase fails with
-  // "permission to access collection 'X' or it does not exist" because
-  // the addressable-collection layer requires the metadata row.
-  // (Session 41-v3-FIX3.)
+async function fetchRegisteredCollections() {
+  // Filter to FORMALLY-registered (meta !== null). Auto-introspected
+  // raw Postgres tables show up in readCollections() with meta: null
+  // and would falsely register as "exists" — Session 41-v3-FIX3 fix.
   const collections = (await client.request(readCollections())) as Array<{
     collection: string;
     meta: unknown | null;
@@ -271,77 +324,143 @@ async function fetchFields(collection: string) {
     )) as Array<{ field: string }>;
     return new Set(fields.map((f) => f.field));
   } catch {
-    // Collection may not have any registered fields yet — return empty set.
     return new Set<string>();
   }
 }
 
-async function registerCollection(def: CollectionDef, existing: Set<string>) {
-  if (existing.has(def.collection)) {
-    log(`  · collection ${def.collection} (exists, skipped)`, 'skip');
+async function fetchRelations() {
+  try {
+    const relations = (await client.request(readRelations())) as Array<{
+      collection: string;
+      field: string;
+    }>;
+    // Key by `${collection}.${field}` so we can dedupe per-FK.
+    return new Set(relations.map((r) => `${r.collection}.${r.field}`));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+async function registerCollection(name: string, def: CollectionDef, existing: Set<string>) {
+  if (existing.has(name)) {
+    log(`  · collection ${name} (exists, skipped)`, 'skip');
     return;
   }
   try {
+    // C1's proven pattern: createCollection with id PK in fields[].
+    // Directus uses fields[] to scaffold the underlying Postgres
+    // table — the id PK declaration creates the `id uuid PRIMARY KEY
+    // DEFAULT gen_random_uuid()` column.
     await client.request(
       createCollection({
-        collection: def.collection,
-        meta: def.meta,
-        schema: { name: def.collection },
+        collection: name,
+        meta: { collection: name, ...def.meta },
+        schema: { name },
+        fields: [
+          {
+            field: 'id',
+            type: 'uuid',
+            meta: { hidden: true, readonly: true, interface: 'input', special: ['uuid'] },
+            schema: { is_primary_key: true, has_auto_increment: false },
+          },
+        ],
       } as never),
     );
-    log(`  ✓ collection: ${def.collection}`, 'ok');
+    log(`  ✓ collection: ${name}`, 'ok');
   } catch (e: any) {
-    log(`  ✗ collection ${def.collection}: ${e?.errors?.[0]?.message || e?.message || e}`, 'err');
+    log(`  ✗ collection ${name}: ${e?.errors?.[0]?.message || e?.message || e}`, 'err');
   }
 }
 
 async function registerFields(collection: string, fields: FieldDef[]) {
   const existing = await fetchFields(collection);
-  for (const f of fields) {
-    if (existing.has(f.field)) {
-      log(`    · field ${collection}.${f.field} (exists, skipped)`, 'skip');
+  for (const fld of fields) {
+    if (existing.has(fld.field)) {
+      log(`    · field ${collection}.${fld.field} (exists, skipped)`, 'skip');
       continue;
     }
     try {
       await client.request(
         createField(collection as never, {
-          field: f.field,
-          type: f.type,
-          meta: f.meta ?? {},
-          schema: f.schema ?? {},
+          field: fld.field,
+          type: fld.type,
+          meta: fld.meta ?? {},
+          schema: fld.schema ?? {},
         } as never),
       );
-      log(`    ✓ field: ${collection}.${f.field}`, 'ok');
+      log(`    ✓ field: ${collection}.${fld.field}`, 'ok');
     } catch (e: any) {
       log(
-        `    ✗ field ${collection}.${f.field}: ${e?.errors?.[0]?.message || e?.message || e}`,
+        `    ✗ field ${collection}.${fld.field}: ${e?.errors?.[0]?.message || e?.message || e}`,
         'err',
       );
     }
   }
 }
 
+async function registerRelation(rel: RelationDef, existing: Set<string>) {
+  const key = `${rel.collection}.${rel.field}`;
+  if (existing.has(key)) {
+    log(`  · relation ${key} → ${rel.related_collection} (exists, skipped)`, 'skip');
+    return;
+  }
+  try {
+    // Mirror C1's createRelation pattern verbatim (src/index.ts §
+    // buildRelations). on_delete: 'SET NULL' is the conservative
+    // default — DI proposals shouldn't cascade-delete real data.
+    await client.request(
+      createRelation({
+        collection: rel.collection,
+        field: rel.field,
+        related_collection: rel.related_collection,
+        meta: {
+          junction_field: null,
+          many_collection: rel.collection,
+          many_field: rel.field,
+          one_collection: rel.related_collection,
+          sort_field: null,
+        },
+        schema: { on_delete: 'SET NULL' },
+      } as never),
+    );
+    log(`  ✓ relation: ${key} → ${rel.related_collection}`, 'ok');
+  } catch (e: any) {
+    log(
+      `  ✗ relation ${key}: ${e?.errors?.[0]?.message || e?.message || e}`,
+      'err',
+    );
+  }
+}
+
+// ─── Main ──────────────────────────────────────────────────────────
+
 async function main() {
   await login();
 
-  const existing = await fetchCollections();
-  log(`Found ${existing.size} existing collection(s).`, 'ok');
+  const registered = await fetchRegisteredCollections();
+  log(`Found ${registered.size} formally-registered collection(s).`, 'ok');
 
-  log('\n=== Phase 1: Register 4 new collections ===');
-  for (const def of NEW_COLLECTIONS) {
-    await registerCollection(def, existing);
+  log('\n=== Phase 1: Register 4 new collections (with id PK) ===');
+  for (const [name, def] of Object.entries(NEW_COLLECTIONS)) {
+    await registerCollection(name, def, registered);
   }
 
   log('\n=== Phase 2: Register fields on new collections ===');
-  for (const def of NEW_COLLECTIONS) {
-    log(`  collection ${def.collection}:`);
-    await registerFields(def.collection, def.fields);
+  for (const [name, def] of Object.entries(NEW_COLLECTIONS)) {
+    log(`  collection ${name}:`);
+    await registerFields(name, def.fields);
   }
 
   log('\n=== Phase 3: Register added fields on existing collections ===');
   for (const ext of EXISTING_COLLECTION_FIELDS) {
     log(`  collection ${ext.collection}:`);
     await registerFields(ext.collection, ext.fields);
+  }
+
+  log('\n=== Phase 4: Register relations on new collections ===');
+  const existingRelations = await fetchRelations();
+  for (const rel of NEW_RELATIONS) {
+    await registerRelation(rel, existingRelations);
   }
 
   log('\n=== Collection registration complete. ===', 'ok');

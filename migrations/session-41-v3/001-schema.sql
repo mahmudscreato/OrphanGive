@@ -30,10 +30,18 @@
 --   `child` will be STRIPPED in Part C (bootstrap/src/v3-update-permissions.ts)
 --   so DI mutations route through child_proposal.
 --
--- IDEMPOTENCY: every CREATE TABLE wrapped in IF NOT EXISTS; every
--- ALTER TABLE … ADD COLUMN guarded by an information_schema check
--- inside DO blocks; every CHECK constraint guarded by a pg_constraint
--- check inside DO blocks. Re-running on a partially-applied DB is safe.
+-- IDEMPOTENCY: every ALTER TABLE … ADD COLUMN guarded by an
+-- information_schema check inside DO blocks; every CHECK constraint
+-- guarded by a pg_constraint check inside DO blocks. Re-running on a
+-- partially-applied DB is safe.
+--
+-- SCOPE NOTE (Session 41-v3-FIX4): this file used to also CREATE the
+-- 4 new collections (child_proposal, aid_delivery, task, audit_log).
+-- Those moved to bootstrap/src/v3-register-collections.ts so Directus
+-- creates the tables via createCollection (atomic with metadata
+-- registration). What stays here: column extensions on existing
+-- collections + the child_moment workflow tightening. The 4 new
+-- collection schemas are documented inline in the SDK script.
 
 BEGIN;
 
@@ -43,173 +51,25 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid()
 
+-- ─── §2 New collections — REMOVED in Session 41-v3-FIX4 ────────────
+--
+-- The 4 new collections (child_proposal, aid_delivery, task, audit_log)
+-- were originally created here as raw CREATE TABLE blocks. FIX4 moves
+-- table creation to Directus's `createCollection` SDK call (in
+-- bootstrap/src/v3-register-collections.ts, Phase 1). Reason:
+-- Directus's SDK creates BOTH the Postgres table AND the metadata row
+-- atomically — pre-creating the table in SQL and trying to register
+-- it after via SDK doesn't work cleanly in Directus 11.17.4 (the
+-- `meta=null` auto-introspection problem caught in FIX3 + the
+-- unregistered-but-detected confusion that followed).
+--
+-- The 4 collection schemas (columns, types, constraints, indexes)
+-- live in v3-register-collections.ts as field defs. FK relations
+-- live in the same file's `NEW_RELATIONS` array (Phase 4). Diff'ing
+-- against the prior version of this file shows what moved.
+--
+-- This file now does column-extensions only (§3 below).
 -- =====================================================================
--- 2. NEW COLLECTIONS
--- =====================================================================
-
--- ─── 2.1 child_proposal ─────────────────────────────────────────────
--- Proposed mutations to child records (CREATE or UPDATE). Columns
--- mirror the `child` shape so the proposal is a typed staging area
--- rather than an opaque JSONB blob — matches the existing
--- `child_update` workflow shape.
---
--- Workflow: draft → pending → approved | rejected
--- DI writes proposal rows; admin approves; on approval, the application
--- layer applies the changes to `child` (Session 43 wires this).
---
--- previous_snapshot is a JSONB capture of the affected child row's
--- pre-mutation state, taken at the moment the proposal moves to
--- 'pending'. Lets admin diff old-vs-new during review without
--- re-querying historic state.
-
-CREATE TABLE IF NOT EXISTS child_proposal (
-  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  proposal_type               text NOT NULL CHECK (proposal_type IN ('create', 'update')),
-  target_child                uuid REFERENCES child(id),
-  display_name                text,
-  first_name                  text,
-  date_of_birth               date,
-  gender                      text,
-  -- bd_division uses a slug-style varchar PK (`code`), not uuid. Match
-  -- production child.bd_division shape: `varchar(255) REFERENCES
-  -- bd_division(code)`. Verified live 2026-05-14 (Session 41-v3-FIX2).
-  bd_division                 varchar(255) REFERENCES bd_division(code),
-  district_internal           text,
-  "Photo"                     uuid REFERENCES directus_files(id),
-  story                       text,
-  education_level             text,
-  class_grade                 text,
-  support_type                text,
-  monthly_cost                integer,
-  guardian_summary_internal   text,
-  last_visit_date             date,
-  status                      text NOT NULL DEFAULT 'draft'
-                              CHECK (status IN ('draft', 'pending', 'approved', 'rejected')),
-  rejection_reason            text,
-  created_by                  uuid REFERENCES directus_users(id) NOT NULL,
-  approved_by                 uuid REFERENCES directus_users(id),
-  date_created                timestamptz NOT NULL DEFAULT now(),
-  published_at                timestamptz,
-  previous_snapshot           jsonb
-);
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'child_proposal_support_type_check') THEN
-    ALTER TABLE child_proposal ADD CONSTRAINT child_proposal_support_type_check
-      CHECK (support_type IS NULL OR support_type IN (
-        'education', 'food', 'healthcare', 'clothing', 'general_care', 'other'
-      ));
-  END IF;
-END $$;
-
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'child_proposal_monthly_cost_check') THEN
-    ALTER TABLE child_proposal ADD CONSTRAINT child_proposal_monthly_cost_check
-      CHECK (monthly_cost IS NULL OR monthly_cost >= 0);
-  END IF;
-END $$;
-
-CREATE INDEX IF NOT EXISTS idx_child_proposal_created_by ON child_proposal(created_by);
-CREATE INDEX IF NOT EXISTS idx_child_proposal_status     ON child_proposal(status);
-CREATE INDEX IF NOT EXISTS idx_child_proposal_target     ON child_proposal(target_child);
-
-COMMENT ON TABLE child_proposal IS
-  'DI-originated proposed mutations to child records. Columns mirror child shape; admin reviews + approves; app layer applies on approval.';
-COMMENT ON COLUMN child_proposal.previous_snapshot IS
-  'JSONB capture of the affected child row pre-mutation. Set when status transitions to ''pending''. Null for create proposals (no prior state).';
-
--- ─── 2.2 aid_delivery ───────────────────────────────────────────────
--- Photographic + descriptive record of aid delivered to a child.
--- sponsorship is nullable to allow general-fund deliveries that don't
--- trace to a specific sponsor. Matches the per-collection workflow
--- pattern (status defaults 'pending', admin verifies).
-
-CREATE TABLE IF NOT EXISTS aid_delivery (
-  id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  child                     uuid REFERENCES child(id) NOT NULL,
-  sponsorship               uuid REFERENCES sponsorship(id),
-  aid_type                  text NOT NULL CHECK (aid_type IN (
-                              'education', 'food', 'healthcare', 'clothing', 'general_care', 'other'
-                            )),
-  description               text NOT NULL,
-  delivery_date             date NOT NULL,
-  photo                     uuid REFERENCES directus_files(id) NOT NULL,
-  recipient_acknowledgment  text,
-  status                    text NOT NULL DEFAULT 'pending'
-                            CHECK (status IN ('pending', 'verified', 'rejected')),
-  rejection_reason          text,
-  delivered_by              uuid REFERENCES directus_users(id) NOT NULL,
-  verified_by               uuid REFERENCES directus_users(id),
-  date_created              timestamptz NOT NULL DEFAULT now(),
-  verified_at               timestamptz
-);
-
-CREATE INDEX IF NOT EXISTS idx_aid_delivery_child         ON aid_delivery(child);
-CREATE INDEX IF NOT EXISTS idx_aid_delivery_sponsorship   ON aid_delivery(sponsorship);
-CREATE INDEX IF NOT EXISTS idx_aid_delivery_status        ON aid_delivery(status);
-
-COMMENT ON TABLE aid_delivery IS
-  'DI-recorded aid delivery events. Photo + description + optional acknowledgment. Admin verifies via the per-collection workflow.';
-
--- ─── 2.3 task ───────────────────────────────────────────────────────
--- Admin-assigned work items. DI owns `di_status` only; admin owns
--- `admin_status` + verification fields. Two-status pattern enforces
--- the verify-after-complete loop.
-
-CREATE TABLE IF NOT EXISTS task (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  title         text NOT NULL,
-  description   text,
-  child         uuid REFERENCES child(id),
-  assignee      uuid REFERENCES directus_users(id) NOT NULL,
-  created_by    uuid REFERENCES directus_users(id) NOT NULL,
-  date_created  timestamptz NOT NULL DEFAULT now(),
-  due_date      date,
-  priority      text DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
-  di_status     text DEFAULT 'open'   CHECK (di_status IN ('open', 'in_progress', 'completed_pending_verification')),
-  admin_status  text DEFAULT 'open'   CHECK (admin_status IN ('open', 'verified_complete', 'rejected_redo')),
-  completed_at  timestamptz,
-  verified_at   timestamptz,
-  verified_by   uuid REFERENCES directus_users(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_task_assignee  ON task(assignee);
-CREATE INDEX IF NOT EXISTS idx_task_status    ON task(di_status, admin_status);
-CREATE INDEX IF NOT EXISTS idx_task_child     ON task(child);
-CREATE INDEX IF NOT EXISTS idx_task_due_date  ON task(due_date) WHERE di_status != 'completed_pending_verification';
-
-COMMENT ON TABLE task IS
-  'Admin-assigned work items for DI. di_status owned by DI; admin_status owned by admin.';
-
--- ─── 2.4 audit_log ──────────────────────────────────────────────────
--- Append-only log of every mutating action. DI role has ZERO access.
--- The cron in Part D is the only writer this session; broader audit
--- wiring deferred to Session 46.
---
--- actor is NOT NULL → system writes need a `system` Directus user
--- (SYSTEM_USER_ID env var; see Session 41-v3 system-user note).
-
-CREATE TABLE IF NOT EXISTS audit_log (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  timestamp   timestamptz NOT NULL DEFAULT now(),
-  actor       uuid REFERENCES directus_users(id) NOT NULL,
-  actor_role  text NOT NULL,
-  action      text NOT NULL,
-  collection  text,
-  record_id   text,
-  diff        jsonb,
-  ip          inet,
-  user_agent  text,
-  metadata    jsonb
-);
-
-CREATE INDEX IF NOT EXISTS idx_audit_actor              ON audit_log(actor);
-CREATE INDEX IF NOT EXISTS idx_audit_action             ON audit_log(action);
-CREATE INDEX IF NOT EXISTS idx_audit_timestamp          ON audit_log(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_collection_record  ON audit_log(collection, record_id);
-
-COMMENT ON TABLE audit_log IS
-  'Append-only audit trail. DI role has zero access. Wired narrowly in Session 41-v3 (cron only); broader wiring in Session 46.';
 
 -- =====================================================================
 -- 3. EXISTING COLLECTION EXTENSIONS
@@ -316,9 +176,12 @@ COMMIT;
 -- POST-APPLY MANUAL STEPS
 -- =====================================================================
 --
--- 1. Run bootstrap/src/v3-register-collections.ts — registers the 4
---    new collections + child_moment additions in directus_collections /
---    directus_fields metadata so they appear in admin UI.
+-- 1. Run bootstrap/src/v3-register-collections.ts — CREATES the 4
+--    new tables via Directus's createCollection SDK call (table +
+--    metadata atomically). Also registers the new fields on existing
+--    collections (child, directus_users, child_moment) in Directus's
+--    metadata so they appear in admin UI. Also registers FK relations
+--    on the 4 new collections.
 -- 2. Run bootstrap/src/v3-update-permissions.ts — strips child
 --    create/update from existing Data Inputter policy, adds workflow
 --    presets/filters, attaches new permissions for child_proposal /

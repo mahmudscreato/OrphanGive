@@ -79,7 +79,41 @@ npm install
 Expected: ~30 seconds, no errors. Creates `bootstrap/node_modules/`
 (gitignored). Skip this step on subsequent runs.
 
-## 2 — Apply 001-schema.sql
+## 1.7 — Drop the 4 tables created by FIX2's earlier apply (Session 41-v3-FIX4)
+
+The 4 new collections (`child_proposal`, `aid_delivery`, `task`,
+`audit_log`) were created as raw Postgres tables by FIX2's earlier
+apply. FIX4 switches table creation to the SDK (Directus's
+`createCollection` creates table + metadata atomically). The tables
+must be ABSENT before the script runs, otherwise `createCollection`
+falls into the auto-introspection trap (FIX3 documented this).
+
+If you've already applied FIX2's 001-schema.sql to local Postgres:
+
+```bash
+docker exec -i og-postgres-local psql -U directus -d directus -c "
+DROP TABLE IF EXISTS child_proposal CASCADE;
+DROP TABLE IF EXISTS aid_delivery   CASCADE;
+DROP TABLE IF EXISTS task           CASCADE;
+DROP TABLE IF EXISTS audit_log      CASCADE;
+"
+```
+
+Verify the drop:
+
+```bash
+docker exec -i og-postgres-local psql -U directus -d directus -c "
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('child_proposal', 'aid_delivery', 'task', 'audit_log');
+"
+```
+
+Expected: 0 rows. If you see any, re-run the DROP block above.
+
+Skip this step on a fresh local Postgres that's never seen FIX2.
+
+## 2 — Apply 001-schema.sql (column extensions only — FIX4 trimmed it)
 
 ```bash
 cd ~/Desktop/Claude/OrphanGive/public-site
@@ -87,10 +121,14 @@ docker exec -i og-postgres-local psql -U directus -d directus \
   < migrations/session-41-v3/001-schema.sql
 ```
 
-Expected output: `BEGIN`, `CREATE EXTENSION` (pgcrypto, may already
-exist → notice), several `DO` blocks, four `CREATE TABLE`s, ~13
-`CREATE INDEX`s, `COMMENT`s, `ALTER TABLE … ALTER COLUMN … SET
-DEFAULT 'pending'` (child_moment status default tightening), `COMMIT`.
+Expected output (FIX4 onwards): `BEGIN`, `CREATE EXTENSION` (pgcrypto,
+may already exist → notice), several `DO` blocks adding the 7 child
+columns + assigned_divisions + child_moment extensions, the
+backfill `UPDATE child SET monthly_cost = 1500`, two CHECK
+constraints on child, the COMMENT on assigned_divisions, the
+`ALTER TABLE child_moment ALTER COLUMN status SET DEFAULT 'pending'`,
+`COMMIT`. **No `CREATE TABLE` calls** — those are now in
+v3-register-collections.ts.
 
 If errors:
 - `relation "child" does not exist` → wrong DB; you're not in the
@@ -100,7 +138,7 @@ If errors:
 
 ## 3 — Verify schema
 
-### 3a. Four new tables
+### 3a. Four new tables — INTENTIONALLY ABSENT after Step 2 (FIX4)
 
 ```bash
 docker exec -i og-postgres-local psql -U directus -d directus -c "
@@ -111,7 +149,9 @@ docker exec -i og-postgres-local psql -U directus -d directus -c "
 "
 ```
 
-Expected: 4 rows.
+Expected (post-FIX4): **0 rows.** Step 4 (npm run v3-register-collections)
+will create them via Directus's createCollection. Verifying their
+presence here would mean Step 1.7's drop didn't take.
 
 ### 3b. New `child` columns
 
@@ -181,18 +221,29 @@ Expected: 2 existing rows, both `media_type='image'`, both retain
 their original `status='published'` (the DEFAULT change applies only
 to new inserts).
 
-## 4 — Register collections + fields in Directus metadata
+## 4 — Register collections + fields + relations in Directus
 
 ```bash
 cd ~/Desktop/Claude/OrphanGive/public-site/bootstrap
 npm run v3-register-collections
 ```
 
-Expected: timestamped phased log output —
-- Phase 1: 4 new collections registered (or skipped if re-run)
-- Phase 2: ~14 fields per collection registered
-- Phase 3: 7 child fields + 1 directus_users field + 2 child_moment
-  fields registered
+Expected (FIX4 onwards): four phases of timestamped log output —
+- **Phase 1** — 4 new collections CREATED via Directus's
+  `createCollection` (table + metadata atomically). Each call also
+  creates the `id uuid PRIMARY KEY` column from the embedded
+  `fields[{ id PK }]`.
+- **Phase 2** — non-id fields registered on the 4 new collections via
+  `createField`. Counts: child_proposal=23, aid_delivery=13, task=13,
+  audit_log=10. Fields use C1's f.* helpers from
+  `bootstrap/src/lib/field-helpers.ts`.
+- **Phase 3** — 7 new fields on `child` + 1 on `directus_users` + 2
+  on `child_moment` registered (columns already exist from
+  Step 2's 001-schema.sql; this just adds Directus metadata rows).
+- **Phase 4** — 15 FK relations registered via `createRelation`
+  (child_proposal=5, aid_delivery=5, task=4, audit_log=1). The
+  relation defines the FK at both Postgres and Directus-metadata
+  levels and lets the admin UI populate m2o dropdowns.
 
 ## 5 — Verify collections registered
 
