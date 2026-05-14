@@ -246,8 +246,22 @@ async function login() {
 }
 
 async function fetchCollections() {
-  const collections = (await client.request(readCollections())) as Array<{ collection: string }>;
-  return new Set(collections.map((c) => c.collection));
+  // Directus auto-detects raw Postgres tables and reports them via the
+  // /collections endpoint even when they have no row in
+  // `directus_collections` (i.e. no explicit metadata registration).
+  // Auto-detected entries return with `meta: null`; explicitly-registered
+  // ones return a populated `meta` object. We only count "registered" if
+  // meta is non-null — otherwise the field-creation phase fails with
+  // "permission to access collection 'X' or it does not exist" because
+  // the addressable-collection layer requires the metadata row.
+  // (Session 41-v3-FIX3.)
+  const collections = (await client.request(readCollections())) as Array<{
+    collection: string;
+    meta: unknown | null;
+  }>;
+  return new Set(
+    collections.filter((c) => c.meta !== null).map((c) => c.collection),
+  );
 }
 
 async function fetchFields(collection: string) {
