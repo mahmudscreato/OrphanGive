@@ -70,7 +70,10 @@ CREATE TABLE IF NOT EXISTS child_proposal (
   first_name                  text,
   date_of_birth               date,
   gender                      text,
-  bd_division                 uuid REFERENCES bd_division(id),
+  -- bd_division uses a slug-style varchar PK (`code`), not uuid. Match
+  -- production child.bd_division shape: `varchar(255) REFERENCES
+  -- bd_division(code)`. Verified live 2026-05-14 (Session 41-v3-FIX2).
+  bd_division                 varchar(255) REFERENCES bd_division(code),
   district_internal           text,
   "Photo"                     uuid REFERENCES directus_files(id),
   story                       text,
@@ -268,7 +271,7 @@ DO $$ BEGIN
 END $$;
 
 COMMENT ON COLUMN directus_users.assigned_divisions IS
-  'Array of bd_division record UUIDs (NOT text names). Constrains divisions a DI can CREATE new children in via child_proposal. Does NOT govern READ visibility — that is uploaded_by_di = self OR assigned_di = self on child.';
+  'Array of bd_division.code values (lowercase slug strings like ''dhaka'', ''chittagong'', ''khulna''). Constrains divisions a DI can CREATE new children in via child_proposal. Does NOT govern READ visibility — that is uploaded_by_di = self OR assigned_di = self on child.';
 
 -- ─── 3.3 child_moment — video support + workflow tightening ────────
 -- The existing collection holds curated photos (status default

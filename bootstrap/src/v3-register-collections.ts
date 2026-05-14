@@ -101,7 +101,8 @@ const NEW_COLLECTIONS: CollectionDef[] = [
       { field: 'first_name', type: 'string', meta: { interface: 'input', width: 'half' } },
       { field: 'date_of_birth', type: 'date', meta: { interface: 'datetime', width: 'half' } },
       { field: 'gender', type: 'string', meta: { interface: 'input', width: 'half' } },
-      { field: 'bd_division', type: 'uuid', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', display_options: { template: '{{name}}' }, width: 'half' } },
+      // bd_division PK is varchar `code` (e.g. 'dhaka'), not uuid `id`.
+      { field: 'bd_division', type: 'string', meta: { interface: 'select-dropdown-m2o', special: ['m2o'], display: 'related-values', display_options: { template: '{{name}}' }, width: 'half' } },
       { field: 'district_internal', type: 'string', meta: { interface: 'input', width: 'half', note: 'Internal-only district label. Never exposed at Tier 1.' } },
       { field: 'Photo', type: 'uuid', meta: { interface: 'file-image', special: ['file'], width: 'half' } },
       { field: 'story', type: 'text', meta: { interface: 'input-multiline' } },
@@ -224,7 +225,7 @@ const EXISTING_COLLECTION_FIELDS: { collection: string; fields: FieldDef[] }[] =
   {
     collection: 'directus_users',
     fields: [
-      { field: 'assigned_divisions', type: 'json', meta: { interface: 'tags', special: ['cast-json'], note: 'Array of bd_division UUIDs. Constrains DI CREATE scope. Does NOT govern READ.' } },
+      { field: 'assigned_divisions', type: 'json', meta: { interface: 'tags', special: ['cast-json'], note: 'Array of bd_division.code values (slug strings like "dhaka", "chittagong"). Constrains DI CREATE scope. Does NOT govern READ.' } },
     ],
   },
   {
