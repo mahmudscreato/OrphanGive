@@ -117,18 +117,25 @@ export default async function DiHomePage() {
       }),
     ]);
 
-  // The "subhead" line under the greeting — only renders the divisions
-  // bit when assigned_divisions has values. Keeps the screen calm for a
-  // brand-new DI with nothing assigned yet.
+  // The "subhead" lines under the greeting — Session 42-FIX3 splits
+  // this into two visual elements:
+  //   Line 1 (lead): "You manage N children." — same lead-text styling
+  //   Line 2 (note): either the divisions list (normal weight) OR the
+  //                  "no divisions assigned" admin note (italic, soft)
+  // Keeps the screen calm for a brand-new DI with nothing assigned yet
+  // while making it obvious that the divisions line is system-info,
+  // not greeting copy.
   const childCountForSubhead = childCount ?? 0;
   const childWord = childCountForSubhead === 1 ? "child" : "children";
-  const divisionsLine =
-    session.assignedDivisions && session.assignedDivisions.length > 0
-      ? `Assigned divisions: ${session.assignedDivisions.join(", ")}.`
-      : null;
+  const hasDivisions =
+    session.assignedDivisions && session.assignedDivisions.length > 0;
 
   return (
-    <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-[1100px] mx-auto">
+    // Session 42-FIX3 — content area constrained to max-w-5xl (1024px)
+    // for a focused reading width on wide desktops. The cream gutter on
+    // the right is intentional; full-bleed content reads as utilitarian
+    // rather than crafted.
+    <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
       {/* Greeting block */}
       <header className="mb-8 md:mb-10">
         <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
@@ -139,19 +146,27 @@ export default async function DiHomePage() {
           <span className="text-ink font-medium">
             {formatCount(childCount)}
           </span>{" "}
-          {childWord}.{" "}
-          {divisionsLine ? (
-            <span>{divisionsLine}</span>
-          ) : (
-            <span className="text-slate-soft">
-              No divisions assigned yet — admin will set this on your profile.
-            </span>
-          )}
+          {childWord}.
         </p>
+        {hasDivisions ? (
+          <p className="mt-1 text-[13px] md:text-[14px] text-ink-soft leading-relaxed">
+            Assigned divisions:{" "}
+            <span className="text-ink">
+              {session.assignedDivisions!.join(", ")}
+            </span>
+            .
+          </p>
+        ) : (
+          <p className="mt-1 text-[12.5px] md:text-[13px] italic text-slate-soft leading-relaxed">
+            No divisions assigned yet — admin will set this on your profile.
+          </p>
+        )}
       </header>
 
-      {/* Stat tiles — 2x2 mobile, 4-across desktop */}
-      <section className="mb-10">
+      {/* Stat tiles — 2x2 mobile, 4-across desktop. Bottom margin
+          increased to ~64px (mb-16) so "Quick actions" reads as a
+          new section, not a continuation of the at-a-glance tiles. */}
+      <section className="mb-12 md:mb-16">
         <h2 className="sr-only">At a glance</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatTile
@@ -182,9 +197,11 @@ export default async function DiHomePage() {
         </div>
       </section>
 
-      {/* Quick actions */}
-      <section className="mb-10">
-        <h2 className="font-display text-[20px] md:text-[22px] text-ink mb-4">
+      {/* Quick actions — heading-to-cards bumped to mb-6 (24px),
+          section-bottom bumped to mb-12 (~48px) so the placeholder
+          row below has clear visual separation. */}
+      <section className="mb-10 md:mb-12">
+        <h2 className="font-display text-[20px] md:text-[22px] text-ink mb-6">
           Quick actions
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">

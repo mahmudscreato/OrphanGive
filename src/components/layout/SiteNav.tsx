@@ -39,8 +39,15 @@ export function SiteNav({ signedIn, firstName }: Props) {
   // Session 25 — also hide on /maintenance and /offline, which both
   // ship their own inline logo header and need to render even when
   // the rest of the app's data layer is unreachable.
+  // Session 42-FIX2 — also hide on /di/*. The DI Dashboard ships its
+  // own DiSidebar (desktop) + DiHeader/DiBottomNav (mobile). The
+  // marketing nav (Children/How It Works/Stories/About/Contact +
+  // Sponsor a Child) is for prospective sponsors and has no place
+  // inside the staff data-entry surface — it would visually compete
+  // with the sidebar on desktop and stack with DiHeader on mobile.
   if (
     pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/di") ||
     pathname === "/maintenance" ||
     pathname === "/offline"
   ) {

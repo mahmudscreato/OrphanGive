@@ -104,16 +104,21 @@ export function DiSidebar() {
         </ul>
       </nav>
 
-      {/* Sign out */}
-      <button
-        type="button"
-        onClick={onSignOut}
-        disabled={signingOut}
-        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] font-medium text-ink-soft hover:bg-tangerine-mist/50 hover:text-tangerine-deeper transition-colors disabled:opacity-50"
-      >
-        <LogOut className="w-4 h-4 stroke-[1.75]" />
-        {signingOut ? "Signing out…" : "Sign out"}
-      </button>
+      {/* Sign out — anchored inside the sidebar with a border-top
+          separator above so it visually belongs to the sidebar
+          rather than floating disconnected at the bottom-left of
+          the viewport. (Session 42-FIX3) */}
+      <div className="pt-3 mt-3 border-t border-ink/[0.08]">
+        <button
+          type="button"
+          onClick={onSignOut}
+          disabled={signingOut}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] font-medium text-ink-soft hover:bg-tangerine-mist/50 hover:text-tangerine-deeper transition-colors disabled:opacity-50"
+        >
+          <LogOut className="w-4 h-4 stroke-[1.75]" />
+          {signingOut ? "Signing out…" : "Sign out"}
+        </button>
+      </div>
     </aside>
   );
 }
