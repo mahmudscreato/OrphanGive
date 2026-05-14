@@ -48,3 +48,6 @@ docker-compose.local.override.yml
 *.tsbuildinfo
 next-env.d.ts
 .unlighthouse/
+
+# Local DB backups — never commit
+backups/
