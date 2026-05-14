@@ -75,14 +75,15 @@ docker exec og-directus npx directus schema apply \
 
 You'll need to mount this repo's `migrations/` into the container.
 If it's not already mounted, add this to `docker-compose.yml` under
-`og-directus.volumes`:
+`directus.volumes` (the compose service key is `directus`; container
+name is `og-directus`):
 
 ```yaml
 - ./migrations:/directus/migrations:ro
 ```
 
 
-Then `docker compose up -d og-directus` to pick up the mount.
+Then `docker compose up -d directus` to pick up the mount.
 
 ### Path B — manual via Directus Admin UI
 
