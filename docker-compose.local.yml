@@ -1,0 +1,125 @@
+# Session 41-LOCAL — Local Directus + Postgres mirror for migration dry-run.
+#
+# Purpose: dry-run Session 41/41-amend/41.5 migrations against a local
+# Postgres restored from a VPS dump, before touching production. NOT
+# for application development (the Next.js app runs separately via
+# `npm run dev` and points at this Directus when configured).
+#
+# Image versions match VPS (captured 2026-05-14):
+#   * postgis/postgis:15-3.4-alpine — Postgres 15.8 + PostGIS 3.4. Matched
+#     even though migrations don't use PostGIS — pg_dump from VPS would
+#     fail to restore on plain postgres if any objects reference postgis
+#     types or extensions.
+#   * directus/directus:11.17.4 — pinned to the exact version VPS runs
+#     (production uses `:latest` but `11.17.4` is what's deployed today).
+#     Pinning here so the dry-run matches production behavior precisely.
+#
+# Differences from VPS:
+#   * No Redis (cache disabled) — irrelevant for migration testing.
+#   * No Caddy / Next.js app — they run independently.
+#   * No SMTP — disabled to prevent local sends.
+#   * Local file storage only — no Cloudinary upload from local.
+#   * Postgres exposed on 5433 (not 5432) to avoid clashing with any
+#     other Postgres on the host. Directus on 8055.
+#
+# Run from project root:
+#   docker compose -f docker-compose.local.yml up -d
+#   docker compose -f docker-compose.local.yml logs -f
+#   docker compose -f docker-compose.local.yml down
+
+services:
+  og-postgres-local:
+    image: postgis/postgis:15-3.4-alpine
+    container_name: og-postgres-local
+    restart: unless-stopped
+    env_file:
+      - .env.local-stack
+    environment:
+      POSTGRES_USER: ${DB_USER:-directus}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-directus_local_dev}
+      POSTGRES_DB: ${DB_DATABASE:-directus}
+    ports:
+      - "5433:5432"
+    volumes:
+      - og-postgres-local-data:/var/lib/postgresql/data
+    networks:
+      - orphangive-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-directus}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  og-directus-local:
+    image: directus/directus:11.17.4
+    container_name: og-directus-local
+    restart: unless-stopped
+    depends_on:
+      og-postgres-local:
+        condition: service_healthy
+    env_file:
+      - .env.local-stack
+    environment:
+      # Core auth — must match VPS env var names exactly.
+      KEY: ${DIRECTUS_KEY}
+      SECRET: ${DIRECTUS_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      PUBLIC_URL: http://localhost:8055
+      # Database (VPS uses these exact names).
+      DB_CLIENT: pg
+      DB_HOST: og-postgres-local
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-directus}
+      DB_USER: ${DB_USER:-directus}
+      DB_PASSWORD: ${DB_PASSWORD:-directus_local_dev}
+      # Cache disabled — local doesn't need Redis for migration testing.
+      CACHE_ENABLED: "false"
+      # CORS — open to the local Next.js dev server too.
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "http://localhost:3000,http://localhost:8055"
+      # Storage — local-only; no Cloudinary credentials needed locally.
+      STORAGE_LOCATIONS: local
+      STORAGE_LOCAL_DRIVER: local
+      STORAGE_LOCAL_ROOT: /directus/uploads
+      # Email — disabled for local. If a flow tries to send, sendmail is
+      # the noop fallback and writes to logs only.
+      EMAIL_TRANSPORT: sendmail
+      EMAIL_FROM: noreply@local.test
+      EMAIL_TEMPLATES_PATH: /directus/email-templates
+      # Logging — pretty-printed for readable docker logs output.
+      LOG_LEVEL: info
+      LOG_STYLE: pretty
+      # Token TTLs — match VPS so the local Directus session behavior
+      # mirrors production (matters for testing role + permissions).
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 7d
+      REFRESH_TOKEN_COOKIE_SECURE: "false" # local is http, not https
+      REFRESH_TOKEN_COOKIE_SAME_SITE: lax
+    ports:
+      - "8055:8055"
+    volumes:
+      - og-directus-local-uploads:/directus/uploads
+      # Read-only mount of repo migrations + email templates so
+      # `directus schema apply` and email-template-preview work locally.
+      - ./migrations:/directus/migrations:ro
+      - ./directus-templates:/directus/email-templates:ro
+    networks:
+      - orphangive-local
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -q --spider http://127.0.0.1:8055/server/health || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+volumes:
+  og-postgres-local-data:
+  og-directus-local-uploads:
+
+networks:
+  orphangive-local:
+    driver: bridge

@@ -32,6 +32,14 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Session 41-LOCAL — allow-list the example file so it can be committed
+# while the real .env.local-stack stays gitignored (caught by .env*).
+!.env.local-stack.example
+
+# Session 41-LOCAL — local Docker stack overrides (per-developer tweaks
+# layered on top of docker-compose.local.yml). The base compose file IS
+# committed; this override pattern is opt-in and per-machine.
+docker-compose.local.override.yml
 
 # vercel
 .vercel

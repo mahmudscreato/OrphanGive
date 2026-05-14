@@ -1,5 +1,10 @@
 # Session 41 — APPLY instructions
 
+> **There are two APPLY versions.** Use `APPLY-LOCAL.md` for local
+> Directus dry-run first; this file (`APPLY.md`) is for VPS
+> production apply during the batch deploy. Same migrations,
+> different commands.
+
 > **Amended 2026-05-14:** `region_division` text column removed;
 > `bd_division` (existing M2O relation) is the single source of
 > truth. Plus 4 new `child` columns added (`support_type`,
