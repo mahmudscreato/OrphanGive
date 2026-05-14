@@ -629,6 +629,44 @@ fields:
       note: "Internal-only district label. NEVER exposed at Tier 1 (public). Coexists with bd_district relation for now — DI-side input flow."
       hidden: false
 
+  # ─── Session 41.5 — four data fields previously hardcoded in UI ───
+  - collection: child
+    field: support_type
+    type: string
+    meta:
+      interface: select-dropdown
+      options:
+        choices:
+          - { text: "Education",     value: "education" }
+          - { text: "Food",          value: "food" }
+          - { text: "Healthcare",    value: "healthcare" }
+          - { text: "Clothing",      value: "clothing" }
+          - { text: "General care",  value: "general_care" }
+          - { text: "Other",         value: "other" }
+      note: "Primary support category. Vocabulary mirrors aid_deliveries.aid_type so per-child support type and per-delivery aid type align in admin reports. Replaces the previously-hardcoded 'Education support' label in BrowseChildCard / FeaturedChildren."
+
+  - collection: child
+    field: monthly_cost
+    type: integer
+    meta:
+      interface: input
+      required: true
+      note: "Monthly support amount in BDT (Bangladeshi Taka). Per-child realistic estimate. Required (NOT NULL). Existing rows backfilled to 1500 on apply — admin revises per-child via the Admin Dashboard. Replaces the previously-hardcoded 'From BDT 1,500/month' label."
+
+  - collection: child
+    field: guardian_summary_internal
+    type: text
+    meta:
+      interface: input-multiline
+      note: "Internal-only family context. NEVER exposed at any donor tier (Tier 1/2/3). Helps DI/admin understand the family situation. DI writes; admin reviews via approval flow."
+
+  - collection: child
+    field: last_visit_date
+    type: date
+    meta:
+      interface: datetime
+      note: "Date of DI's most recent in-person visit to this child. Nullable (many existing rows have no visit history). Tier 2+ visibility — donor-after-auth can see the date; Tier 1 public should not. Enforced at Session 43's API layer."
+
   # AMENDED 2026-05-14 — the `region_division` field was removed.
   # Production `child` uses the existing `bd_division` M2O relation
   # as the single source of truth. The FK to the bd_division lookup
@@ -784,15 +822,20 @@ permissions:
       # DI ownership pointers (new fields from 001-schema.sql §2.1)
       - assigned_di_id
       - uploaded_by_di_id
+      # Session 41.5 amendment — four new child columns. DI reads
+      # AND is the primary writer (via pending_changes flow).
+      # `guardian_summary_internal` is internal-only by tier policy
+      # but DI is one of two roles allowed to see it (admin is the
+      # other); the donor-facing query paths exclude it.
+      - support_type
+      - monthly_cost
+      - guardian_summary_internal
+      - last_visit_date
       # ⚠ Spec fields with NO production equivalent — Session 43's
       # app-layer route either derives them from related tables or
       # returns hardcoded constants. NOT included in the whitelist:
-      #   • support_type           — UI hardcodes "Education support"
-      #   • monthly_cost           — UI hardcodes "From BDT 1,500/month"
       #   • sponsor_count          — derive from sponsorship table
       #   • sponsor_queue_depth    — derive from sponsorship table
-      #   • guardian_summary_internal — not present; admin-only when added
-      #   • last_visit_date        — not present
       #   • created_at / updated_at — date_created not readable on this
       #                               collection per existing comment in
       #                               src/lib/children-data.ts (line 524)

@@ -46,12 +46,15 @@
 --   * Spec uses `age_years integer`. Production has `date_of_birth`;
 --     age is computed at app layer via `calcAge()`. DI's READ permission
 --     whitelists `date_of_birth` so the app can compute.
---   * Spec uses `sponsor_count`, `sponsor_queue_depth`,
---     `last_visit_date`, `guardian_summary_internal`, `support_type`,
---     `monthly_cost`. None of these exist on production `child` today.
---     Session 43's app-layer route either derives them from related
---     tables or returns them as hardcoded constants. The amendment
---     does NOT add columns for any of these — discovered need first.
+--   * Spec uses `sponsor_count`, `sponsor_queue_depth`. Neither exists
+--     on production `child` today. Both are derived from queries against
+--     the `sponsorship` table — Session 43's app-layer route computes
+--     them rather than denormalising onto `child`.
+--   * Spec uses `support_type`, `monthly_cost`, `guardian_summary_internal`,
+--     `last_visit_date`. Added by the Session 41.5 amendment (see §2.1.b
+--     below). Replaces the previously-hardcoded "Education support" /
+--     "From BDT 1,500/month" constants currently rendered in
+--     BrowseChildCard / FeaturedChildren.
 -- ─────────────────────────────────────────────────────────────────────
 
 BEGIN;
@@ -105,6 +108,95 @@ $$;
 
 CREATE INDEX IF NOT EXISTS idx_child_uploaded_by_di ON child(uploaded_by_di_id);
 CREATE INDEX IF NOT EXISTS idx_child_assigned_di    ON child(assigned_di_id);
+
+-- 2.1.b child — four data fields surfaced by Session 41.5 amendment
+-- ──────────────────────────────────────────────────────────────────
+-- Four fields the spec requires that don't exist on production today.
+-- Currently the UI hardcodes "Education support" and "From BDT 1,500/month"
+-- in BrowseChildCard / FeaturedChildren / SponsorCTA / ProfileHero.
+-- Once Session 43's API route returns real per-child values, those
+-- hardcoded strings become orphans. The strings stay as-is until then;
+-- this migration adds the underlying columns.
+--
+-- support_type:
+--   Vocab MIRRORS aid_deliveries.aid_type (same 6 values: education,
+--   food, healthcare, clothing, general_care, other). Identical
+--   vocabulary so a child's primary support type and the deliveries
+--   tagged against them line up cleanly in admin reports.
+--
+-- monthly_cost:
+--   Per-child realistic estimate in BDT (Bangladeshi Taka). Integer
+--   only — no fractional taka. Backfilled to 1500 (matching the
+--   previously-hardcoded "From BDT 1,500/month" so existing children
+--   don't break the column NOT NULL flip on apply). Admin can revise
+--   per-child via the Admin Dashboard once Session 47+ ships.
+--
+-- guardian_summary_internal:
+--   Internal-only family context. NEVER exposed at any donor tier.
+--   DI's whitelist includes it (DI is the one who writes it); the
+--   donor-facing query paths do not.
+--
+-- last_visit_date:
+--   Date of DI's most recent in-person visit. Nullable — many existing
+--   rows have no visit history. Tier 2+ visibility (donor-after-auth);
+--   Session 43's API layer enforces the tier gate, not Postgres.
+--
+-- No indexes on these four — no filter use case yet. Add later if a
+-- query pattern emerges that benefits from them.
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'child' AND column_name = 'support_type'
+  ) THEN
+    ALTER TABLE child
+      ADD COLUMN support_type text
+      CHECK (support_type IN (
+        'education', 'food', 'healthcare', 'clothing', 'general_care', 'other'
+      ));
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'child' AND column_name = 'monthly_cost'
+  ) THEN
+    ALTER TABLE child
+      ADD COLUMN monthly_cost integer
+      CHECK (monthly_cost >= 0);
+    -- Backfill existing rows to the previously-hardcoded value so the
+    -- NOT NULL flip below succeeds. Admin revises per-child afterward.
+    UPDATE child SET monthly_cost = 1500 WHERE monthly_cost IS NULL;
+    ALTER TABLE child ALTER COLUMN monthly_cost SET NOT NULL;
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'child' AND column_name = 'guardian_summary_internal'
+  ) THEN
+    ALTER TABLE child ADD COLUMN guardian_summary_internal text;
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'child' AND column_name = 'last_visit_date'
+  ) THEN
+    ALTER TABLE child ADD COLUMN last_visit_date date;
+  END IF;
+END
+$$;
 
 -- 2.2 child — division source-of-truth (AMENDED 2026-05-14)
 -- ──────────────────────────────────────────────────────────

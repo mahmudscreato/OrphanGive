@@ -1,9 +1,12 @@
 # Session 41 — APPLY instructions
 
-> **Amended 2026-05-14:** `region_division` text column removed.
-> `bd_division` (existing M2O relation) is the single source of truth.
-> The reconciliation-decision step has been deleted from this file —
-> there is no longer a decision to make.
+> **Amended 2026-05-14:** `region_division` text column removed;
+> `bd_division` (existing M2O relation) is the single source of
+> truth. Plus 4 new `child` columns added (`support_type`,
+> `monthly_cost`, `guardian_summary_internal`, `last_visit_date`) —
+> these replace the hardcoded `"Education support"` /
+> `"From BDT 1,500/month"` constants currently in
+> `BrowseChildCard` and the homepage `FeaturedChildren` card.
 
 Step-by-step for taking the four artifacts in `migrations/session-41/`
 and turning them into running production state.
@@ -134,6 +137,45 @@ backfill them in Directus admin before exposing those children to the
 DI Dashboard — the DI's READ permission technically still resolves a
 null-division child, but the UI will render an empty division
 location which is worth flagging in QA.
+
+### Verify the 4 new child columns (Session 41.5)
+
+```sql
+-- Confirm 4 new child columns exist with expected constraints
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'child'
+  AND column_name IN ('support_type', 'monthly_cost', 'guardian_summary_internal', 'last_visit_date')
+ORDER BY column_name;
+-- Expected: 4 rows. monthly_cost is_nullable = NO. Others = YES.
+
+-- Backfill verification: every child should now have a monthly_cost
+SELECT COUNT(*) AS children_without_cost FROM child WHERE monthly_cost IS NULL;
+-- Expected: 0
+
+-- support_type distribution (will be all NULL after first apply since
+-- nothing backfills it):
+SELECT support_type, COUNT(*) FROM child GROUP BY support_type;
+-- Expected on fresh apply: one row with support_type=NULL containing
+-- the full child count. DI/admin populates per-child going forward.
+```
+
+
+**Post-apply UI impact:** the hardcoded `"Education support"` and
+`"From BDT 1,500/month"` strings in
+`src/components/children/BrowseChildCard.tsx` (lines 277, 280) and
+`src/components/home/FeaturedChildren.tsx` (lines 242, 246) become
+orphaned constants once Session 43 ships the API route that returns
+real per-child values. **Until Session 43, the UI continues to render
+the hardcoded strings — there is NO regression.** The columns exist
+on the table but nothing reads them yet. `support_type` rows will be
+NULL until DI/admin populates them. `monthly_cost` rows are
+backfilled to 1500 during apply so the column is NOT-NULL-safe;
+admin can edit per-child afterward via the Admin Dashboard
+(Sessions 47+). Two unrelated copies of "BDT 1,500" in
+`SponsorCTA.tsx:57` and `ProfileHero.tsx:164` are descriptive
+sponsorship-policy copy referencing the minimum tier, not per-child
+display — they stay regardless.
 
 ## 6 — Restart Directus container
 
