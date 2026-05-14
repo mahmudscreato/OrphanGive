@@ -492,6 +492,146 @@ export async function getDiChildById(
   return rowToDetail(row, userId);
 }
 
+// ─── bd_division lookup (for form dropdowns) ────────────────────────
+
+export interface BdDivisionOption {
+  code: string;
+  name: string;
+}
+
+/**
+ * Returns all bd_division rows. If `restrictToCodes` is provided
+ * (Add New Child page), only divisions whose code is in that list
+ * are returned. Sorted alphabetically by name.
+ */
+export async function getBdDivisions(
+  restrictToCodes?: string[] | null,
+): Promise<BdDivisionOption[]> {
+  let rows: Array<{ code: string; name: string }> = [];
+  try {
+    const filter =
+      restrictToCodes && restrictToCodes.length > 0
+        ? { code: { _in: restrictToCodes } }
+        : undefined;
+    const result = (await directusServer().request(
+      readItems("bd_division" as never, {
+        ...(filter ? { filter } : {}),
+        fields: ["code", "name"],
+        limit: -1,
+        sort: ["name"],
+      } as never),
+    )) as unknown as Array<{ code: string; name: string }> | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[di-children] getBdDivisions failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  return rows
+    .filter((r) => r.code && r.name)
+    .map((r) => ({ code: r.code, name: r.name }));
+}
+
+// ─── Edit-form snapshot ─────────────────────────────────────────────
+//
+// Specialized fetcher for /di/children/[id]/edit. Returns the raw
+// values the form needs to pre-fill (bd_division.code, raw Photo
+// UUID, date_of_birth) — these aren't on DiChildDetail because the
+// detail page's reading audience doesn't need them.
+
+export interface ChildEditSnapshot {
+  id: string;
+  display_name: string;
+  date_of_birth: string | null;
+  bd_division_code: string | null;
+  district_internal: string | null;
+  support_type: string | null;
+  monthly_cost: number | null;
+  education_level: string | null;
+  story: string;
+  guardian_summary_internal: string | null;
+  last_visit_date: string | null;
+  current_photo_uuid: string | null;
+}
+
+const CHILD_EDIT_FIELDS = [
+  "id",
+  "display_name",
+  "date_of_birth",
+  "bd_division.code",
+  "district_internal",
+  "support_type",
+  "monthly_cost",
+  "education_level",
+  "story",
+  "guardian_summary_internal",
+  "last_visit_date",
+  "Photo",
+] as const;
+
+/**
+ * Single-child fetch with scope guard + raw editable values.
+ * Returns null when out-of-scope or doesn't exist (collapsed for
+ * privacy, same as getDiChildById).
+ */
+export async function getChildEditSnapshot(
+  childId: string,
+  userId: string,
+): Promise<ChildEditSnapshot | null> {
+  if (!childId || typeof childId !== "string") return null;
+  let row:
+    | {
+        id: string;
+        display_name: string | null;
+        date_of_birth: string | null;
+        bd_division: { code?: string | null } | null;
+        district_internal: string | null;
+        support_type: string | null;
+        monthly_cost: number | null;
+        education_level: string | null;
+        story: string | null;
+        guardian_summary_internal: string | null;
+        last_visit_date: string | null;
+        Photo: string | null;
+      }
+    | undefined;
+  try {
+    const result = (await directusServer().request(
+      readItems("child" as never, {
+        filter: {
+          _and: [{ id: { _eq: childId } }, buildScopeFilter(userId)],
+        },
+        fields: [...CHILD_EDIT_FIELDS],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<typeof row> | undefined;
+    row = Array.isArray(result) ? result[0] : undefined;
+  } catch (err) {
+    console.warn(
+      "[di-children] getChildEditSnapshot failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+  if (!row) return null;
+  return {
+    id: row.id,
+    display_name: row.display_name?.trim() || "",
+    date_of_birth: row.date_of_birth ?? null,
+    bd_division_code: row.bd_division?.code ?? null,
+    district_internal: row.district_internal ?? null,
+    support_type: row.support_type ?? null,
+    monthly_cost: row.monthly_cost ?? null,
+    education_level: row.education_level ?? null,
+    story: row.story ?? "",
+    guardian_summary_internal: row.guardian_summary_internal ?? null,
+    last_visit_date: row.last_visit_date ?? null,
+    current_photo_uuid: row.Photo ?? null,
+  };
+}
+
 /**
  * Sponsorship list for a child, scope-checked + PII-redacted.
  *
