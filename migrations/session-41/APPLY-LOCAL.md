@@ -36,8 +36,7 @@ Session 41-LOCAL bootstrapped.
 ```bash
 cd ~/Desktop/Claude/OrphanGive/public-site
 mkdir -p backups
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec -T og-postgres-local pg_dump -U directus directus \
+docker exec -i og-postgres-local pg_dump -U directus directus \
   > backups/directus-local-pre-session-41-$(date +%Y%m%d-%H%M%S).sql
 ls -la backups/ | tail -5
 ```
@@ -53,8 +52,7 @@ guard column adds). Safe to re-run.
 
 ```bash
 cd ~/Desktop/Claude/OrphanGive/public-site
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec -T og-postgres-local psql -U directus -d directus \
+docker exec -i og-postgres-local psql -U directus -d directus \
   < migrations/session-41/001-schema.sql
 ```
 
@@ -81,8 +79,7 @@ Directus container at `/directus/migrations` (per
 
 ```bash
 cd ~/Desktop/Claude/OrphanGive/public-site
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec og-directus-local npx directus schema apply \
+docker exec og-directus-local npx directus schema apply \
   /directus/migrations/session-41/002-directus-snapshot.yaml
 ```
 
@@ -135,8 +132,7 @@ No backfill required. The dump-restored local `child` already
 populates `bd_division`. Sanity-check distribution:
 
 ```bash
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec -T og-postgres-local psql -U directus -d directus -c "
+docker exec -i og-postgres-local psql -U directus -d directus -c "
   SELECT bd.name AS division, COUNT(c.id) AS child_count
   FROM child c
   LEFT JOIN bd_division bd ON c.bd_division = bd.id
@@ -149,8 +145,7 @@ docker compose --env-file .env.local-stack -f docker-compose.local.yml \
 ### Verify the 4 new child columns (Session 41.5)
 
 ```bash
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec -T og-postgres-local psql -U directus -d directus -c "
+docker exec -i og-postgres-local psql -U directus -d directus -c "
   SELECT column_name, data_type, is_nullable
   FROM information_schema.columns
   WHERE table_name = 'child'
@@ -159,14 +154,12 @@ docker compose --env-file .env.local-stack -f docker-compose.local.yml \
 "
 # Expected: 4 rows. monthly_cost is_nullable = NO. Others = YES.
 
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec -T og-postgres-local psql -U directus -d directus -c "
+docker exec -i og-postgres-local psql -U directus -d directus -c "
   SELECT COUNT(*) AS children_without_cost FROM child WHERE monthly_cost IS NULL;
 "
 # Expected: 0
 
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  exec -T og-postgres-local psql -U directus -d directus -c "
+docker exec -i og-postgres-local psql -U directus -d directus -c "
   SELECT support_type, COUNT(*) FROM child GROUP BY support_type;
 "
 # Expected: one row with support_type=NULL containing all 10 (or
@@ -182,16 +175,14 @@ once Session 43 ships. **No regression** until then.
 ## 6 — Restart Directus container
 
 ```bash
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  restart og-directus-local
+docker restart og-directus-local
 ```
 
 
 Wait ~10 seconds for Directus to reintrospect, then check logs:
 
 ```bash
-docker compose --env-file .env.local-stack -f docker-compose.local.yml \
-  logs og-directus-local --tail 50
+docker logs og-directus-local --tail 50
 ```
 
 

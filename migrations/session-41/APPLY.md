@@ -19,7 +19,7 @@ and turning them into running production state.
 ## Prerequisites
 
 - VPS shell access (`ssh root@orphangive.org`)
-- `psql` available locally OR inside the `og-postgres` container
+- `psql` available locally OR inside the `og-database` container
 - Directus admin login
 - Tag the current Directus DB backup as `pre-session-41` BEFORE step 1
 
@@ -28,7 +28,7 @@ and turning them into running production state.
 ```bash
 # On the VPS
 cd /opt/orphangive
-docker compose exec og-postgres pg_dump -U directus directus \
+docker exec og-database pg_dump -U directus directus \
   > backups/directus-pre-session-41-$(date +%Y%m%d-%H%M%S).sql
 ls -la backups/ | tail -5
 ```
@@ -44,7 +44,7 @@ guard column adds). Safe to re-run.
 ```bash
 # On the VPS
 cd /opt/orphangive
-docker compose exec -T og-postgres psql -U directus -d directus \
+docker exec -i og-database psql -U directus -d directus \
   < migrations/session-41/001-schema.sql
 ```
 
@@ -68,7 +68,7 @@ Two paths — pick whichever your Directus version supports cleanly.
 
 ```bash
 cd /opt/orphangive
-docker compose exec og-directus npx directus schema apply \
+docker exec og-directus npx directus schema apply \
   /directus/migrations/session-41/002-directus-snapshot.yaml
 ```
 
@@ -186,14 +186,14 @@ display — they stay regardless.
 
 ```bash
 cd /opt/orphangive
-docker compose restart og-directus
+docker restart og-directus
 ```
 
 
 Wait ~10 seconds for Directus to reintrospect, then check logs:
 
 ```bash
-docker compose logs og-directus --tail 50
+docker logs og-directus --tail 50
 ```
 
 
