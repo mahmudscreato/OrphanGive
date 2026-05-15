@@ -1,78 +1,38 @@
 // Session 42 — DI Dashboard home / overview screen.
+// Session 47 — Tile data sources moved to src/lib/di-home-stats.ts
+//   (the SDK aggregate() bug from Sessions 42-46 is fixed there).
+// Session 47 — "Tasks done this month" tile replaced with
+//   "Awaiting sponsor". UrgentTasksPanel + RecentActivityPanel
+//   replace the two ComingSoon placeholders.
 //
 // Server component. Pulls the DI session (already validated by
-// (authed)/layout.tsx) and four count aggregates from Directus
-// using the existing `directusServer()` admin client.
-//
-// Counts queried (per spec v3 §6.2):
-//   1. Children I manage          — child rows where uploaded_by_di =
-//                                   self OR assigned_di = self,
-//                                   excluding withdrawn.
-//   2. Open tasks                  — task rows where assignee = self
-//                                   AND di_status != completed_pending_verification
-//   3. My pending submissions      — child_proposal rows where
-//                                   created_by = self AND status = pending
-//   4. Reports this month          — child_update rows where
-//                                   created_by = self AND date_created
-//                                   ≥ first day of this month
-//
-// Each count is best-effort: if the query throws (e.g. a fresh
-// Directus instance hasn't picked up the v3 collections yet), we
-// render `—` and continue. The dashboard remains usable even when
-// individual counts fail.
+// (authed)/layout.tsx) and four count aggregates plus two list
+// previews (urgent tasks + recent activity).
 
 import {
-  Home as HomeIcon,
   Users,
   ListTodo,
   Inbox,
-  FileBarChart,
   Plus,
   Camera,
   FileText,
   Truck,
+  HeartHandshake,
 } from "lucide-react";
-import { aggregate } from "@directus/sdk";
-import { directusServer } from "@/lib/directus";
 import { requireDiUser } from "@/lib/di-auth";
+import { getDiHomeStats } from "@/lib/di-home-stats";
+import { getUrgentTasksForUser } from "@/lib/di-tasks";
+import { getRecentActivityForUser } from "@/lib/di-audit";
 import { StatTile } from "@/components/di/StatTile";
 import { QuickAction } from "@/components/di/QuickAction";
+import { UrgentTasksPanel } from "@/components/di/UrgentTasksPanel";
+import { RecentActivityPanel } from "@/components/di/RecentActivityPanel";
 
 export const dynamic = "force-dynamic";
-
-async function safeCount(
-  collection: string,
-  filter: Record<string, unknown>,
-): Promise<number | null> {
-  try {
-    const result = (await directusServer().request(
-      aggregate(collection as never, {
-        aggregate: { count: "*" },
-        filter,
-      } as never),
-    )) as unknown as Array<{ count: number | string | null }> | undefined;
-    const row = Array.isArray(result) ? result[0] : null;
-    if (!row || row.count === null || row.count === undefined) return 0;
-    const n = typeof row.count === "string" ? Number(row.count) : row.count;
-    return Number.isFinite(n) ? n : null;
-  } catch (err) {
-    console.warn(
-      `[di/home] count failed for ${collection}:`,
-      err instanceof Error ? err.message : err,
-    );
-    return null;
-  }
-}
 
 function formatCount(n: number | null): string {
   if (n === null) return "—";
   return new Intl.NumberFormat("en-US").format(n);
-}
-
-function startOfThisMonthIso(): string {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  return start.toISOString();
 }
 
 export default async function DiHomePage() {
@@ -83,113 +43,46 @@ export default async function DiHomePage() {
       ? `Salaam, ${session.firstName.trim()}.`
       : "Salaam.";
 
-  // Session 46 — pending submissions tile now aggregates across all
-  // four DI mutation surfaces (proposals + moments + reports +
-  // deliveries). The Reports-this-month tile is dropped to make
-  // room for "Tasks done this month" which gives DI a feel-good
-  // weekly metric. The destination /di/submissions still shows
-  // proposals only (with a note explaining where the others live).
-  const [
-    childCount,
-    taskCount,
-    pendingProposalCount,
-    pendingMomentCount,
-    pendingReportCount,
-    pendingDeliveryCount,
-    completedTasksThisMonthCount,
-  ] = await Promise.all([
-    safeCount("child", {
-      _and: [
-        {
-          _or: [
-            { uploaded_by_di: { _eq: userId } },
-            { assigned_di: { _eq: userId } },
-          ],
-        },
-        { status: { _neq: "withdrawn" } },
-      ],
-    }),
-    safeCount("task", {
-      _and: [
-        { assignee: { _eq: userId } },
-        { di_status: { _neq: "completed_pending_verification" } },
-      ],
-    }),
-    safeCount("child_proposal", {
-      _and: [
-        { created_by: { _eq: userId } },
-        { status: { _eq: "pending" } },
-      ],
-    }),
-    safeCount("child_moment", {
-      _and: [
-        { created_by: { _eq: userId } },
-        { status: { _eq: "pending" } },
-      ],
-    }),
-    safeCount("child_update", {
-      _and: [
-        { created_by: { _eq: userId } },
-        { status: { _eq: "pending" } },
-      ],
-    }),
-    safeCount("aid_delivery", {
-      _and: [
-        { delivered_by: { _eq: userId } },
-        { status: { _eq: "pending" } },
-      ],
-    }),
-    safeCount("task", {
-      _and: [
-        { assignee: { _eq: userId } },
-        { admin_status: { _eq: "verified_complete" } },
-        { verified_at: { _gte: startOfThisMonthIso() } },
-      ],
-    }),
+  // Three parallel reads: stats bundle (4 tile counts + breakdowns),
+  // urgent task preview (≤5), recent activity preview (≤8). Each
+  // helper handles its own error path; nothing here cascades.
+  const [stats, urgentTasks, recentActivity] = await Promise.all([
+    getDiHomeStats(userId),
+    getUrgentTasksForUser(userId, 5),
+    getRecentActivityForUser(userId, 8),
   ]);
 
-  // Sum the 4 pending queues. Any individual count failure (returns
-  // null from safeCount) just contributes 0 — the tile shows "—" only
-  // when ALL four fail (we treat partial failures as graceful
-  // degradation).
+  // Pending submissions roll-up — same shape as Session 46. The
+  // aggregate failures gracefully degrade to 0 contributions; tile
+  // shows "—" only if ALL four sources errored.
   const pendingTotal =
-    (pendingProposalCount ?? 0) +
-    (pendingMomentCount ?? 0) +
-    (pendingReportCount ?? 0) +
-    (pendingDeliveryCount ?? 0);
+    (stats.pendingProposalCount ?? 0) +
+    (stats.pendingMomentCount ?? 0) +
+    (stats.pendingReportCount ?? 0) +
+    (stats.pendingDeliveryCount ?? 0);
   const pendingTooltip = [
-    `${formatCount(pendingProposalCount)} profile change${(pendingProposalCount ?? 0) === 1 ? "" : "s"}`,
-    `${formatCount(pendingMomentCount)} moment${(pendingMomentCount ?? 0) === 1 ? "" : "s"}`,
-    `${formatCount(pendingReportCount)} report${(pendingReportCount ?? 0) === 1 ? "" : "s"}`,
-    `${formatCount(pendingDeliveryCount)} deliver${(pendingDeliveryCount ?? 0) === 1 ? "y" : "ies"}`,
+    `${formatCount(stats.pendingProposalCount)} profile change${(stats.pendingProposalCount ?? 0) === 1 ? "" : "s"}`,
+    `${formatCount(stats.pendingMomentCount)} moment${(stats.pendingMomentCount ?? 0) === 1 ? "" : "s"}`,
+    `${formatCount(stats.pendingReportCount)} report${(stats.pendingReportCount ?? 0) === 1 ? "" : "s"}`,
+    `${formatCount(stats.pendingDeliveryCount)} deliver${(stats.pendingDeliveryCount ?? 0) === 1 ? "y" : "ies"}`,
   ].join(" · ");
   const allPendingFailed =
-    pendingProposalCount === null &&
-    pendingMomentCount === null &&
-    pendingReportCount === null &&
-    pendingDeliveryCount === null;
+    stats.pendingProposalCount === null &&
+    stats.pendingMomentCount === null &&
+    stats.pendingReportCount === null &&
+    stats.pendingDeliveryCount === null;
   const pendingValue = allPendingFailed
     ? "—"
     : formatCount(pendingTotal);
 
-  // The "subhead" lines under the greeting — Session 42-FIX3 splits
-  // this into two visual elements:
-  //   Line 1 (lead): "You manage N children." — same lead-text styling
-  //   Line 2 (note): either the divisions list (normal weight) OR the
-  //                  "no divisions assigned" admin note (italic, soft)
-  // Keeps the screen calm for a brand-new DI with nothing assigned yet
-  // while making it obvious that the divisions line is system-info,
-  // not greeting copy.
-  const childCountForSubhead = childCount ?? 0;
+  // Greeting subhead split: lead text + soft note for divisions
+  // status (Session 42-FIX3).
+  const childCountForSubhead = stats.childCount ?? 0;
   const childWord = childCountForSubhead === 1 ? "child" : "children";
   const hasDivisions =
     session.assignedDivisions && session.assignedDivisions.length > 0;
 
   return (
-    // Session 42-FIX3 — content area constrained to max-w-5xl (1024px)
-    // for a focused reading width on wide desktops. The cream gutter on
-    // the right is intentional; full-bleed content reads as utilitarian
-    // rather than crafted.
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
       {/* Greeting block */}
       <header className="mb-8 md:mb-10">
@@ -199,7 +92,7 @@ export default async function DiHomePage() {
         <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
           You manage{" "}
           <span className="text-ink font-medium">
-            {formatCount(childCount)}
+            {formatCount(stats.childCount)}
           </span>{" "}
           {childWord}.
         </p>
@@ -218,21 +111,19 @@ export default async function DiHomePage() {
         )}
       </header>
 
-      {/* Stat tiles — 2x2 mobile, 4-across desktop. Bottom margin
-          increased to ~64px (mb-16) so "Quick actions" reads as a
-          new section, not a continuation of the at-a-glance tiles. */}
+      {/* Stat tiles — 2x2 mobile, 4-across desktop */}
       <section className="mb-12 md:mb-16">
         <h2 className="sr-only">At a glance</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatTile
             label="Children I manage"
-            value={formatCount(childCount)}
+            value={formatCount(stats.childCount)}
             href="/di/children"
             icon={Users}
           />
           <StatTile
             label="Open tasks"
-            value={formatCount(taskCount)}
+            value={formatCount(stats.openTaskCount)}
             href="/di/tasks"
             icon={ListTodo}
           />
@@ -243,19 +134,21 @@ export default async function DiHomePage() {
             icon={Inbox}
             tooltip={pendingTooltip}
           />
+          {/* Session 47 — replaced "Tasks done this month" with
+              "Awaiting sponsor". Counts the DI's children with a
+              support_type set who don't yet have an active monthly
+              sponsorship. Donor-facing equivalent of "ready to fund". */}
           <StatTile
-            label="Tasks done this month"
-            value={formatCount(completedTasksThisMonthCount)}
-            href="/di/tasks?status=completed_pending_verification"
-            icon={FileBarChart}
-            hint="verified by admin"
+            label="Awaiting sponsor"
+            value={formatCount(stats.awaitingSponsorCount)}
+            href="/di/children?status=awaiting"
+            icon={HeartHandshake}
+            hint="children waiting for a donor"
           />
         </div>
       </section>
 
-      {/* Quick actions — heading-to-cards bumped to mb-6 (24px),
-          section-bottom bumped to mb-12 (~48px) so the placeholder
-          row below has clear visual separation. */}
+      {/* Quick actions */}
       <section className="mb-10 md:mb-12">
         <h2 className="font-display text-[20px] md:text-[22px] text-ink mb-6">
           Quick actions
@@ -266,11 +159,6 @@ export default async function DiHomePage() {
             href="/di/children/new"
             icon={Plus}
           />
-          {/* Session 45 — moment / report / delivery uploads live on
-              the Child Detail page (each child has its own tab). The
-              quick action funnels DI through "pick the child first"
-              by routing to the children list. A dedicated picker
-              flow is a polish for a future session. */}
           <QuickAction
             label="Upload moment"
             href="/di/children"
@@ -289,38 +177,10 @@ export default async function DiHomePage() {
         </div>
       </section>
 
-      {/* Placeholders — Session 46 wires real data */}
+      {/* Session 47 — real data replaces the Session 46 placeholders. */}
       <section className="grid md:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-ink/[0.06] bg-white p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <ListTodo
-              className="w-4 h-4 text-tangerine-deeper stroke-[1.75]"
-              aria-hidden="true"
-            />
-            <h3 className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-soft font-medium">
-              Urgent tasks
-            </h3>
-          </div>
-          <p className="text-[13.5px] text-ink-soft leading-relaxed">
-            Coming soon. Session 46 will surface tasks marked priority
-            high or urgent here.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-ink/[0.06] bg-white p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <HomeIcon
-              className="w-4 h-4 text-tangerine-deeper stroke-[1.75]"
-              aria-hidden="true"
-            />
-            <h3 className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-soft font-medium">
-              Recent activity
-            </h3>
-          </div>
-          <p className="text-[13.5px] text-ink-soft leading-relaxed">
-            Coming soon. Session 46 will show the last few submissions
-            and admin reviews here.
-          </p>
-        </div>
+        <UrgentTasksPanel tasks={urgentTasks} />
+        <RecentActivityPanel events={recentActivity} />
       </section>
     </div>
   );

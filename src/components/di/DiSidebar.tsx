@@ -17,6 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Home, Users, ListTodo, Inbox, User, LogOut } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
 
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
@@ -55,8 +56,11 @@ export function DiSidebar() {
       aria-label="DI Dashboard navigation"
       className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-[240px] bg-cream border-r border-ink/[0.08] px-4 py-6 z-30"
     >
-      {/* Logo + brand */}
-      <div className="px-2 mb-8">
+      {/* Logo + brand + bell.
+          Session 47 — bell sits on the right of the brand row so the
+          unread count is always one glance away, regardless of which
+          page the DI is on. */}
+      <div className="px-2 mb-8 flex items-center justify-between gap-2">
         <Link href="/di" className="inline-flex items-center gap-3 group">
           <Image
             src={FAVICON_URL}
@@ -76,6 +80,7 @@ export function DiSidebar() {
             </div>
           </div>
         </Link>
+        <NotificationBell variant="sidebar" />
       </div>
 
       {/* Nav items */}
