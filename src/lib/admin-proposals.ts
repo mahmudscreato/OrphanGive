@@ -157,17 +157,47 @@ async function readProposal(proposalId: string): Promise<ProposalRowFlat | null>
     )) as unknown as ProposalRowFlat | null;
     return result ?? null;
   } catch (err) {
-    // Directus throws on 404 — translate to null.
-    const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes("FORBIDDEN") ||
-      msg.includes("not found") ||
-      msg.includes("doesn't exist")
-    ) {
-      return null;
-    }
+    // Directus's "not found" path returns a FORBIDDEN error
+    // ("You don't have permission to access this.") — the standard
+    // Directus pattern of not revealing whether an item exists. The
+    // SDK wraps this as a DirectusError with an `errors` array
+    // containing `{ extensions: { code: 'FORBIDDEN' } }`. We translate
+    // those to null so the route returns 404 instead of 500.
+    //
+    // Any other error is unexpected and re-thrown to bubble to the
+    // route handler's 500 path.
+    if (isDirectusForbiddenOrMissing(err)) return null;
     throw err;
   }
+}
+
+// Detect "Directus says no such item / no permission" via either the
+// SDK's structured error shape OR a string fallback. The SDK's
+// `DirectusError` exposes `errors[].extensions.code`; the string
+// fallback covers any older or wrapped errors.
+function isDirectusForbiddenOrMissing(err: unknown): boolean {
+  if (!err) return false;
+  const errors = (err as { errors?: Array<{ extensions?: { code?: string } }> })
+    .errors;
+  if (Array.isArray(errors)) {
+    for (const e of errors) {
+      const code = e?.extensions?.code;
+      if (
+        code === "FORBIDDEN" ||
+        code === "RECORD_NOT_UNIQUE" ||
+        code === "ROUTE_NOT_FOUND"
+      ) {
+        return true;
+      }
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("FORBIDDEN") ||
+    msg.includes("permission to access") ||
+    msg.includes("not found") ||
+    msg.includes("doesn't exist")
+  );
 }
 
 // Pull the non-null mirror slice off a proposal row. For UPDATE, this
