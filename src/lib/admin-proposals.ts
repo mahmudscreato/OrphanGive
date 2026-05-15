@@ -1,0 +1,430 @@
+// Session 46-fix-2 — admin proposal approval / rejection.
+//
+// Admin "approving" a child_proposal in Directus admin only sets
+// status='approved' — it does NOT copy the proposal's mirror columns
+// onto the target_child row. This module fills that gap with a
+// proper server-side handler that:
+//
+//   1. Reads the proposal with the admin token
+//   2. For UPDATE: applies all non-null mirror columns onto the
+//      target_child row. For CREATE: inserts a new child row from
+//      the proposal's columns; the new row's uploaded_by_di =
+//      proposal.created_by.
+//   3. Updates the proposal: status='approved', approved_by=adminUserId,
+//      published_at=now(). For CREATE also sets target_child = new id.
+//   4. Writes an audit_log row (admin_approved_proposal).
+//   5. Returns { proposalId, targetChildId, appliedFields }.
+//
+// Reject is symmetric but smaller — sets status='rejected' +
+// approved_by + rejection_reason; no row mutation; audit
+// admin_rejected_proposal.
+//
+// Atomicity caveat: Directus doesn't expose Postgres transactions
+// across collections via REST. If the child UPDATE succeeds but the
+// proposal status update fails, the system is in a recoverable but
+// inconsistent state — the child IS updated, but the proposal still
+// reads 'pending'. We log loudly so admin can manually fix the proposal
+// status. Caller (route handler) returns 500 in that case so the
+// admin client knows something went wrong.
+
+import "server-only";
+
+import {
+  createItem,
+  readItem,
+  readItems,
+  updateItem,
+} from "@directus/sdk";
+import { directusServer } from "./directus";
+
+// ─── Public types ───────────────────────────────────────────────────
+
+export type ApproveResult = {
+  proposalId: string;
+  targetChildId: string;
+  appliedFields: string[];
+  operation: "create" | "update";
+};
+
+export type RejectResult = {
+  proposalId: string;
+};
+
+// ─── Typed errors ───────────────────────────────────────────────────
+
+export class NotFoundError extends Error {
+  readonly code = "not_found" as const;
+  constructor(message = "Proposal not found") {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
+export class InvalidStatusError extends Error {
+  readonly code = "invalid_status" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidStatusError";
+  }
+}
+
+export class TargetChildMissingError extends Error {
+  readonly code = "target_child_missing" as const;
+  constructor(message = "UPDATE proposal has no target_child") {
+    super(message);
+    this.name = "TargetChildMissingError";
+  }
+}
+
+export class ChildWriteFailedError extends Error {
+  readonly code = "child_write_failed" as const;
+  constructor(public readonly cause?: unknown) {
+    super(
+      cause instanceof Error
+        ? `Child write failed: ${cause.message}`
+        : "Child write failed",
+    );
+    this.name = "ChildWriteFailedError";
+  }
+}
+
+// ─── Mirror field set ───────────────────────────────────────────────
+//
+// These are the columns child_proposal stores AND child has the same
+// shape for. NEVER includes encrypted columns, medical_conditions,
+// allergies, mental_health_notes — those stay admin-only / locked.
+
+const MIRROR_FIELDS = [
+  // Identity
+  "display_name",
+  "first_name",
+  "gender",
+  "date_of_birth",
+  "photo_consent",
+  // Photo (M2O directus_files; capital P on child, lowercase 'photo'
+  // not a thing here — the column is `Photo`)
+  "Photo",
+  // Location
+  "bd_division",
+  "bd_district",
+  "district_internal",
+  // Education + interests
+  "education_level",
+  "class_grade",
+  "areas_of_interest",
+  // Donor-facing story
+  "story",
+  // Support plan
+  "support_type",
+  "monthly_cost",
+  // Health (excludes medical_conditions, allergies, mental_health_notes)
+  "blood_group",
+  "vaccination_status",
+  "last_medical_checkup",
+  "disability_status",
+  "disability_notes",
+  // Family
+  "siblings_count",
+  "sibling_position",
+  "siblings_notes",
+  "household_size",
+  // Socioeconomic
+  "household_income_source",
+  "monthly_household_income_bdt",
+  // Guardian
+  "guardian_relationship",
+  "guardian_employment",
+  "guardian_summary_internal",
+  "additional_family_notes",
+  // Field visit
+  "last_visit_date",
+] as const;
+
+type ProposalRowFlat = {
+  id: string;
+  proposal_type: "create" | "update";
+  target_child: string | null;
+  status: string;
+  created_by: string | null;
+} & Partial<Record<(typeof MIRROR_FIELDS)[number], unknown>>;
+
+async function readProposal(proposalId: string): Promise<ProposalRowFlat | null> {
+  try {
+    const result = (await directusServer().request(
+      readItem("child_proposal" as never, proposalId as never, {
+        fields: ["*"],
+      } as never),
+    )) as unknown as ProposalRowFlat | null;
+    return result ?? null;
+  } catch (err) {
+    // Directus throws on 404 — translate to null.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes("FORBIDDEN") ||
+      msg.includes("not found") ||
+      msg.includes("doesn't exist")
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+// Pull the non-null mirror slice off a proposal row. For UPDATE, this
+// is the proposed-changes set (DI submitted only changed fields). For
+// CREATE, this is the full new-record set.
+function pickMirrorPayload(
+  proposal: ProposalRowFlat,
+): { payload: Record<string, unknown>; appliedFields: string[] } {
+  const payload: Record<string, unknown> = {};
+  const appliedFields: string[] = [];
+  for (const field of MIRROR_FIELDS) {
+    const value = proposal[field];
+    if (value === null || value === undefined) continue;
+    // Treat empty strings as not-set so UPDATE doesn't blank a field
+    // when the DI form passed a stripped-empty submission.
+    if (typeof value === "string" && value.trim().length === 0) continue;
+    payload[field] = value;
+    appliedFields.push(field);
+  }
+  return { payload, appliedFields };
+}
+
+// ─── Public API ─────────────────────────────────────────────────────
+
+/**
+ * Approve a child_proposal: copy its mirror fields onto the target
+ * child (or insert a new child for CREATE), then mark the proposal
+ * approved + write an audit log entry.
+ */
+export async function approveProposal(
+  proposalId: string,
+  adminUserId: string,
+): Promise<ApproveResult> {
+  if (!proposalId) throw new NotFoundError();
+
+  const proposal = await readProposal(proposalId);
+  if (!proposal) throw new NotFoundError();
+
+  if (proposal.status !== "pending") {
+    throw new InvalidStatusError(
+      `Only pending proposals can be approved (current: ${proposal.status})`,
+    );
+  }
+
+  const { payload, appliedFields } = pickMirrorPayload(proposal);
+  let targetChildId: string;
+
+  if (proposal.proposal_type === "update") {
+    if (!proposal.target_child) throw new TargetChildMissingError();
+    targetChildId = proposal.target_child;
+
+    if (Object.keys(payload).length === 0) {
+      // Edge case: proposal exists but has no mirror columns set.
+      // Mark approved anyway (admin's call to approve says yes) but
+      // skip the child write — nothing to apply.
+      console.warn(
+        "[admin-proposals] approveProposal: UPDATE proposal has no mirror fields to apply",
+        { proposalId },
+      );
+    } else {
+      try {
+        await directusServer().request(
+          updateItem(
+            "child" as never,
+            targetChildId as never,
+            payload as never,
+          ),
+        );
+      } catch (err) {
+        throw new ChildWriteFailedError(err);
+      }
+    }
+  } else {
+    // CREATE: insert a new child row from the proposal payload.
+    // Stamp uploaded_by_di = proposal.created_by so future scope
+    // checks for the original DI work.
+    if (!proposal.created_by) {
+      throw new ChildWriteFailedError(
+        new Error("CREATE proposal has no created_by"),
+      );
+    }
+    const insertPayload: Record<string, unknown> = {
+      ...payload,
+      uploaded_by_di: proposal.created_by,
+      assigned_di: proposal.created_by, // first DI is also the assignee
+      // Status defaults to 'active' on child; admin can adjust later.
+      status: "active",
+    };
+    try {
+      const created = (await directusServer().request(
+        createItem("child" as never, insertPayload as never),
+      )) as unknown as { id?: string } | undefined;
+      if (!created?.id) {
+        throw new ChildWriteFailedError(
+          new Error("Insert returned no child id"),
+        );
+      }
+      targetChildId = String(created.id);
+    } catch (err) {
+      if (err instanceof ChildWriteFailedError) throw err;
+      throw new ChildWriteFailedError(err);
+    }
+  }
+
+  // Mark proposal approved. For CREATE, also stamp the new
+  // target_child id so the proposal row links back to its result.
+  const proposalPatch: Record<string, unknown> = {
+    status: "approved",
+    approved_by: adminUserId,
+    published_at: new Date().toISOString(),
+    rejection_reason: null,
+  };
+  if (proposal.proposal_type === "create") {
+    proposalPatch.target_child = targetChildId;
+  }
+
+  try {
+    await directusServer().request(
+      updateItem(
+        "child_proposal" as never,
+        proposalId as never,
+        proposalPatch as never,
+      ),
+    );
+  } catch (err) {
+    // Loud log per header — child IS updated, but proposal still
+    // reads pending. Caller maps to 500.
+    console.error(
+      "[admin-proposals] CRITICAL: child write succeeded but proposal status update failed",
+      {
+        proposalId,
+        targetChildId,
+        operation: proposal.proposal_type,
+        appliedFields,
+        err: err instanceof Error ? err.message : String(err),
+      },
+    );
+    throw new Error(
+      "child_updated_but_proposal_status_failed: see server logs",
+    );
+  }
+
+  // Best-effort audit. Failure swallowed (matches recordAuditEvent
+  // contract — audit is never the blocker).
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: "admin_approved_proposal",
+        collection: "child_proposal",
+        record_id: proposalId,
+        metadata: {
+          targetChildId,
+          operation: proposal.proposal_type,
+          appliedFields,
+          // childId duplicated under the canonical key so the per-
+          // child History tab (Session 46) surfaces this event.
+          childId: targetChildId,
+        },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-proposals] audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return {
+    proposalId,
+    targetChildId,
+    appliedFields,
+    operation: proposal.proposal_type,
+  };
+}
+
+/**
+ * Reject a child_proposal. Sets status='rejected', approved_by, and
+ * rejection_reason. No row mutation on child. Audit
+ * admin_rejected_proposal.
+ */
+export async function rejectProposal(
+  proposalId: string,
+  adminUserId: string,
+  reason?: string,
+): Promise<RejectResult> {
+  if (!proposalId) throw new NotFoundError();
+
+  const proposal = await readProposal(proposalId);
+  if (!proposal) throw new NotFoundError();
+
+  if (proposal.status !== "pending") {
+    throw new InvalidStatusError(
+      `Only pending proposals can be rejected (current: ${proposal.status})`,
+    );
+  }
+
+  const reasonTrimmed = reason?.trim() ?? "";
+  const proposalPatch: Record<string, unknown> = {
+    status: "rejected",
+    approved_by: adminUserId,
+    rejection_reason: reasonTrimmed.length > 0 ? reasonTrimmed : null,
+    published_at: new Date().toISOString(),
+  };
+
+  try {
+    await directusServer().request(
+      updateItem(
+        "child_proposal" as never,
+        proposalId as never,
+        proposalPatch as never,
+      ),
+    );
+  } catch (err) {
+    console.error(
+      "[admin-proposals] rejectProposal update failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("proposal_update_failed");
+  }
+
+  // Best-effort audit.
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: "admin_rejected_proposal",
+        collection: "child_proposal",
+        record_id: proposalId,
+        metadata: {
+          rejectionReason: reasonTrimmed || null,
+          // Surface on per-child History when an UPDATE proposal is
+          // rejected (CREATE proposals have no target_child yet).
+          ...(proposal.target_child
+            ? { childId: proposal.target_child }
+            : {}),
+        },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-proposals] audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return { proposalId };
+}
+
+// Re-export the audit reader so admin tooling has a single import
+// point — the Session 46 di-audit lib already does the heavy lifting.
+export { listAuditEventsForChild } from "./di-audit";
+// readItems is re-exported intentionally for future admin list
+// endpoints (e.g. all-pending-proposals view) without making them
+// re-import from the SDK.
+export { readItems };

@@ -70,57 +70,165 @@ export async function GET(req: NextRequest) {
 
 // ─── POST ───────────────────────────────────────────────────────────
 
+// Session 46-fix-2 — full DI-collectable surface.
+//
+// All enum values match production Directus admin metadata. Free-text
+// fields cap at 200 chars (single-line) or 2000 chars (textarea).
+// Number fields cap at 1M (BDT income / cost) or 30 (siblings) per
+// human-realistic ranges.
+
+const SUPPORT_TYPES = [
+  "education",
+  "food",
+  "healthcare",
+  "clothing",
+  "general_care",
+  "other",
+] as const;
+const GENDERS = ["male", "female"] as const;
+const BLOOD_GROUPS = [
+  "A+",
+  "A-",
+  "B+",
+  "B-",
+  "AB+",
+  "AB-",
+  "O+",
+  "O-",
+  "unknown",
+] as const;
+const VACCINATION_STATUSES = [
+  "up_to_date",
+  "partial",
+  "unknown",
+  "not_started",
+] as const;
+const DISABILITY_STATUSES = [
+  "none",
+  "physical",
+  "visual",
+  "hearing",
+  "cognitive",
+  "multiple",
+  "other",
+] as const;
+const HOUSEHOLD_INCOME_SOURCES = [
+  "none",
+  "day_labor",
+  "agriculture",
+  "small_business",
+  "remittance",
+  "mixed",
+  "unknown",
+] as const;
+const GUARDIAN_RELATIONSHIPS = [
+  "paternal_uncle",
+  "maternal_uncle",
+  "paternal_aunt",
+  "maternal_aunt",
+  "paternal_grandparent",
+  "maternal_grandparent",
+  "older_sibling",
+  "extended_family",
+  "community_member",
+  "orphanage_only",
+  "other",
+] as const;
+
+// Shared field definitions. The editable schema makes everything
+// optional; the creatable schema picks the required subset and tightens
+// the optional ones to nullable-or-omitted.
+const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
 const editableFieldsSchema = z
   .object({
+    // Identity
     display_name: z.string().min(1).max(200).optional(),
-    date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    gender: z.enum(GENDERS).optional(),
+    date_of_birth: dateField.optional(),
+    photo_consent: z.boolean().optional(),
+    // Location
     bd_division: z.string().min(1).max(50).optional(),
+    bd_district: z.string().min(1).max(50).optional(),
     district_internal: z.string().min(1).max(200).optional(),
-    support_type: z
-      .enum([
-        "education",
-        "food",
-        "healthcare",
-        "clothing",
-        "general_care",
-        "other",
-      ])
-      .optional(),
-    monthly_cost: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    // Education + interests
     education_level: z.string().max(100).nullable().optional(),
+    class_grade: z.string().max(100).optional(),
+    areas_of_interest: z.string().max(500).optional(),
+    // Donor-facing story
     story: z.string().min(50).max(2000).optional(),
-    guardian_summary_internal: z.string().min(1).max(2000).optional(),
-    last_visit_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
+    // Support plan
+    support_type: z.enum(SUPPORT_TYPES).optional(),
+    monthly_cost: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    // Health
+    blood_group: z.enum(BLOOD_GROUPS).optional(),
+    vaccination_status: z.enum(VACCINATION_STATUSES).optional(),
+    last_medical_checkup: dateField.nullable().optional(),
+    disability_status: z.enum(DISABILITY_STATUSES).optional(),
+    disability_notes: z.string().max(1000).optional(),
+    // Family
+    siblings_count: z.number().int().min(0).max(30).nullable().optional(),
+    sibling_position: z.number().int().min(0).max(30).nullable().optional(),
+    siblings_notes: z.string().max(500).optional(),
+    household_size: z.number().int().min(0).max(30).nullable().optional(),
+    // Socioeconomic
+    household_income_source: z.enum(HOUSEHOLD_INCOME_SOURCES).optional(),
+    monthly_household_income_bdt: z
+      .number()
+      .int()
+      .min(0)
+      .max(10_000_000)
       .nullable()
       .optional(),
+    // Guardian context
+    guardian_relationship: z.enum(GUARDIAN_RELATIONSHIPS).optional(),
+    guardian_employment: z.string().max(200).optional(),
+    guardian_summary_internal: z.string().min(1).max(2000).optional(),
+    additional_family_notes: z.string().max(1000).optional(),
+    // Field visit
+    last_visit_date: dateField.nullable().optional(),
   })
   .strict();
 
 const creatableFieldsSchema = z
   .object({
+    // Required-on-create per Mahmud's V1 decision.
     display_name: z.string().min(1).max(200),
-    date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    date_of_birth: dateField,
     bd_division: z.string().min(1).max(50),
+    bd_district: z.string().min(1).max(50),
     district_internal: z.string().min(1).max(200),
-    support_type: z.enum([
-      "education",
-      "food",
-      "healthcare",
-      "clothing",
-      "general_care",
-      "other",
-    ]),
+    support_type: z.enum(SUPPORT_TYPES),
     monthly_cost: z.number().int().min(0).max(1_000_000),
     story: z.string().min(50).max(2000),
     guardian_summary_internal: z.string().min(1).max(2000),
+    guardian_relationship: z.enum(GUARDIAN_RELATIONSHIPS),
+    // Optional-on-create.
+    gender: z.enum(GENDERS).optional(),
+    photo_consent: z.boolean().optional(),
     education_level: z.string().max(100).nullable().optional(),
-    last_visit_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
+    class_grade: z.string().max(100).optional(),
+    areas_of_interest: z.string().max(500).optional(),
+    blood_group: z.enum(BLOOD_GROUPS).optional(),
+    vaccination_status: z.enum(VACCINATION_STATUSES).optional(),
+    last_medical_checkup: dateField.nullable().optional(),
+    disability_status: z.enum(DISABILITY_STATUSES).optional(),
+    disability_notes: z.string().max(1000).optional(),
+    siblings_count: z.number().int().min(0).max(30).nullable().optional(),
+    sibling_position: z.number().int().min(0).max(30).nullable().optional(),
+    siblings_notes: z.string().max(500).optional(),
+    household_size: z.number().int().min(0).max(30).nullable().optional(),
+    household_income_source: z.enum(HOUSEHOLD_INCOME_SOURCES).optional(),
+    monthly_household_income_bdt: z
+      .number()
+      .int()
+      .min(0)
+      .max(10_000_000)
       .nullable()
       .optional(),
+    guardian_employment: z.string().max(200).optional(),
+    additional_family_notes: z.string().max(1000).optional(),
+    last_visit_date: dateField.nullable().optional(),
   })
   .strict();
 

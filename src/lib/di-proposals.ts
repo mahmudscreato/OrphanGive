@@ -40,7 +40,7 @@ import "server-only";
 
 import { createItem, deleteItem, readItems, readUser } from "@directus/sdk";
 import { directusServer } from "./directus";
-import { getDiChildById } from "./di-children";
+import { getChildEditSnapshot, getDiChildById } from "./di-children";
 
 // ─── Status / type taxonomies ───────────────────────────────────────
 
@@ -61,32 +61,88 @@ export const VISIBLE_PROPOSAL_STATUSES: ReadonlyArray<ProposalStatus> = [
 ];
 
 // ─── Editable / creatable shapes ────────────────────────────────────
+//
+// Session 46-fix-2 — extended to mirror the full DI-collectable surface
+// of `child` (28 fields total). Medical-sensitive admin-only fields
+// (medical_conditions, allergies, mental_health_notes) and encrypted
+// columns stay excluded — they're not in either shape.
 
 export interface ChildEditableFields {
+  // Identity
   display_name?: string;
+  gender?: string;
   date_of_birth?: string; // ISO date (YYYY-MM-DD)
+  photo_consent?: boolean;
+  // Location
   bd_division?: string; // slug code, FK to bd_division.code
+  bd_district?: string; // slug code, FK to bd_district.code
   district_internal?: string;
+  // Education + interests
+  education_level?: string | null;
+  class_grade?: string;
+  areas_of_interest?: string;
+  // Donor-facing story
+  story?: string;
+  // Support plan
   support_type?: string;
   monthly_cost?: number | null;
-  education_level?: string | null;
-  story?: string;
+  // Health (subset — mental health stays admin-only)
+  blood_group?: string;
+  vaccination_status?: string;
+  last_medical_checkup?: string | null;
+  disability_status?: string;
+  disability_notes?: string;
+  // Family
+  siblings_count?: number | null;
+  sibling_position?: number | null;
+  siblings_notes?: string;
+  household_size?: number | null;
+  // Socioeconomic
+  household_income_source?: string;
+  monthly_household_income_bdt?: number | null;
+  // Guardian context
+  guardian_relationship?: string;
+  guardian_employment?: string;
   guardian_summary_internal?: string;
-  last_visit_date?: string | null; // ISO date or null
+  additional_family_notes?: string;
+  // Field visit
+  last_visit_date?: string | null;
 }
 
-// Required-for-CREATE fields. Note: education_level + last_visit_date
-// are optional even on CREATE — they're often unknown at intake.
+// Required-for-CREATE fields per Mahmud's V1 decision: identity
+// minimum + location + support plan + a story + guardian context.
+// Health/family/socioeconomic blocks are optional on create — DI may
+// not have everything at first intake.
 export interface ChildCreatableFields {
   display_name: string;
   date_of_birth: string;
   bd_division: string;
+  bd_district: string;
   district_internal: string;
   support_type: string;
   monthly_cost: number;
   story: string;
   guardian_summary_internal: string;
+  guardian_relationship: string;
+  // All other fields optional on create.
+  gender?: string;
+  photo_consent?: boolean;
   education_level?: string | null;
+  class_grade?: string;
+  areas_of_interest?: string;
+  blood_group?: string;
+  vaccination_status?: string;
+  last_medical_checkup?: string | null;
+  disability_status?: string;
+  disability_notes?: string;
+  siblings_count?: number | null;
+  sibling_position?: number | null;
+  siblings_notes?: string;
+  household_size?: number | null;
+  household_income_source?: string;
+  monthly_household_income_bdt?: number | null;
+  guardian_employment?: string;
+  additional_family_notes?: string;
   last_visit_date?: string | null;
 }
 
@@ -185,16 +241,48 @@ export class InvalidValueError extends Error {
 
 // ─── Editable field set + diff helpers ──────────────────────────────
 
+// Session 46-fix-2 — full DI-collectable surface (28 fields).
+// Order here drives the order rows are stored in `previous_snapshot`
+// + the diff loop in createUpdateProposal.
 const EDITABLE_FIELDS: ReadonlyArray<keyof ChildEditableFields> = [
+  // Identity
   "display_name",
+  "gender",
   "date_of_birth",
+  "photo_consent",
+  // Location
   "bd_division",
+  "bd_district",
   "district_internal",
+  // Education
+  "education_level",
+  "class_grade",
+  "areas_of_interest",
+  // Donor-facing story
+  "story",
+  // Support plan
   "support_type",
   "monthly_cost",
-  "education_level",
-  "story",
+  // Health
+  "blood_group",
+  "vaccination_status",
+  "last_medical_checkup",
+  "disability_status",
+  "disability_notes",
+  // Family
+  "siblings_count",
+  "sibling_position",
+  "siblings_notes",
+  "household_size",
+  // Socioeconomic
+  "household_income_source",
+  "monthly_household_income_bdt",
+  // Guardian context
+  "guardian_relationship",
+  "guardian_employment",
   "guardian_summary_internal",
+  "additional_family_notes",
+  // Field visit
   "last_visit_date",
 ];
 
@@ -332,12 +420,29 @@ async function createUpdateProposal(
   userId: string,
   input: Extract<CreateProposalInput, { operation: "update" }>,
 ): Promise<{ proposalId: string }> {
-  // Scope guard — getDiChildById returns null if out of scope OR
-  // doesn't exist. Same null shape either way (no existence leak).
-  const current = await getDiChildById(input.childId, userId);
+  // Scope guard — getChildEditSnapshot returns null if out of scope
+  // OR doesn't exist (same null shape, no existence leak). Switched
+  // here in Session 46-fix-2 from getDiChildById because the diff
+  // loop needs the full editable surface (28 fields including
+  // photo_consent, blood_group, household_size, etc.) — DiChildDetail
+  // only exposes the user-facing subset, so reading new fields off it
+  // returned undefined and registered every submitted value as a
+  // change vs an undefined "current".
+  const current = await getChildEditSnapshot(input.childId, userId);
   if (!current) throw new OutOfScopeError();
 
   const submittedFields: ChildEditableFields = input.fields;
+
+  // Map ChildEditableFields keys to ChildEditSnapshot keys. Most
+  // are 1:1 by name; bd_division/bd_district read from the snapshot's
+  // `*_code` keys (Directus relation expansion gave us the FK slug).
+  const snapshotKeyOf = (
+    field: keyof ChildEditableFields,
+  ): keyof typeof current => {
+    if (field === "bd_division") return "bd_division_code";
+    if (field === "bd_district") return "bd_district_code";
+    return field as keyof typeof current;
+  };
 
   // Compute the changed slice. For each field the DI submitted,
   // compare to the current child's value. If different, record the
@@ -349,16 +454,26 @@ async function createUpdateProposal(
   for (const field of EDITABLE_FIELDS) {
     if (!(field in submittedFields)) continue;
     const submittedValue = submittedFields[field];
-    const currentValue = (current as unknown as Record<string, unknown>)[field];
+    const currentValue = (current as unknown as Record<string, unknown>)[
+      snapshotKeyOf(field)
+    ];
     if (isActuallyChanged(submittedValue, currentValue)) {
       // Light per-field validation for the mutating subset.
-      if (field === "date_of_birth" && typeof submittedValue === "string") {
+      if (
+        (field === "date_of_birth" ||
+          field === "last_visit_date" ||
+          field === "last_medical_checkup") &&
+        typeof submittedValue === "string"
+      ) {
         validateDate(field, submittedValue);
       }
-      if (field === "last_visit_date" && typeof submittedValue === "string") {
-        validateDate(field, submittedValue);
-      }
-      if (field === "monthly_cost") {
+      if (
+        field === "monthly_cost" ||
+        field === "monthly_household_income_bdt" ||
+        field === "siblings_count" ||
+        field === "sibling_position" ||
+        field === "household_size"
+      ) {
         validateMoney(
           field,
           submittedValue === null || submittedValue === undefined
@@ -375,12 +490,7 @@ async function createUpdateProposal(
   // Photo: a non-null photoUuid that differs from the current Photo
   // means a swap. null means "keep current".
   if (input.photoUuid !== null) {
-    const currentPhoto = (current as unknown as { photo_url?: string | null })
-      .photo_url
-      ? extractUuidFromAssetUrl(
-          (current as unknown as { photo_url: string }).photo_url,
-        )
-      : null;
+    const currentPhoto = current.current_photo_uuid;
     if (input.photoUuid !== currentPhoto) {
       proposedRow.Photo = input.photoUuid;
       snapshot.Photo = currentPhoto;
@@ -424,11 +534,13 @@ async function createCreateProposal(
   ensureRequired("display_name", f.display_name);
   ensureRequired("date_of_birth", f.date_of_birth);
   ensureRequired("bd_division", f.bd_division);
+  ensureRequired("bd_district", f.bd_district);
   ensureRequired("district_internal", f.district_internal);
   ensureRequired("support_type", f.support_type);
   ensureRequired("monthly_cost", f.monthly_cost);
   ensureRequired("story", f.story);
   ensureRequired("guardian_summary_internal", f.guardian_summary_internal);
+  ensureRequired("guardian_relationship", f.guardian_relationship);
   if (!input.photoUuid) {
     throw new MissingRequiredFieldError("photoUuid");
   }
@@ -437,6 +549,19 @@ async function createCreateProposal(
   validateDate("date_of_birth", f.date_of_birth);
   validateMoney("monthly_cost", f.monthly_cost);
   if (f.last_visit_date) validateDate("last_visit_date", f.last_visit_date);
+  if (f.last_medical_checkup) validateDate("last_medical_checkup", f.last_medical_checkup);
+  if (f.monthly_household_income_bdt !== undefined && f.monthly_household_income_bdt !== null) {
+    validateMoney("monthly_household_income_bdt", f.monthly_household_income_bdt);
+  }
+  if (f.siblings_count !== undefined && f.siblings_count !== null) {
+    validateMoney("siblings_count", f.siblings_count);
+  }
+  if (f.sibling_position !== undefined && f.sibling_position !== null) {
+    validateMoney("sibling_position", f.sibling_position);
+  }
+  if (f.household_size !== undefined && f.household_size !== null) {
+    validateMoney("household_size", f.household_size);
+  }
 
   // Division guard — DI may only propose new children in their
   // assigned divisions.
@@ -445,6 +570,11 @@ async function createCreateProposal(
     throw new DivisionNotAllowedError(f.bd_division);
   }
 
+  // Session 46-fix-2 — assemble the full payload including the 17
+  // new mirror columns. Optional fields fall through as undefined →
+  // omitted from the insert (Directus treats them as default/null).
+  // photo_consent defaults FALSE on the column so an unchecked box
+  // (or omitted property) is the safe default.
   const created = (await directusServer().request(
     createItem("child_proposal" as never, {
       proposal_type: "create",
@@ -455,17 +585,46 @@ async function createCreateProposal(
       // auto-fill default; set it explicitly.
       date_created: new Date().toISOString(),
       previous_snapshot: null,
+      // Identity
       display_name: f.display_name.trim(),
+      gender: f.gender ?? null,
       date_of_birth: f.date_of_birth,
+      photo_consent: f.photo_consent ?? false,
+      Photo: input.photoUuid,
+      // Location
       bd_division: f.bd_division,
+      bd_district: f.bd_district,
       district_internal: f.district_internal.trim(),
+      // Education + interests
+      education_level: f.education_level?.trim() || null,
+      class_grade: f.class_grade?.trim() || null,
+      areas_of_interest: f.areas_of_interest?.trim() || null,
+      // Donor-facing story
+      story: f.story.trim(),
+      // Support plan
       support_type: f.support_type,
       monthly_cost: f.monthly_cost,
-      story: f.story.trim(),
+      // Health
+      blood_group: f.blood_group ?? null,
+      vaccination_status: f.vaccination_status ?? null,
+      last_medical_checkup: f.last_medical_checkup || null,
+      disability_status: f.disability_status ?? null,
+      disability_notes: f.disability_notes?.trim() || null,
+      // Family
+      siblings_count: f.siblings_count ?? null,
+      sibling_position: f.sibling_position ?? null,
+      siblings_notes: f.siblings_notes?.trim() || null,
+      household_size: f.household_size ?? null,
+      // Socioeconomic
+      household_income_source: f.household_income_source ?? null,
+      monthly_household_income_bdt: f.monthly_household_income_bdt ?? null,
+      // Guardian
+      guardian_relationship: f.guardian_relationship,
+      guardian_employment: f.guardian_employment?.trim() || null,
       guardian_summary_internal: f.guardian_summary_internal.trim(),
-      education_level: f.education_level?.trim() || null,
+      additional_family_notes: f.additional_family_notes?.trim() || null,
+      // Field visit
       last_visit_date: f.last_visit_date || null,
-      Photo: input.photoUuid,
     } as never),
   )) as unknown as { id?: string } | undefined;
 

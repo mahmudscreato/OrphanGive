@@ -14,7 +14,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
-import { getBdDivisions, getChildEditSnapshot } from "@/lib/di-children";
+import {
+  getBdDistricts,
+  getBdDivisions,
+  getChildEditSnapshot,
+} from "@/lib/di-children";
 import { ChildForm } from "@/components/di/ChildForm";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +31,12 @@ export default async function DiEditChildPage({
   const session = await requireDiUser();
   const { id } = await params;
 
-  const [child, divisions] = await Promise.all([
+  // Session 46-fix-2 — also fetch districts for the cascade dropdown.
+  // Three parallel reads; districts is a tiny static-ish list (~64 rows).
+  const [child, divisions, districts] = await Promise.all([
     getChildEditSnapshot(id, session.userId),
     getBdDivisions(),
+    getBdDistricts(),
   ]);
   if (!child) notFound();
 
@@ -57,7 +64,12 @@ export default async function DiEditChildPage({
         </p>
       </header>
 
-      <ChildForm mode="edit" divisions={divisions} existing={child} />
+      <ChildForm
+        mode="edit"
+        divisions={divisions}
+        districts={districts}
+        existing={child}
+      />
     </div>
   );
 }
