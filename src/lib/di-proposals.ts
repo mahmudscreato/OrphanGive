@@ -73,26 +73,35 @@ export interface ChildEditableFields {
   gender?: string;
   date_of_birth?: string; // ISO date (YYYY-MM-DD)
   photo_consent?: boolean;
-  // Location
+  // Location (Session 48a — added permanent_address Tier 3)
   bd_division?: string; // slug code, FK to bd_division.code
   bd_district?: string; // slug code, FK to bd_district.code
   district_internal?: string;
-  // Education + interests
+  permanent_address?: string;
+  // Education + interests (Session 48a — areas_of_interest is now
+  // text[]; educational_organization is M2O to school; school_name_raw
+  // is the free-text fallback when no school row exists yet).
   education_level?: string | null;
   class_grade?: string;
-  areas_of_interest?: string;
+  educational_organization?: string | null;
+  school_name_raw?: string;
+  areas_of_interest?: string[];
   // Donor-facing story
   story?: string;
-  // Support plan
+  // Support plan (Session 48a — priority_support drives whether
+  // priority_notes is required; admin uses these for triage).
   support_type?: string;
   monthly_cost?: number | null;
+  priority_support?: string;
+  priority_notes?: string;
   // Health (subset — mental health stays admin-only)
   blood_group?: string;
   vaccination_status?: string;
   last_medical_checkup?: string | null;
   disability_status?: string;
   disability_notes?: string;
-  // Family
+  // Family (Session 48a — parent_loss is now mandatory at submit)
+  parent_loss?: string;
   siblings_count?: number | null;
   sibling_position?: number | null;
   siblings_notes?: string;
@@ -100,13 +109,22 @@ export interface ChildEditableFields {
   // Socioeconomic
   household_income_source?: string;
   monthly_household_income_bdt?: number | null;
-  // Guardian context
+  // Guardian context (Session 48a — added phone fields Tier 3 +
+  // structured employment_type alongside the existing free-text
+  // qualifier)
   guardian_relationship?: string;
+  guardian_employment_type?: string;
   guardian_employment?: string;
+  guardian_phone?: string;
+  guardian_phone_alt?: string;
   guardian_summary_internal?: string;
   additional_family_notes?: string;
-  // Field visit
+  // Field visit / submission
+  // Session 48a — submission_date is the new canonical name. We
+  // KEEP last_visit_date and write to BOTH to maintain backward
+  // compat; deprecate after a future read-side audit.
   last_visit_date?: string | null;
+  submission_date?: string | null;
 }
 
 // Required-for-CREATE fields per Mahmud's V1 decision: identity
@@ -124,12 +142,20 @@ export interface ChildCreatableFields {
   story: string;
   guardian_summary_internal: string;
   guardian_relationship: string;
+  // Session 48a — required-on-submit additions:
+  parent_loss: string;
+  guardian_phone: string;
   // All other fields optional on create.
   gender?: string;
   photo_consent?: boolean;
+  permanent_address?: string;
   education_level?: string | null;
   class_grade?: string;
-  areas_of_interest?: string;
+  educational_organization?: string | null;
+  school_name_raw?: string;
+  areas_of_interest?: string[];
+  priority_support?: string;
+  priority_notes?: string;
   blood_group?: string;
   vaccination_status?: string;
   last_medical_checkup?: string | null;
@@ -142,8 +168,11 @@ export interface ChildCreatableFields {
   household_income_source?: string;
   monthly_household_income_bdt?: number | null;
   guardian_employment?: string;
+  guardian_employment_type?: string;
+  guardian_phone_alt?: string;
   additional_family_notes?: string;
   last_visit_date?: string | null;
+  submission_date?: string | null;
 }
 
 export type CreateProposalInput =
@@ -242,34 +271,42 @@ export class InvalidValueError extends Error {
 // ─── Editable field set + diff helpers ──────────────────────────────
 
 // Session 46-fix-2 — full DI-collectable surface (28 fields).
-// Order here drives the order rows are stored in `previous_snapshot`
-// + the diff loop in createUpdateProposal.
+// Session 48a — extended to 41 fields (13 new). Order here drives
+// the order rows are stored in `previous_snapshot` + the diff loop
+// in createUpdateProposal.
 const EDITABLE_FIELDS: ReadonlyArray<keyof ChildEditableFields> = [
   // Identity
   "display_name",
   "gender",
   "date_of_birth",
   "photo_consent",
-  // Location
+  // Location (added permanent_address)
   "bd_division",
   "bd_district",
   "district_internal",
-  // Education
+  "permanent_address",
+  // Education + interests (added educational_organization,
+  // school_name_raw; areas_of_interest is now text[])
   "education_level",
   "class_grade",
+  "educational_organization",
+  "school_name_raw",
   "areas_of_interest",
   // Donor-facing story
   "story",
-  // Support plan
+  // Support plan (added priority_support, priority_notes)
   "support_type",
   "monthly_cost",
+  "priority_support",
+  "priority_notes",
   // Health
   "blood_group",
   "vaccination_status",
   "last_medical_checkup",
   "disability_status",
   "disability_notes",
-  // Family
+  // Family (added parent_loss)
+  "parent_loss",
   "siblings_count",
   "sibling_position",
   "siblings_notes",
@@ -277,19 +314,53 @@ const EDITABLE_FIELDS: ReadonlyArray<keyof ChildEditableFields> = [
   // Socioeconomic
   "household_income_source",
   "monthly_household_income_bdt",
-  // Guardian context
+  // Guardian context (added employment_type, phone, phone_alt)
   "guardian_relationship",
+  "guardian_employment_type",
   "guardian_employment",
+  "guardian_phone",
+  "guardian_phone_alt",
   "guardian_summary_internal",
   "additional_family_notes",
-  // Field visit
+  // Field visit / submission
   "last_visit_date",
+  "submission_date",
 ];
 
 // Compares submitted value to current child value. Returns true if
 // the field is "actually different". Treats null/undefined/"" as
 // equivalent so an empty-string submission against a null DB value
 // doesn't register as a change.
+/**
+ * Session 48a — keep submission_date and last_visit_date in sync.
+ *
+ * The form binds to submission_date (the new canonical name); the
+ * old last_visit_date column stays alive for backward compat. Mirror
+ * is symmetric: if either column is set in the submitted fields and
+ * the other isn't, fill the missing one. Done at the proposal
+ * write boundary so any downstream consumer (admin approval,
+ * future reads) sees both columns coherent without each having to
+ * remember to do this.
+ *
+ * Returns a NEW object — never mutates `fields` in place.
+ */
+function mirrorSubmissionDate<
+  T extends {
+    submission_date?: string | null;
+    last_visit_date?: string | null;
+  },
+>(fields: T): T {
+  const sd = fields.submission_date;
+  const lv = fields.last_visit_date;
+  if (sd != null && (lv == null || lv === "")) {
+    return { ...fields, last_visit_date: sd };
+  }
+  if (lv != null && (sd == null || sd === "")) {
+    return { ...fields, submission_date: lv };
+  }
+  return fields;
+}
+
 function isActuallyChanged(
   submitted: unknown,
   current: unknown,
@@ -299,6 +370,13 @@ function isActuallyChanged(
     if (typeof v === "string") {
       const trimmed = v.trim();
       return trimmed.length === 0 ? null : trimmed;
+    }
+    if (Array.isArray(v)) {
+      // Session 48a — areas_of_interest is text[]. Treat empty array
+      // as null so [] vs null doesn't register as a change. Sort
+      // before compare so order doesn't trigger a false-positive.
+      if (v.length === 0) return null;
+      return [...v].sort().join("|");
     }
     return v;
   };
@@ -423,15 +501,23 @@ async function createUpdateProposal(
   // Scope guard — getChildEditSnapshot returns null if out of scope
   // OR doesn't exist (same null shape, no existence leak). Switched
   // here in Session 46-fix-2 from getDiChildById because the diff
-  // loop needs the full editable surface (28 fields including
-  // photo_consent, blood_group, household_size, etc.) — DiChildDetail
-  // only exposes the user-facing subset, so reading new fields off it
-  // returned undefined and registered every submitted value as a
-  // change vs an undefined "current".
+  // loop needs the full editable surface — DiChildDetail only exposes
+  // the user-facing subset, so reading new fields off it returned
+  // undefined and registered every submitted value as a change vs
+  // an undefined "current".
   const current = await getChildEditSnapshot(input.childId, userId);
   if (!current) throw new OutOfScopeError();
 
-  const submittedFields: ChildEditableFields = input.fields;
+  // Session 48a — submission_date / last_visit_date mirror.
+  // Form binds to submission_date (the new canonical field). We
+  // copy that value onto last_visit_date too so anything still
+  // reading the old column stays consistent. Mirror is symmetric:
+  // if a caller submits last_visit_date but not submission_date,
+  // backfill the new column. Done before the diff loop so both
+  // columns get diffed normally.
+  const submittedFields: ChildEditableFields = mirrorSubmissionDate(
+    input.fields,
+  );
 
   // Map ChildEditableFields keys to ChildEditSnapshot keys. Most
   // are 1:1 by name; bd_division/bd_district read from the snapshot's
@@ -462,7 +548,8 @@ async function createUpdateProposal(
       if (
         (field === "date_of_birth" ||
           field === "last_visit_date" ||
-          field === "last_medical_checkup") &&
+          field === "last_medical_checkup" ||
+          field === "submission_date") &&
         typeof submittedValue === "string"
       ) {
         validateDate(field, submittedValue);
@@ -528,7 +615,11 @@ async function createCreateProposal(
   userId: string,
   input: Extract<CreateProposalInput, { operation: "create" }>,
 ): Promise<{ proposalId: string }> {
-  const f = input.fields;
+  // Session 48a — same submission_date / last_visit_date mirror as
+  // the UPDATE path. See mirrorSubmissionDate() docstring.
+  const f = mirrorSubmissionDate(
+    input.fields,
+  ) as ChildCreatableFields;
 
   // Required-field check (string-typed).
   ensureRequired("display_name", f.display_name);
@@ -541,8 +632,21 @@ async function createCreateProposal(
   ensureRequired("story", f.story);
   ensureRequired("guardian_summary_internal", f.guardian_summary_internal);
   ensureRequired("guardian_relationship", f.guardian_relationship);
+  // Session 48a — new mandatory-on-create fields.
+  ensureRequired("parent_loss", f.parent_loss);
+  ensureRequired("guardian_phone", f.guardian_phone);
   if (!input.photoUuid) {
     throw new MissingRequiredFieldError("photoUuid");
+  }
+  // Cross-field rule — priority_notes required when priority_support
+  // is non-'none'. The form already enforces this client-side; this
+  // is the server-side contract.
+  if (
+    f.priority_support &&
+    f.priority_support !== "none" &&
+    (!f.priority_notes || f.priority_notes.trim().length === 0)
+  ) {
+    throw new MissingRequiredFieldError("priority_notes");
   }
 
   // Per-field validation.
@@ -591,26 +695,39 @@ async function createCreateProposal(
       date_of_birth: f.date_of_birth,
       photo_consent: f.photo_consent ?? false,
       Photo: input.photoUuid,
-      // Location
+      // Location (Session 48a — added permanent_address)
       bd_division: f.bd_division,
       bd_district: f.bd_district,
       district_internal: f.district_internal.trim(),
-      // Education + interests
+      permanent_address: f.permanent_address?.trim() || null,
+      // Education + interests (Session 48a — added educational_organization
+      // FK + school_name_raw fallback; areas_of_interest is now text[])
       education_level: f.education_level?.trim() || null,
       class_grade: f.class_grade?.trim() || null,
-      areas_of_interest: f.areas_of_interest?.trim() || null,
+      educational_organization: f.educational_organization || null,
+      school_name_raw: f.school_name_raw?.trim() || null,
+      // Session 48a — text[] column. See toPgTextArrayLiteral
+      // docstring for why we send the literal string instead of
+      // the JS array.
+      areas_of_interest:
+        Array.isArray(f.areas_of_interest) && f.areas_of_interest.length > 0
+          ? toPgTextArrayLiteral(f.areas_of_interest)
+          : null,
       // Donor-facing story
       story: f.story.trim(),
-      // Support plan
+      // Support plan (Session 48a — priority columns)
       support_type: f.support_type,
       monthly_cost: f.monthly_cost,
+      priority_support: f.priority_support || "none",
+      priority_notes: f.priority_notes?.trim() || null,
       // Health
       blood_group: f.blood_group ?? null,
       vaccination_status: f.vaccination_status ?? null,
       last_medical_checkup: f.last_medical_checkup || null,
       disability_status: f.disability_status ?? null,
       disability_notes: f.disability_notes?.trim() || null,
-      // Family
+      // Family (Session 48a — parent_loss is now mandatory)
+      parent_loss: f.parent_loss,
       siblings_count: f.siblings_count ?? null,
       sibling_position: f.sibling_position ?? null,
       siblings_notes: f.siblings_notes?.trim() || null,
@@ -618,13 +735,18 @@ async function createCreateProposal(
       // Socioeconomic
       household_income_source: f.household_income_source ?? null,
       monthly_household_income_bdt: f.monthly_household_income_bdt ?? null,
-      // Guardian
+      // Guardian (Session 48a — added employment_type, phone, phone_alt)
       guardian_relationship: f.guardian_relationship,
+      guardian_employment_type: f.guardian_employment_type ?? null,
       guardian_employment: f.guardian_employment?.trim() || null,
+      guardian_phone: f.guardian_phone.trim(),
+      guardian_phone_alt: f.guardian_phone_alt?.trim() || null,
       guardian_summary_internal: f.guardian_summary_internal.trim(),
       additional_family_notes: f.additional_family_notes?.trim() || null,
-      // Field visit
+      // Field visit / submission (Session 48a — both columns mirrored
+      // by mirrorSubmissionDate above so writes go to both)
       last_visit_date: f.last_visit_date || null,
+      submission_date: f.submission_date || null,
     } as never),
   )) as unknown as { id?: string } | undefined;
 
@@ -651,7 +773,37 @@ function normaliseForInsert(
     const t = value.trim();
     return t.length === 0 ? null : t;
   }
+  // Session 48a — areas_of_interest is a Postgres text[] column.
+  // The Directus SDK can't natively serialise a JS array into a
+  // text[] literal — it sends JSON which Postgres rejects with
+  // "malformed array literal". Format as a Postgres array literal
+  // ({a,b,c}) string so the driver parses it as `_text`. All our
+  // slug values are [a-z_]+ so no escaping is needed; if we ever
+  // add slugs with commas/quotes, this helper needs to escape them.
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return toPgTextArrayLiteral(value as string[]);
+  }
   return value;
+}
+
+/**
+ * Format a string array as a Postgres text[] literal: `{a,b,c}`.
+ * Values containing commas / quotes / braces get quoted + escaped.
+ * (Today's slugs don't, but keeping the helper safe-by-default.)
+ *
+ * Exported because admin-proposals.ts also needs to format arrays
+ * when copying proposal mirror columns onto `child` — same Directus
+ * limitation, same fix.
+ */
+export function toPgTextArrayLiteral(values: string[]): string {
+  const parts = values.map((v) => {
+    if (/[,"{}\\\s]/.test(v)) {
+      return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    }
+    return v;
+  });
+  return `{${parts.join(",")}}`;
 }
 
 // ─── Reads ──────────────────────────────────────────────────────────

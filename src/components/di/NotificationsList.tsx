@@ -97,30 +97,46 @@ export function NotificationsList({
 
   return (
     <div>
+      {/* Session 48a polish — header bar:
+          - "Mark all as read" button is now always rendered (disabled
+            when there's nothing to mark) so the affordance is
+            discoverable at a glance.
+          - The "You're all caught up" copy that previously lived here
+            is moved to the empty state below — it was misleadingly
+            appearing above non-empty (all-read) lists. */}
       <div className="flex items-center justify-between gap-3 mb-5">
         <p className="text-[14px] text-ink-soft">
           {unreadCount > 0 ? (
             <>
               <span className="text-ink font-medium">{unreadCount}</span>{" "}
               unread
+              {items.length > 0 ? (
+                <span className="text-ink-soft/80"> of {items.length}</span>
+              ) : null}
             </>
-          ) : (
-            <>You&apos;re all caught up.</>
-          )}
+          ) : items.length > 0 ? (
+            <>
+              <span className="text-ink font-medium">{items.length}</span>{" "}
+              total · all read
+            </>
+          ) : null}
         </p>
-        {unreadCount > 0 ? (
-          <button
-            type="button"
-            onClick={onMarkAll}
-            disabled={pending}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-stone-300 text-[13px] font-medium text-slate hover:bg-stone-50 hover:text-ink disabled:opacity-60 transition-colors"
-          >
-            {pending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-            ) : null}
-            Mark all as read
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={onMarkAll}
+          disabled={pending || unreadCount === 0}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-stone-300 text-[13px] font-medium text-slate hover:bg-stone-50 hover:text-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title={
+            unreadCount === 0
+              ? "Nothing to mark — all read"
+              : `Mark all ${unreadCount} unread as read`
+          }
+        >
+          {pending ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+          ) : null}
+          Mark all as read
+        </button>
       </div>
 
       {error ? (
@@ -137,7 +153,13 @@ export function NotificationsList({
           >
             <Bell className="w-7 h-7 stroke-[1.5]" />
           </div>
-          <p className="font-display text-[20px] text-ink mb-2">No notifications.</p>
+          {/* Session 48a — "You're all caught up" copy moved here from
+              the header bar. The Caveat italic accent matches the
+              other empty-state moods across the DI surface. */}
+          <p className="font-script italic text-[18px] text-tangerine-deeper mb-2">
+            You&apos;re all caught up.
+          </p>
+          <p className="font-display text-[20px] text-ink mb-2">No notifications yet.</p>
           <p className="text-[14.5px] text-ink-soft leading-relaxed max-w-md mx-auto">
             When admin reviews your submissions or assigns you new work,
             it&apos;ll show up here.

@@ -31,6 +31,18 @@ import {
 // Session 46 — audit + admin notification on every successful submission.
 import { recordAuditEvent } from "@/lib/di-audit";
 import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
+// Session 48a — single source of truth for the new + extended enums.
+// The other inline enums (SUPPORT_TYPES, BLOOD_GROUPS, etc.) stay
+// inline below; consolidating them here is purely refactoring,
+// flagged for follow-up.
+import {
+  AREAS_OF_INTEREST,
+  EDUCATION_LEVELS,
+  GUARDIAN_EMPLOYMENT_TYPES,
+  GUARDIAN_RELATIONSHIPS as GUARDIAN_RELATIONSHIPS_EXTENDED,
+  PARENT_LOSS,
+  PRIORITY_SUPPORT,
+} from "@/lib/form-constants";
 
 export const dynamic = "force-dynamic";
 
@@ -121,19 +133,10 @@ const HOUSEHOLD_INCOME_SOURCES = [
   "mixed",
   "unknown",
 ] as const;
-const GUARDIAN_RELATIONSHIPS = [
-  "paternal_uncle",
-  "maternal_uncle",
-  "paternal_aunt",
-  "maternal_aunt",
-  "paternal_grandparent",
-  "maternal_grandparent",
-  "older_sibling",
-  "extended_family",
-  "community_member",
-  "orphanage_only",
-  "other",
-] as const;
+// Session 48a — replaces the inline enum with the shared constant
+// (which now includes father + mother). Aliased to keep the local
+// name unchanged across the rest of this file.
+const GUARDIAN_RELATIONSHIPS = GUARDIAN_RELATIONSHIPS_EXTENDED;
 
 // Shared field definitions. The editable schema makes everything
 // optional; the creatable schema picks the required subset and tightens
@@ -147,26 +150,36 @@ const editableFieldsSchema = z
     gender: z.enum(GENDERS).optional(),
     date_of_birth: dateField.optional(),
     photo_consent: z.boolean().optional(),
-    // Location
+    // Location (Session 48a — added permanent_address)
     bd_division: z.string().min(1).max(50).optional(),
     bd_district: z.string().min(1).max(50).optional(),
     district_internal: z.string().min(1).max(200).optional(),
-    // Education + interests
-    education_level: z.string().max(100).nullable().optional(),
+    permanent_address: z.string().max(500).optional(),
+    // Education + interests (Session 48a — education_level is now an
+    // enum; areas_of_interest is text[]; school M2O + raw fallback)
+    education_level: z.enum(EDUCATION_LEVELS).nullable().optional(),
     class_grade: z.string().max(100).optional(),
-    areas_of_interest: z.string().max(500).optional(),
+    educational_organization: z.string().uuid().nullable().optional(),
+    school_name_raw: z.string().max(200).optional(),
+    areas_of_interest: z
+      .array(z.enum(AREAS_OF_INTEREST))
+      .max(20)
+      .optional(),
     // Donor-facing story
     story: z.string().min(50).max(2000).optional(),
-    // Support plan
+    // Support plan (Session 48a — priority columns)
     support_type: z.enum(SUPPORT_TYPES).optional(),
     monthly_cost: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    priority_support: z.enum(PRIORITY_SUPPORT).optional(),
+    priority_notes: z.string().max(500).optional(),
     // Health
     blood_group: z.enum(BLOOD_GROUPS).optional(),
     vaccination_status: z.enum(VACCINATION_STATUSES).optional(),
     last_medical_checkup: dateField.nullable().optional(),
     disability_status: z.enum(DISABILITY_STATUSES).optional(),
     disability_notes: z.string().max(1000).optional(),
-    // Family
+    // Family (Session 48a — added parent_loss)
+    parent_loss: z.enum(PARENT_LOSS).optional(),
     siblings_count: z.number().int().min(0).max(30).nullable().optional(),
     sibling_position: z.number().int().min(0).max(30).nullable().optional(),
     siblings_notes: z.string().max(500).optional(),
@@ -180,19 +193,26 @@ const editableFieldsSchema = z
       .max(10_000_000)
       .nullable()
       .optional(),
-    // Guardian context
+    // Guardian context (Session 48a — added employment_type + phones)
     guardian_relationship: z.enum(GUARDIAN_RELATIONSHIPS).optional(),
+    guardian_employment_type: z.enum(GUARDIAN_EMPLOYMENT_TYPES).optional(),
     guardian_employment: z.string().max(200).optional(),
+    guardian_phone: z.string().min(7).max(32).optional(),
+    guardian_phone_alt: z.string().max(32).optional(),
     guardian_summary_internal: z.string().min(1).max(2000).optional(),
     additional_family_notes: z.string().max(1000).optional(),
-    // Field visit
+    // Field visit / submission (Session 48a — submission_date is the
+    // canonical column; last_visit_date stays for backward compat
+    // and is mirrored from submission_date in di-proposals.ts).
     last_visit_date: dateField.nullable().optional(),
+    submission_date: dateField.nullable().optional(),
   })
   .strict();
 
 const creatableFieldsSchema = z
   .object({
-    // Required-on-create per Mahmud's V1 decision.
+    // Required-on-create per Mahmud's V1 decision (Session 48a added
+    // parent_loss + guardian_phone to the required set).
     display_name: z.string().min(1).max(200),
     date_of_birth: dateField,
     bd_division: z.string().min(1).max(50),
@@ -203,12 +223,22 @@ const creatableFieldsSchema = z
     story: z.string().min(50).max(2000),
     guardian_summary_internal: z.string().min(1).max(2000),
     guardian_relationship: z.enum(GUARDIAN_RELATIONSHIPS),
+    parent_loss: z.enum(PARENT_LOSS),
+    guardian_phone: z.string().min(7).max(32),
     // Optional-on-create.
     gender: z.enum(GENDERS).optional(),
     photo_consent: z.boolean().optional(),
-    education_level: z.string().max(100).nullable().optional(),
+    permanent_address: z.string().max(500).optional(),
+    education_level: z.enum(EDUCATION_LEVELS).nullable().optional(),
     class_grade: z.string().max(100).optional(),
-    areas_of_interest: z.string().max(500).optional(),
+    educational_organization: z.string().uuid().nullable().optional(),
+    school_name_raw: z.string().max(200).optional(),
+    areas_of_interest: z
+      .array(z.enum(AREAS_OF_INTEREST))
+      .max(20)
+      .optional(),
+    priority_support: z.enum(PRIORITY_SUPPORT).optional(),
+    priority_notes: z.string().max(500).optional(),
     blood_group: z.enum(BLOOD_GROUPS).optional(),
     vaccination_status: z.enum(VACCINATION_STATUSES).optional(),
     last_medical_checkup: dateField.nullable().optional(),
@@ -226,9 +256,12 @@ const creatableFieldsSchema = z
       .max(10_000_000)
       .nullable()
       .optional(),
+    guardian_employment_type: z.enum(GUARDIAN_EMPLOYMENT_TYPES).optional(),
     guardian_employment: z.string().max(200).optional(),
+    guardian_phone_alt: z.string().max(32).optional(),
     additional_family_notes: z.string().max(1000).optional(),
     last_visit_date: dateField.nullable().optional(),
+    submission_date: dateField.nullable().optional(),
   })
   .strict();
 

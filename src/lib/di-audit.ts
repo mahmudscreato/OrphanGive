@@ -125,6 +125,50 @@ async function safeInsertAuditRow(
   }
 }
 
+// ─── Session 48a — Tier 3 redaction ─────────────────────────────────
+//
+// Field names whose values must NEVER appear verbatim in audit_log.diff
+// or audit_log.metadata. The actor and the fact that the field changed
+// stay visible (so investigations can confirm "phone was edited at
+// time T by user X"); the value itself is replaced with the literal
+// string "[REDACTED]".
+//
+// Centralized so future Tier 3 additions are a one-line add. Any
+// field name that contains an admin-only PII value (phone, address,
+// encrypted health detail) belongs here.
+
+export const AUDIT_REDACTED_FIELDS = new Set<string>([
+  "guardian_phone",
+  "guardian_phone_alt",
+]);
+
+/**
+ * Walk a diff/metadata payload and replace values for any field name
+ * in AUDIT_REDACTED_FIELDS with the string "[REDACTED]". Diff entries
+ * commonly look like `{ guardian_phone: { old: "+8801…", new: "+8801…" } }`
+ * or `{ guardian_phone: "+8801…" }` — both shapes get redacted.
+ *
+ * Returns a new object; never mutates the input.
+ */
+export function redactAuditPayload(
+  payload: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") return null;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (AUDIT_REDACTED_FIELDS.has(key)) {
+      // Whether the original was scalar or {old, new}, replace the
+      // entire value with the redaction marker. We deliberately don't
+      // preserve the {old, new} shape to avoid leaking even an
+      // approximate phone number.
+      out[key] = "[REDACTED]";
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 // ─── Public API: write ──────────────────────────────────────────────
 
 /**
@@ -136,6 +180,11 @@ async function safeInsertAuditRow(
  *   2. await recordAuditEvent({ ... })
  *   3. Optionally notify admin
  *   4. Return success to the client
+ *
+ * Session 48a: diff + metadata payloads are passed through
+ * redactAuditPayload before insert, so Tier 3 fields (currently
+ * guardian_phone / guardian_phone_alt) never appear verbatim in the
+ * audit row.
  */
 export async function recordAuditEvent(input: AuditInput): Promise<void> {
   const role: ActorRole = input.actorRole ?? "data_inputter";
@@ -150,10 +199,10 @@ export async function recordAuditEvent(input: AuditInput): Promise<void> {
       action: input.action,
       collection: input.collection ?? null,
       record_id: input.recordId ?? null,
-      diff: input.diff ?? null,
+      diff: redactAuditPayload(input.diff),
       ip,
       user_agent: ua,
-      metadata: input.metadata ?? null,
+      metadata: redactAuditPayload(input.metadata),
     },
     `recordAuditEvent(${input.action})`,
   );
