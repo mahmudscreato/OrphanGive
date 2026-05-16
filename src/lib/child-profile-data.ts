@@ -43,6 +43,41 @@ export async function getViewerTier(): Promise<{
 }
 
 // ─── Profile shape ───────────────────────────────────────────────────────────
+//
+// Session 50 — extended with the Tier 1/2 fields catalogued in the
+// Session 49 donor-surface audit. Tier 1 fields live at the top
+// level (always populated regardless of viewer auth state); Tier 2
+// fields live under `tier2` (populated only when tier !== 'public').
+//
+// Tier 3 fields (permanent_address, guardian_phone, guardian_phone_alt,
+// guardian_employment, guardian_employment_type, district_internal,
+// guardian_summary_internal, additional_family_notes, submission_date,
+// last_visit_date, last_medical_checkup, monthly_household_income_bdt,
+// priority_notes) are never present in this shape — they're not in
+// the SELECT list, so even for admin viewers of the donor profile
+// they're absent from the payload. Admins reach those via the DI /
+// admin data layers.
+
+export type ChildProfileTier2 = {
+  educational_organization: {
+    id: string;
+    name: string;
+    type: string | null;
+  } | null;
+  school_name_raw: string | null;
+  parent_loss: string | null;
+  siblings_count: number | null;
+  sibling_position: number | null;
+  siblings_notes: string | null;
+  household_size: number | null;
+  household_income_source: string | null;
+  disability_status: string | null;
+  disability_notes: string | null;
+  blood_group: string | null;
+  vaccination_status: string | null;
+  guardian_relationship: string | null;
+};
+
 export type ChildProfile = {
   id: string;
   display_name: string;
@@ -58,6 +93,12 @@ export type ChildProfile = {
   education_level: string | null;
   class_grade: string | null;
   areas_of_interest: string[];
+  // Session 50 — Tier 1 addition. Donor-side may render an "Urgent"
+  // hero badge when value === 'urgent' (Session 51 design call).
+  priority_support: string | null;
+  // Tier 2 — populated only for authenticated viewers (donor or
+  // admin). Public viewers see this as null.
+  tier2: ChildProfileTier2 | null;
   // Only populated for admin tier (and eventually tier-3 sponsors with
   // approved reveals — see TODO at revealStatusFor).
   encrypted: {
@@ -81,10 +122,37 @@ const PUBLIC_FIELDS = [
   "education_level",
   "class_grade",
   "areas_of_interest",
+  // Session 50 — priority_support is Tier 1 per the audit doc.
+  "priority_support",
   "bd_division.code",
   "bd_division.name",
   "bd_district.code",
   "bd_district.name",
+] as const;
+
+// Session 50 — Tier 2 SELECT list. Added to the fetch ONLY when
+// the viewer is authenticated (donor or admin tier). Public viewers
+// never receive these fields in the response payload.
+//
+// `educational_organization` is a M2O relation to the `school` table;
+// expanding `.id`, `.name`, `.type` matches the bd_division /
+// bd_district expansion pattern already used for location fields.
+const TIER2_FIELDS = [
+  "educational_organization.id",
+  "educational_organization.name",
+  "educational_organization.type",
+  "school_name_raw",
+  "parent_loss",
+  "siblings_count",
+  "sibling_position",
+  "siblings_notes",
+  "household_size",
+  "household_income_source",
+  "disability_status",
+  "disability_notes",
+  "blood_group",
+  "vaccination_status",
+  "guardian_relationship",
 ] as const;
 
 const ENCRYPTED_FIELDS = [
@@ -106,8 +174,30 @@ type DirectusChildRow = {
   education_level?: string | null;
   class_grade?: string | null;
   areas_of_interest?: string[] | string | null;
+  // Session 50 — Tier 1 addition.
+  priority_support?: string | null;
   bd_division?: { code?: string | null; name?: string | null } | null;
   bd_district?: { code?: string | null; name?: string | null } | null;
+  // Session 50 — Tier 2 fields. Present only when the SELECT included
+  // them (i.e., authenticated viewer); undefined for public viewers.
+  educational_organization?: {
+    id?: string | null;
+    name?: string | null;
+    type?: string | null;
+  } | null;
+  school_name_raw?: string | null;
+  parent_loss?: string | null;
+  siblings_count?: number | null;
+  sibling_position?: number | null;
+  siblings_notes?: string | null;
+  household_size?: number | null;
+  household_income_source?: string | null;
+  disability_status?: string | null;
+  disability_notes?: string | null;
+  blood_group?: string | null;
+  vaccination_status?: string | null;
+  guardian_relationship?: string | null;
+  // Encrypted (admin-only).
   exact_birthdate_encrypted?: string | null;
   full_address_encrypted?: string | null;
   school_name_encrypted?: string | null;
@@ -180,10 +270,20 @@ export async function getChildById(
 ): Promise<ChildProfile | null> {
   if (!UUID_RE.test(id)) return null;
 
-  const fields =
-    tier === "admin"
-      ? [...PUBLIC_FIELDS, ...ENCRYPTED_FIELDS]
-      : [...PUBLIC_FIELDS];
+  // Session 50 — compose the SELECT list per tier:
+  //   public  → Tier 1 only
+  //   donor   → Tier 1 + Tier 2 (the new sponsor-after-consent fields)
+  //   admin   → Tier 1 + Tier 2 + ENCRYPTED (admin user viewing the
+  //             donor profile; Tier 3 fields are still NEVER in this
+  //             SELECT — admins reach those via the DI / admin data
+  //             layers, never via the donor-facing query)
+  const fields: string[] = [...PUBLIC_FIELDS];
+  if (tier !== "public") {
+    fields.push(...TIER2_FIELDS);
+  }
+  if (tier === "admin") {
+    fields.push(...ENCRYPTED_FIELDS);
+  }
 
   let row: DirectusChildRow | null;
   try {
@@ -220,6 +320,36 @@ export async function getChildById(
         }
       : null;
 
+  // Session 50 — Tier 2 enrichment. Populated only for authenticated
+  // viewers; public viewers see `tier2: null`. Render gating happens
+  // downstream — even when populated, no donor-side component reads
+  // these fields yet (Session 51 will).
+  const tier2: ChildProfileTier2 | null =
+    tier !== "public"
+      ? {
+          educational_organization:
+            row.educational_organization && row.educational_organization.id
+              ? {
+                  id: String(row.educational_organization.id),
+                  name: row.educational_organization.name?.trim() ?? "",
+                  type: row.educational_organization.type ?? null,
+                }
+              : null,
+          school_name_raw: row.school_name_raw?.trim() ?? null,
+          parent_loss: row.parent_loss ?? null,
+          siblings_count: row.siblings_count ?? null,
+          sibling_position: row.sibling_position ?? null,
+          siblings_notes: row.siblings_notes?.trim() ?? null,
+          household_size: row.household_size ?? null,
+          household_income_source: row.household_income_source ?? null,
+          disability_status: row.disability_status ?? null,
+          disability_notes: row.disability_notes?.trim() ?? null,
+          blood_group: row.blood_group ?? null,
+          vaccination_status: row.vaccination_status ?? null,
+          guardian_relationship: row.guardian_relationship ?? null,
+        }
+      : null;
+
   return {
     id: row.id,
     display_name: (row.display_name ?? "").trim() || "A child awaiting sponsorship",
@@ -234,21 +364,51 @@ export async function getChildById(
     education_level: row.education_level ?? null,
     class_grade: row.class_grade ?? null,
     areas_of_interest: parseInterests(row.areas_of_interest),
+    priority_support: row.priority_support ?? null,
+    tier2,
     encrypted,
   };
 }
 
 // ─── Documents ───────────────────────────────────────────────────────────────
-export const REQUIRED_DOC_TYPES = [
-  { type: "BIRTH_CERTIFICATE", label: "Birth certificate" },
-  { type: "DEATH_CERTIFICATE_FATHER", label: "Father's death certificate" },
-  { type: "DEATH_CERTIFICATE_MOTHER", label: "Mother's death certificate" },
-  { type: "SCHOOL_RECOMMENDATION", label: "School recommendation" },
-] as const;
+//
+// Session 50 — REQUIRED_DOC_TYPES is now derived from the canonical
+// DOCUMENT_TYPES + DOCUMENT_TYPE_LABELS in form-constants. The data
+// layer reads BOTH the legacy (`type` + verified/pending_review/etc.)
+// and the new brief-spec (`document_type` + approved/pending/etc.)
+// columns, normalizes each row through document-normalize.ts, and
+// rolls up to one summary per required type.
+//
+// This is what fixes the Session 49 divergence: a DI uploading via
+// the new flow now correctly registers on this donor-facing surface
+// when admin marks status='approved'. Legacy `type='BIRTH_CERTIFICATE'`
+// rows with `status='verified'` continue to register too — the
+// normalizer maps both into the same canonical (type, status) shape.
 
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_LABELS,
+  type DocumentType,
+} from "./form-constants";
+import {
+  normalizeDocumentStatus,
+  normalizeDocumentType,
+} from "./document-normalize";
+
+export const REQUIRED_DOC_TYPES: ReadonlyArray<{
+  type: DocumentType;
+  label: string;
+}> = DOCUMENT_TYPES.map((type) => ({
+  type,
+  label: DOCUMENT_TYPE_LABELS[type],
+}));
+
+// `verified` here means "admin signed off" — i.e. status='approved'
+// in the new vocabulary or 'verified' in the legacy. The donor-facing
+// pill copy uses "verified" so we keep the field name for UX clarity.
 export type DocStatus = "verified" | "pending" | "missing";
 export type ChildDocSummary = {
-  type: string;
+  type: DocumentType;
   label: string;
   status: DocStatus;
 };
@@ -258,15 +418,24 @@ export async function getChildDocumentsStatus(
 ): Promise<ChildDocSummary[]> {
   if (!UUID_RE.test(childId))
     return REQUIRED_DOC_TYPES.map((d) => ({ ...d, status: "missing" as const }));
-  let rows: Array<{ type?: string; status?: string }> = [];
+
+  // Read BOTH column shapes. After Session 49 the same row may have
+  // either or both populated; the normalizers handle the rest.
+  let rows: Array<{
+    type?: string | null;
+    document_type?: string | null;
+    status?: string | null;
+  }> = [];
   try {
     const items = (await directusServer().request(
       readItems("child_document" as never, {
         filter: { child: { _eq: childId } },
-        fields: ["type", "status"],
+        fields: ["type", "document_type", "status"],
         limit: -1,
       } as never),
-    )) as unknown as Array<{ type?: string; status?: string }> | undefined;
+    )) as unknown as
+      | Array<{ type?: string | null; document_type?: string | null; status?: string | null }>
+      | undefined;
     rows = Array.isArray(items) ? items : [];
   } catch (err) {
     console.warn(
@@ -274,14 +443,23 @@ export async function getChildDocumentsStatus(
       err instanceof Error ? err.message : err,
     );
   }
-  // For each required doc type, prefer verified > pending > missing.
+
+  // Normalize once.
+  const normalized = rows.map((r) => ({
+    type: normalizeDocumentType(r),
+    status: normalizeDocumentStatus(r),
+  }));
+
+  // For each canonical required type: approved > pending > missing.
+  // Rows whose normalized type is null (legacy `OTHER`) are dropped
+  // here — they don't belong to any of the four required slots.
   return REQUIRED_DOC_TYPES.map(({ type, label }) => {
-    const matching = rows.filter((r) => r.type === type);
-    const verified = matching.some((r) => r.status === "verified");
-    const pending = matching.some((r) => r.status === "pending");
-    const status: DocStatus = verified
+    const matching = normalized.filter((r) => r.type === type);
+    const isVerified = matching.some((r) => r.status === "approved");
+    const isPending = matching.some((r) => r.status === "pending");
+    const status: DocStatus = isVerified
       ? "verified"
-      : pending
+      : isPending
         ? "pending"
         : "missing";
     return { type, label, status };

@@ -442,3 +442,144 @@ export const DOCUMENT_STATUSES = [
 ] as const;
 
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
+
+// ─── Label-lookup helpers (Session 50) ──────────────────────────────
+//
+// Single source of truth for "enum value → human label" across the
+// codebase. Donor-side components (EducationSection, ProfileHero,
+// future Tier 1/2 sections) and DI-side dropdowns now share these
+// helpers instead of maintaining duplicate label maps.
+//
+// Defensive shape: every helper accepts `null | undefined` and
+// returns `""` for falsy input. For an unknown enum value (data
+// drift; e.g. an admin-edited row with a value that's no longer in
+// our list) the helper returns the raw value verbatim — better than
+// blanking out a real piece of data, even if the styling looks
+// slug-y for that one row.
+
+function lookup<T extends string>(
+  table: Record<T, string>,
+  value: T | string | null | undefined,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+  const v = value as T;
+  return table[v] ?? String(value);
+}
+
+// Build a value→label map from an OPTIONS array. Cheap; computed
+// once at module load. Used internally by the label functions.
+function tableFromOptions<T extends string>(
+  options: ReadonlyArray<{ value: T; label: string }>,
+): Record<T, string> {
+  const out = {} as Record<T, string>;
+  for (const o of options) out[o.value] = o.label;
+  return out;
+}
+
+const EDUCATION_LEVEL_LABELS = tableFromOptions(EDUCATION_LEVEL_OPTIONS);
+const AREA_OF_INTEREST_LABELS = tableFromOptions(AREA_OF_INTEREST_OPTIONS);
+const PRIORITY_SUPPORT_LABELS = tableFromOptions(PRIORITY_SUPPORT_OPTIONS);
+const PARENT_LOSS_LABELS = tableFromOptions(PARENT_LOSS_OPTIONS);
+const GUARDIAN_EMPLOYMENT_TYPE_LABELS = tableFromOptions(
+  GUARDIAN_EMPLOYMENT_TYPE_OPTIONS,
+);
+const GUARDIAN_RELATIONSHIP_LABELS = tableFromOptions(
+  GUARDIAN_RELATIONSHIP_OPTIONS,
+);
+const SUPPORT_TYPE_LABELS = tableFromOptions(SUPPORT_TYPE_OPTIONS);
+const GENDER_LABELS = tableFromOptions(GENDER_OPTIONS);
+const BLOOD_GROUP_LABELS = tableFromOptions(BLOOD_GROUP_OPTIONS);
+const VACCINATION_STATUS_LABELS = tableFromOptions(VACCINATION_STATUS_OPTIONS);
+const DISABILITY_STATUS_LABELS = tableFromOptions(DISABILITY_STATUS_OPTIONS);
+const HOUSEHOLD_INCOME_SOURCE_LABELS = tableFromOptions(
+  HOUSEHOLD_INCOME_SOURCE_OPTIONS,
+);
+
+export function getEducationLevelLabel(
+  value: EducationLevel | string | null | undefined,
+): string {
+  return lookup(EDUCATION_LEVEL_LABELS, value);
+}
+
+export function getAreaOfInterestLabel(
+  value: AreaOfInterest | string | null | undefined,
+): string {
+  return lookup(AREA_OF_INTEREST_LABELS, value);
+}
+
+/** Map an array of area-of-interest slugs to display labels. Empty
+ * input returns []; preserves order. */
+export function getAreasOfInterestLabels(
+  values: ReadonlyArray<AreaOfInterest | string> | null | undefined,
+): string[] {
+  if (!values || values.length === 0) return [];
+  return values.map((v) => getAreaOfInterestLabel(v));
+}
+
+export function getPrioritySupportLabel(
+  value: PrioritySupport | string | null | undefined,
+): string {
+  return lookup(PRIORITY_SUPPORT_LABELS, value);
+}
+
+export function getParentLossLabel(
+  value: ParentLoss | string | null | undefined,
+): string {
+  return lookup(PARENT_LOSS_LABELS, value);
+}
+
+export function getGuardianEmploymentTypeLabel(
+  value: GuardianEmploymentType | string | null | undefined,
+): string {
+  return lookup(GUARDIAN_EMPLOYMENT_TYPE_LABELS, value);
+}
+
+export function getGuardianRelationshipLabel(
+  value: GuardianRelationship | string | null | undefined,
+): string {
+  return lookup(GUARDIAN_RELATIONSHIP_LABELS, value);
+}
+
+export function getSupportTypeLabel(
+  value: SupportType | string | null | undefined,
+): string {
+  return lookup(SUPPORT_TYPE_LABELS, value);
+}
+
+export function getGenderLabel(
+  value: Gender | string | null | undefined,
+): string {
+  return lookup(GENDER_LABELS, value);
+}
+
+export function getBloodGroupLabel(
+  value: BloodGroup | string | null | undefined,
+): string {
+  return lookup(BLOOD_GROUP_LABELS, value);
+}
+
+export function getVaccinationStatusLabel(
+  value: VaccinationStatus | string | null | undefined,
+): string {
+  return lookup(VACCINATION_STATUS_LABELS, value);
+}
+
+export function getDisabilityStatusLabel(
+  value: DisabilityStatus | string | null | undefined,
+): string {
+  return lookup(DISABILITY_STATUS_LABELS, value);
+}
+
+export function getHouseholdIncomeSourceLabel(
+  value: HouseholdIncomeSource | string | null | undefined,
+): string {
+  return lookup(HOUSEHOLD_INCOME_SOURCE_LABELS, value);
+}
+
+// Documents already export DOCUMENT_TYPE_LABELS as a plain object;
+// add a value-defensive helper for symmetry with the other enums.
+export function getDocumentTypeLabel(
+  value: DocumentType | string | null | undefined,
+): string {
+  return lookup(DOCUMENT_TYPE_LABELS, value);
+}
