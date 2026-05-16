@@ -51,6 +51,12 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // scope.
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
+  // Session 51 — admin_viewed_proposal is logged for traceability
+  // but never surfaces on DI feeds (the consumer of this map gates
+  // by collection + action prefix). Map it to a neutral icon for
+  // type safety; if a future surface ever decides to render it the
+  // icon is reasonable.
+  admin_viewed_proposal: HistoryIcon,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
