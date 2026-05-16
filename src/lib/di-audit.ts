@@ -91,10 +91,24 @@ export type AuditAction =
   | "admin_rejected_moment"
   // Session 52c — admin cleanup removes, distinct from approve /
   // reject. Admin hits these when a DI uploaded by mistake — no
-  // judgement recorded, just gone. Only pending items; approved /
-  // rejected rows are immutable from the queue UI.
+  // judgement recorded, just gone. Session 52d lifts the pending-
+  // only constraint; the *_removed_* variants are still for pending
+  // items, the *_removed_approved_* below are for already-approved
+  // items where admin had previously signed off but found a reason
+  // to retract (e.g., identifying info missed at first review).
   | "admin_removed_document"
-  | "admin_removed_intake_photo";
+  | "admin_removed_intake_photo"
+  // Session 52d — post-approval removes. The DI gets notified (a
+  // previously-OK'd upload going away is news worth knowing).
+  // Admin's reason is captured in the audit metadata + the DI
+  // notification body.
+  | "admin_removed_approved_document"
+  | "admin_removed_approved_intake_photo"
+  // Session 52d — admin direct uploads that bypass the DI review
+  // flow (admin uploads with status='approved' immediately). Same
+  // shape as a DI upload at the audit level, but with admin actor.
+  | "admin_uploaded_document"
+  | "admin_uploaded_intake_photo";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -313,6 +327,12 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_rejected_moment: () => `Admin rejected a moment`,
   admin_removed_document: () => `Admin removed a pending document`,
   admin_removed_intake_photo: () => `Admin removed a pending intake photo`,
+  admin_removed_approved_document: () =>
+    `Admin removed a previously-approved document`,
+  admin_removed_approved_intake_photo: () =>
+    `Admin removed a previously-approved intake photo`,
+  admin_uploaded_document: () => `Admin uploaded a document directly`,
+  admin_uploaded_intake_photo: () => `Admin uploaded an intake photo directly`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

@@ -7,6 +7,7 @@ import { requireAdminUser } from "@/lib/admin-auth";
 import { getIntakePhotosForChild } from "@/lib/admin-intake-photos";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { IntakePhotoBatchReview } from "@/components/admin/IntakePhotoBatchReview";
+import { AdminDocumentDirectUpload } from "@/components/admin/AdminDocumentDirectUpload";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 
@@ -42,10 +43,11 @@ export default async function AdminIntakePhotoBatchPage({
     fetchChildDisplayName(childId),
   ]);
 
-  // No photos at all → 404. (If admin manually navigates after the
-  // photos have been archived, this lands them in the not-found
-  // path rather than an empty mystery page.)
-  if (photos.length === 0) notFound();
+  // Session 52d — the page is now a per-child admin workspace
+  // (intake photos + direct document upload). If the child itself
+  // doesn't resolve, 404; otherwise the page renders even with no
+  // photos so admin can add the first batch directly.
+  if (!childDisplayName && photos.length === 0) notFound();
 
   await recordAuditEvent({
     actorUserId: session.userId,
@@ -79,9 +81,20 @@ export default async function AdminIntakePhotoBatchPage({
       </header>
 
       <IntakePhotoBatchReview
+        childId={childId}
         childDisplayName={label}
         photos={photos}
       />
+
+      {/* Session 52d — per-child admin document upload. Sits below
+          the intake-photo workspace so admin can fill in missing
+          documents while they're already in the child's record. */}
+      <div className="mt-8">
+        <AdminDocumentDirectUpload
+          childId={childId}
+          childDisplayName={label}
+        />
+      </div>
     </div>
   );
 }

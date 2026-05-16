@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChevronRight, Clock, FileText, ImageIcon } from "lucide-react";
 import {
+  countPendingDocuments,
   listAdminDocuments,
   type AdminDocumentSummary,
   type DocumentReviewFilter,
@@ -49,7 +50,15 @@ export default async function AdminDocumentsListPage({
 }) {
   const sp = await searchParams;
   const activeFilter = parseFilter(sp.filter);
-  const documents = await listAdminDocuments({ filter: activeFilter });
+  // Session 52d — fetch in parallel: the list rows for the chosen
+  // tab AND the canonical pending count shared with the home tile.
+  // Surfacing the count in the header makes any future divergence
+  // immediately visible: "Pending: 9 — but I only see 0 rows
+  // below" is now self-diagnosing.
+  const [documents, pendingCount] = await Promise.all([
+    listAdminDocuments({ filter: activeFilter }),
+    countPendingDocuments(),
+  ]);
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-4xl mx-auto">
@@ -67,6 +76,14 @@ export default async function AdminDocumentsListPage({
           Legal &amp; identity evidence uploaded by the DI team. Tier 3 —
           never shown to donors; the verification badge on the donor
           profile counts only what you approve here.
+          {pendingCount !== null ? (
+            <>
+              {" "}
+              <span className="text-ink font-medium">
+                {pendingCount} pending overall.
+              </span>
+            </>
+          ) : null}
         </p>
       </header>
 

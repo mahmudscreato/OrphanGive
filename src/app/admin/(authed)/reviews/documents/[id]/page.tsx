@@ -193,15 +193,18 @@ export default async function AdminDocumentDetailPage({
         disabledStatusLabel={doc.status}
       />
 
-      {/* Session 52c — Remove (cleanup, distinct from Reject). Only
-          appears when status='pending'; surfaces below the main
-          action bar so it doesn't compete visually with the primary
-          approve/reject decision. */}
+      {/* Session 52c → 52d — Remove cleanup. Pending: two-tap
+          confirm, silent. Approved: opens modal prompting for
+          required reason, DI notified. Archived rows are
+          terminal (admin uses Directus admin directly to undo);
+          rejected rows already have admin's reason in
+          rejection_reason, no further admin remove needed. */}
       <AdminRemoveButton
         endpoint={`/api/admin/documents/${doc.id}`}
         redirectTo="/admin/reviews/documents?filter=pending"
         entityNoun="document"
-        disabled={doc.status !== "pending"}
+        wasApproved={doc.status === "approved"}
+        disabled={doc.status === "archived" || doc.status === "rejected"}
       />
     </div>
   );

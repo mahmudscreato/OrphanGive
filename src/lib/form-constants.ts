@@ -398,11 +398,21 @@ export const HOUSEHOLD_INCOME_SOURCE_OPTIONS: ReadonlyArray<{
   { value: "unknown", label: "Unknown" },
 ];
 
-// ─── 13. Document types (Session 49) ────────────────────────────────
+// ─── 13. Document types (Session 49 + 52d) ──────────────────────────
 //
-// The four documents collected during a DI's initial visit to verify
-// a child profile. Tier 3 admin-only — never rendered on any donor
-// surface. Stored on `child_document.document_type`.
+// Tier 3 admin-only documents. Stored on
+// `child_document.document_type`. Status enum below tracks the
+// approve/reject lifecycle.
+//
+// Session 52d — split parent_death_certificate into
+// father_death_certificate + mother_death_certificate to match
+// real-world Bangladesh document collection (they're physically
+// distinct documents). The legacy `parent_death_certificate` value
+// stays in the enum as the "unknown / both" catch-all for the
+// `parent_loss='unknown'` form path AND for backward compatibility
+// with any pre-52d rows already in the database. Per-row visibility
+// in DocumentsSection is driven conditionally by the form's
+// current `parent_loss` value (see DOCUMENTS_FOR_PARENT_LOSS below).
 //
 // Status enum mirrors child_intake_photo + (Session 49 brief shape):
 // pending / approved / rejected / archived. Note this differs from
@@ -411,6 +421,12 @@ export const HOUSEHOLD_INCOME_SOURCE_OPTIONS: ReadonlyArray<{
 // for the full reconciliation story.
 
 export const DOCUMENT_TYPES = [
+  // Session 52d — split certs come first because they're the common
+  // case after parent_loss is set.
+  "father_death_certificate",
+  "mother_death_certificate",
+  // Legacy combined / unknown-parent catch-all. Used only when
+  // parent_loss === 'unknown'.
   "parent_death_certificate",
   "child_birth_certificate",
   "guardian_nid",
@@ -420,7 +436,9 @@ export const DOCUMENT_TYPES = [
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  parent_death_certificate: "Parent death certificate",
+  father_death_certificate: "Father's death certificate",
+  mother_death_certificate: "Mother's death certificate",
+  parent_death_certificate: "Death certificate (unknown parent)",
   child_birth_certificate: "Child birth certificate",
   guardian_nid: "Guardian National ID",
   school_recommendation: "School recommendation letter",
@@ -433,6 +451,47 @@ export const DOCUMENT_TYPE_OPTIONS: ReadonlyArray<{
   value,
   label: DOCUMENT_TYPE_LABELS[value],
 }));
+
+// Session 52d — which document types the DI form should show as
+// rows based on the current `parent_loss` value. The non-parent-
+// related types (`child_birth_certificate`, `guardian_nid`,
+// `school_recommendation`) appear in every case. Used by
+// DocumentsSection to conditionally render the correct slots and
+// by the form's "Submitting without N documents" soft warning to
+// adapt which types count as expected.
+export type ParentLossValue = "father" | "mother" | "both" | "unknown" | "";
+export function documentTypesForParentLoss(
+  parentLoss: string | null | undefined,
+): DocumentType[] {
+  // Three always-required types regardless of parent_loss.
+  const always: DocumentType[] = [
+    "child_birth_certificate",
+    "guardian_nid",
+    "school_recommendation",
+  ];
+  // Death-cert slot(s) vary.
+  let deathCerts: DocumentType[];
+  switch (parentLoss) {
+    case "father":
+      deathCerts = ["father_death_certificate"];
+      break;
+    case "mother":
+      deathCerts = ["mother_death_certificate"];
+      break;
+    case "both":
+      deathCerts = ["father_death_certificate", "mother_death_certificate"];
+      break;
+    case "unknown":
+      deathCerts = ["parent_death_certificate"];
+      break;
+    default:
+      // Before parent_loss is set, show no death-cert slot (form
+      // forces parent_loss to be set before submit anyway). The DI
+      // can still upload the other three types in the meantime.
+      deathCerts = [];
+  }
+  return [...deathCerts, ...always];
+}
 
 export const DOCUMENT_STATUSES = [
   "pending",

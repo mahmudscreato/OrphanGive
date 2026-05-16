@@ -54,6 +54,14 @@ export type NotificationType =
   | "admin_rejected_intake_photo"
   | "admin_approved_moment"
   | "admin_rejected_moment"
+  // Session 52d — admin removed something the DI had previously
+  // gotten approved. DI deserves a notification (it's news worth
+  // knowing — a delivered piece of work has been retracted). The
+  // notification body includes admin's reason verbatim. Separate
+  // from `admin_rejected_*` because rejection is a first-time
+  // decision; this is a reversal.
+  | "admin_removed_approved_document"
+  | "admin_removed_approved_intake_photo"
   // TODO Session 47.5+: wire `admin_assigned_child` notification when
   // the admin UI for assigning a child to a DI is built (currently
   // admins set child.assigned_di by hand in Directus admin — no
@@ -119,6 +127,8 @@ const VALID_TYPES = new Set<string>([
   "admin_rejected_intake_photo",
   "admin_approved_moment",
   "admin_rejected_moment",
+  "admin_removed_approved_document",
+  "admin_removed_approved_intake_photo",
   "admin_assigned_child",
   "admin_assigned_task",
   "admin_verified_delivery",

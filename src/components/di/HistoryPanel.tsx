@@ -73,6 +73,13 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // "gone" (vs the X-circle for "rejected with feedback").
   admin_removed_document: Trash2,
   admin_removed_intake_photo: Trash2,
+  // Session 52d — post-approval removes (same icon; the semantic
+  // distinction lives in the audit description + DI notification).
+  admin_removed_approved_document: Trash2,
+  admin_removed_approved_intake_photo: Trash2,
+  // Session 52d — admin direct uploads (admin filling in for DI).
+  admin_uploaded_document: FileText,
+  admin_uploaded_intake_photo: ImagePlus,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
