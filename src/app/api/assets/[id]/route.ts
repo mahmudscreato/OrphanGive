@@ -1,6 +1,21 @@
 import type { NextRequest } from "next/server";
 
-const TRANSFORM_PARAMS = ["width", "height", "quality", "format", "fit"] as const;
+// Session 52c — added `key` so registered Directus storage presets
+// (`directus_settings.storage_asset_presets`) can be invoked through
+// the proxy. The donor intake-photo gallery uses
+// `?key=intake-locked` to fetch a server-blurred + downscaled
+// variant for non-sponsor views (replaces Session 52b's CSS-only
+// blur which leaked the original image via right-click → Save As).
+// Without this allow-list entry the param would be stripped and
+// the upstream would serve the raw full-resolution image.
+const TRANSFORM_PARAMS = [
+  "width",
+  "height",
+  "quality",
+  "format",
+  "fit",
+  "key",
+] as const;
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export async function GET(

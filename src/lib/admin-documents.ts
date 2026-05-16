@@ -10,6 +10,7 @@ import "server-only";
 
 import {
   createItem,
+  deleteItem,
   readItem,
   readItems,
   readUsers,
@@ -138,6 +139,24 @@ async function resolveFileMime(
   return out;
 }
 
+// Session 52c — Single source of truth for status filter values.
+// admin-home-stats imports these so the home tile counter and the
+// queue list page agree on which legacy values map to which tab.
+// Without the alignment, "tile says 1 pending, queue shows empty"
+// mismatches surfaced.
+export const DOCUMENT_PENDING_STATUS_VALUES: ReadonlyArray<string> = [
+  "pending",
+  "pending_review",
+  "replacement_requested",
+];
+export const DOCUMENT_APPROVED_STATUS_VALUES: ReadonlyArray<string> = [
+  "approved",
+  "verified",
+];
+export const DOCUMENT_REJECTED_STATUS_VALUES: ReadonlyArray<string> = [
+  "rejected",
+];
+
 function classifyMime(meta: FileMeta | undefined): "image" | "pdf" | "other" {
   const t = meta?.type?.toLowerCase() ?? "";
   if (t.startsWith("image/")) return "image";
@@ -261,16 +280,16 @@ export async function listAdminDocuments(opts?: {
   const filter = opts?.filter ?? "pending";
 
   // Translate normalized filter to a Directus _in clause matching
-  // both vocabularies. `pending` includes legacy 'pending_review' +
-  // 'replacement_requested'; `approved` matches legacy 'verified';
-  // `rejected` matches both; we don't surface 'archived'/'waived' in
-  // the admin queue (those are terminal states admin already moved
-  // past).
+  // both vocabularies (Session 50 dual-enum). The status-value
+  // arrays are EXPORTED below so admin-home-stats can use the same
+  // lists for its counter — Session 52c brief Bug 3 specifically
+  // called out that a divergence here surfaces as "tile says N
+  // pending, queue shows empty" (or vice versa).
   const STATUS_IN: Record<DocumentReviewFilter, string[] | null> = {
     all: null,
-    pending: ["pending", "pending_review", "replacement_requested"],
-    approved: ["approved", "verified"],
-    rejected: ["rejected"],
+    pending: [...DOCUMENT_PENDING_STATUS_VALUES],
+    approved: [...DOCUMENT_APPROVED_STATUS_VALUES],
+    rejected: [...DOCUMENT_REJECTED_STATUS_VALUES],
   };
   const statusValues = STATUS_IN[filter];
 
@@ -466,6 +485,71 @@ export async function rejectDocument(
     childId: doc.child ?? null,
     uploaderId: doc.uploaded_by ?? null,
     reason: trimmed,
+  };
+}
+
+/**
+ * Session 52c — admin cleanup remove for documents.
+ *
+ * Distinct from rejectDocument:
+ *   - reject: records a decision with a DI-facing reason; row stays
+ *     with status='rejected' so DI can see why + resubmit.
+ *   - remove: hard delete; admin uses this when a DI uploaded
+ *     something by mistake and no decision needs to be communicated
+ *     (the DI also typically agrees the upload was wrong).
+ *
+ * Gated to `pending` status to prevent admins from accidentally
+ * deleting an approved row that's already part of the verification
+ * record — those are immutable via this UI (admin can still hard-
+ * delete via Directus admin if truly needed).
+ *
+ * The underlying directus_files row is NOT deleted; the FK is ON
+ * DELETE RESTRICT to prevent stranding files. Admin's general
+ * orphan-file cleanup handles that separately.
+ */
+export async function removeDocument(
+  documentId: string,
+  adminUserId: string,
+): Promise<{ documentId: string; childId: string | null; uploaderId: string | null }> {
+  const doc = await readDocOrThrow(documentId);
+  const normalizedStatus = normalizeDocumentStatus(doc);
+  if (normalizedStatus !== "pending") {
+    throw new InvalidStatusError(
+      `Can only remove pending documents (current: ${normalizedStatus}).`,
+    );
+  }
+
+  await directusServer().request(
+    deleteItem("child_document" as never, documentId as never),
+  );
+
+  // Best-effort audit. Failure swallowed.
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: "admin_removed_document",
+        collection: "child_document",
+        record_id: documentId,
+        metadata: {
+          ...(doc.child ? { childId: doc.child } : {}),
+          documentType: normalizeDocumentType(doc),
+        },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-documents] remove audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return {
+    documentId,
+    childId: doc.child ?? null,
+    uploaderId: doc.uploaded_by ?? null,
   };
 }
 

@@ -21,11 +21,14 @@
 //   date_created      timestamptz DEFAULT now()
 //
 // Privacy:
-//   - Every read scope-checks the childId via getDiChildById.
-//   - Every write scope-checks AND uses the DI session token so
-//     uploaded_by auto-fills correctly (matches the child_moment
-//     pattern — admin token would stamp admin's UUID and break later
-//     "own rows" filters).
+//   - Every read AND write scope-checks the childId via
+//     canDiAttachToChild (Session 52c — ownership-only check that
+//     includes own stubs with status='awaiting_intake' so the
+//     draft-mode unlock from Session 52a actually works).
+//   - Every write uses the DI session token so uploaded_by auto-
+//     fills correctly (matches the child_moment pattern — admin
+//     token would stamp admin's UUID and break later "own rows"
+//     filters).
 //   - Out-of-scope reads return [] (caller renders empty state);
 //     writes throw OutOfScopeError → 404 at the route layer.
 //
@@ -48,7 +51,7 @@ import {
   withToken,
 } from "@directus/sdk";
 import { directusServer } from "./directus";
-import { getDiChildById } from "./di-children";
+import { canDiAttachToChild } from "./di-children";
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -168,8 +171,9 @@ export async function listIntakePhotosForChild(
   userId: string,
   childId: string,
 ): Promise<IntakePhotoSummary[]> {
-  const child = await getDiChildById(childId, userId);
-  if (!child) return [];
+  // Session 52c — ownership-only check (includes own stubs).
+  const ok = await canDiAttachToChild(childId, userId);
+  if (!ok) return [];
 
   let rows: IntakePhotoRow[] = [];
   try {
@@ -245,9 +249,9 @@ export async function createIntakePhoto(
     throw new InvalidInputError("caption", "max 200 characters");
   }
 
-  // Scope guard.
-  const child = await getDiChildById(input.childId, session.userId);
-  if (!child) throw new OutOfScopeError();
+  // Session 52c — ownership-only scope guard (includes own stubs).
+  const ok = await canDiAttachToChild(input.childId, session.userId);
+  if (!ok) throw new OutOfScopeError();
 
   const created = (await directusServer().request(
     withToken(

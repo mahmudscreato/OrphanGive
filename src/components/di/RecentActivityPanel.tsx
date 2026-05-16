@@ -59,6 +59,9 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_viewed_moment: Home,
   admin_approved_moment: CheckCircle2,
   admin_rejected_moment: XCircle,
+  // Session 52c — admin cleanup removes (distinct from rejection).
+  admin_removed_document: Trash2,
+  admin_removed_intake_photo: Trash2,
 };
 
 function relativeTime(iso: string | null): string {

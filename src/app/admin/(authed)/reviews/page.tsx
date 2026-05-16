@@ -8,6 +8,7 @@ import Link from "next/link";
 import { ChevronRight, Camera, FileText, ImagePlus } from "lucide-react";
 import { directusServer } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
+import { DOCUMENT_PENDING_STATUS_VALUES } from "@/lib/admin-documents";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +36,11 @@ async function safeCount(
 
 export default async function AdminReviewsIndexPage() {
   const [pendingDocs, pendingIntake, pendingMoments] = await Promise.all([
-    // Documents — both vocab variants count as pending (Session 50
-    // dual-enum reconciliation).
+    // Documents — Session 52c imports the shared pending values
+    // from admin-documents so this counter, the home tile counter
+    // (admin-home-stats), and the queue list filter all agree.
     safeCount("child_document", {
-      status: { _in: ["pending", "pending_review", "replacement_requested"] },
+      status: { _in: [...DOCUMENT_PENDING_STATUS_VALUES] },
     }),
     safeCount("child_intake_photo", { status: { _eq: "pending" } }),
     safeCount("child_moment", { status: { _eq: "pending" } }),

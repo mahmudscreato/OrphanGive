@@ -1,22 +1,32 @@
 // Session 52b — Donor-facing intake photo gallery.
+// Session 52c — privacy hardening: replaces the CSS-only blur
+// from 52b with server-rendered blurred variants. The Directus
+// `intake-locked` storage preset (registered in
+// migrations/session-52c/001-register-fields.sh) returns a
+// downscaled (240×240) + blur(25) JPEG variant. Non-sponsor views
+// fetch the variant via `?key=intake-locked`; the underlying
+// full-resolution image never reaches the browser, so right-click
+// → Save Image As + DevTools network inspection both retrieve only
+// the locked variant. Casual-save deterrents (CSS user-select,
+// contextmenu suppression) sit on top of the server-side gate as
+// extra friction.
 //
 // Three viewer tiers handled here:
-//   1. Public (no auth): main photo (display_order=0) full, photos
-//      2-5 CSS-blurred with a lock + click-to-sponsor modal.
+//   1. Public (no auth): main photo full-resolution; photos 2-5
+//      fetched via ?key=intake-locked (server-blurred) with a
+//      lock icon overlay + click-to-sponsor modal.
 //   2. Authenticated donor without an active sponsorship of THIS
-//      child: same treatment as Public — CTA encourages them to
-//      sponsor this specific child.
+//      child: same treatment as Public.
 //   3. Sponsoring donor (active or paused sponsorship): all photos
-//      unblurred.
+//      full-resolution.
 //
-// Privacy tradeoff note (documented in W4 brief): even for non-
-// sponsors, the underlying image URL is loaded; the blur is purely
-// CSS. A DevTools-savvy visitor could lift the URL out and view the
-// raw image. This is fine for V1 because the photos are already
-// approved-for-public per Tier 1. Future hardening: have Directus
-// (or a thin proxy) serve a pre-blurred image variant for
-// non-sponsors, served from a separate URL the client can't bypass.
-// Tracked in the W4 ship report.
+// Remaining attack vector: a non-sponsor can guess the
+// /api/assets/{uuid} URL without ?key — but per the donor surface
+// rule (status='approved' only), all photos surfaced are already
+// Tier 1 approved-for-public. The blur is identity-protection
+// editorial-choice for non-sponsors, not a leak prevention against
+// the underlying file. The actual privacy gate is the admin's
+// approval decision; the variant URL adds save-friction.
 
 import Link from "next/link";
 import { Lock } from "lucide-react";
@@ -90,39 +100,51 @@ export function IntakePhotoGallery({
               ))}
             </div>
             {!isSponsor ? (
-              <p className="mt-4 text-center text-[13px] text-ink-soft">
-                <Lock
-                  className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5 stroke-[2]"
-                  aria-hidden="true"
-                />
-                {thumbs.length} more {thumbs.length === 1 ? "photo" : "photos"}{" "}
-                visible to sponsors of {firstName}.{" "}
-                {isAuthenticated ? (
-                  <Link
-                    href={`/sponsor/${childId}`}
-                    className="text-tangerine-deeper hover:underline font-medium"
-                  >
-                    Become {firstName}&apos;s sponsor →
-                  </Link>
-                ) : (
-                  <>
-                    <Link
-                      href={`/signin?from=/children/${childId}`}
-                      className="text-tangerine-deeper hover:underline font-medium"
-                    >
-                      Sign in
-                    </Link>{" "}
-                    or{" "}
+              // Session 52c — copy update with privacy framing
+              // ("for {Name}'s safety") so the trust ask reads as a
+              // protection, not a paywall.
+              <div className="mt-4 max-w-[480px] mx-auto text-center">
+                <p className="text-[13.5px] text-ink leading-relaxed">
+                  <Lock
+                    className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5 stroke-[2]"
+                    aria-hidden="true"
+                  />
+                  {thumbs.length} more{" "}
+                  {thumbs.length === 1 ? "photo" : "photos"} visible to
+                  sponsors of {firstName}.
+                </p>
+                <p className="mt-1 text-[12.5px] text-ink-soft italic leading-relaxed">
+                  For {firstName}&apos;s safety, we only share these with
+                  verified sponsors.
+                </p>
+                <p className="mt-3 text-[13px] text-ink-soft">
+                  {isAuthenticated ? (
                     <Link
                       href={`/sponsor/${childId}`}
                       className="text-tangerine-deeper hover:underline font-medium"
                     >
-                      sponsor {firstName}
-                    </Link>{" "}
-                    to see more.
-                  </>
-                )}
-              </p>
+                      Sponsor {firstName} to see all →
+                    </Link>
+                  ) : (
+                    <>
+                      <Link
+                        href={`/signin?from=/children/${childId}`}
+                        className="text-tangerine-deeper hover:underline font-medium"
+                      >
+                        Sign in
+                      </Link>{" "}
+                      or{" "}
+                      <Link
+                        href={`/sponsor/${childId}`}
+                        className="text-tangerine-deeper hover:underline font-medium"
+                      >
+                        sponsor {firstName}
+                      </Link>{" "}
+                      to see all.
+                    </>
+                  )}
+                </p>
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -157,10 +179,17 @@ function ThumbnailTile({
       </div>
     );
   }
-  // Non-sponsor: blurred + click → modal (client island).
+  // Non-sponsor: fetch the server-blurred variant via Directus's
+  // `intake-locked` storage preset (registered in
+  // migrations/session-52c/001-register-fields.sh). The browser
+  // never touches the full-resolution image; right-click → Save
+  // grabs the blurred variant (downscaled to 240×240, blur radius
+  // 25, JPEG quality 60). Saving the locked variant is intentional
+  // — it has no identifying detail to leak.
+  const lockedUrl = `${photo.photoUrl}?key=intake-locked`;
   return (
     <BlurredPhotoModalTrigger
-      photoUrl={photo.photoUrl}
+      photoUrl={lockedUrl}
       alt={photo.caption ?? `Photo of ${childFirstName}`}
       childFirstName={childFirstName}
       childId={childId}

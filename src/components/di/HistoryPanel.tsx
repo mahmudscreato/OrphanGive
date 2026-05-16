@@ -69,6 +69,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_viewed_moment: HistoryIcon,
   admin_approved_moment: CheckCircle2,
   admin_rejected_moment: XCircle,
+  // Session 52c — admin removes use the trash icon to signal
+  // "gone" (vs the X-circle for "rejected with feedback").
+  admin_removed_document: Trash2,
+  admin_removed_intake_photo: Trash2,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back

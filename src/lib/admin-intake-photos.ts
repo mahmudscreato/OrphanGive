@@ -12,7 +12,13 @@
 
 import "server-only";
 
-import { createItem, readItems, readUsers, updateItem } from "@directus/sdk";
+import {
+  createItem,
+  deleteItem,
+  readItems,
+  readUsers,
+  updateItem,
+} from "@directus/sdk";
 import { directusServer } from "./directus";
 
 export type IntakePhotoStatus =
@@ -402,5 +408,60 @@ export async function rejectIntakePhoto(
     childId: row.child ?? null,
     uploaderId: row.uploaded_by ?? null,
     reason: trimmed,
+  };
+}
+
+/**
+ * Session 52c — admin cleanup remove for intake photos.
+ *
+ * Distinct from rejectIntakePhoto:
+ *   - reject: decision recorded, DI sees reason in notification.
+ *   - remove: hard delete; admin uses this for accidental DI
+ *     uploads (DI typically agrees the upload was wrong, no
+ *     feedback to communicate).
+ *
+ * Gated to `pending` status only — already-decided photos are
+ * immutable via this UI. The directus_files row is NOT deleted
+ * (FK ON DELETE RESTRICT prevents stranding); orphan-file sweep
+ * handles cleanup separately.
+ */
+export async function removeIntakePhoto(
+  photoId: string,
+  adminUserId: string,
+): Promise<{ photoId: string; childId: string | null; uploaderId: string | null }> {
+  const row = await readPhotoRow(photoId);
+  if (row.status !== "pending") {
+    throw new InvalidStatusError(
+      `Can only remove pending intake photos (current: ${row.status}).`,
+    );
+  }
+
+  await directusServer().request(
+    deleteItem("child_intake_photo" as never, photoId as never),
+  );
+
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: "admin_removed_intake_photo",
+        collection: "child_intake_photo",
+        record_id: photoId,
+        metadata: { ...(row.child ? { childId: row.child } : {}) },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-intake-photos] remove audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return {
+    photoId,
+    childId: row.child ?? null,
+    uploaderId: row.uploaded_by ?? null,
   };
 }

@@ -32,10 +32,15 @@
 // independently.
 //
 // Privacy / scope:
-//   - Every read scope-checks the childId via getDiChildById.
-//   - Every write scope-checks AND uses the DI's session token so
-//     uploaded_by auto-fills correctly via Directus's user-created
-//     special. (Same pattern as moments + intake photos.)
+//   - Every read AND write scope-checks the childId via
+//     canDiAttachToChild (Session 52c — ownership-only, includes
+//     own stub children with status='awaiting_intake' so the draft-
+//     mode unlock from Session 52a works end-to-end). Pre-52c this
+//     used getDiChildById which rejected stubs and silently broke
+//     the entire upload flow for new-child drafts.
+//   - Writes use the DI's session token so uploaded_by auto-fills
+//     correctly via Directus's user-created special. (Same pattern
+//     as moments + intake photos.)
 //   - Out-of-scope reads return [] (caller renders empty state);
 //     writes throw OutOfScopeError → 404 at the route layer.
 
@@ -50,7 +55,7 @@ import {
   withToken,
 } from "@directus/sdk";
 import { directusServer } from "./directus";
-import { getDiChildById } from "./di-children";
+import { canDiAttachToChild } from "./di-children";
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
@@ -182,8 +187,9 @@ export async function listDocumentsForChild(
   userId: string,
   childId: string,
 ): Promise<DocumentSummary[]> {
-  const child = await getDiChildById(childId, userId);
-  if (!child) return [];
+  // Session 52c — ownership-only check; permits own stubs.
+  const ok = await canDiAttachToChild(childId, userId);
+  if (!ok) return [];
 
   let rows: DocumentRow[] = [];
   try {
@@ -279,8 +285,9 @@ export async function createDocument(
     throw new InvalidInputError("notes", "max 1000 characters");
   }
 
-  const child = await getDiChildById(input.childId, session.userId);
-  if (!child) throw new OutOfScopeError();
+  // Session 52c — ownership-only check (includes own stubs).
+  const ok = await canDiAttachToChild(input.childId, session.userId);
+  if (!ok) throw new OutOfScopeError();
 
   const created = (await directusServer().request(
     withToken(
