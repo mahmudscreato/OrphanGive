@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Edit3,
   FileBarChart,
+  FileText,
   History as HistoryIcon,
   ImagePlus,
   ListChecks,
@@ -41,6 +42,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_uploaded_intake_photo: ImagePlus,
   di_edited_intake_photo: Edit3,
   di_deleted_intake_photo: Trash2,
+  // Session 49 — document lifecycle.
+  di_uploaded_document: FileText,
+  di_updated_document_notes: Edit3,
+  di_deleted_document: Trash2,
   // Session 47 — admin actions surface on the per-child History tab
   // when their audit metadata.childId matches a child in the DI's
   // scope.

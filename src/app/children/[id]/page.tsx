@@ -31,6 +31,41 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// ─── PRIVACY RULE — "show only what's reviewed" (Session 49) ────────
+//
+// Donor-facing rendering rule for any DI-collectable content that
+// goes through admin review: render ONLY rows whose status indicates
+// admin approval. Pending/rejected/archived rows are invisible to
+// donors. Missing approved content does NOT blank out other sections —
+// render whatever IS approved and let the rest absent itself silently.
+//
+// Current implementations of this rule (audited in
+// docs/session-49-donor-surface-audit.md):
+//
+//   ┌─────────────────────┬────────────────────────┬───────────────────┐
+//   │ Surface             │ Status filter           │ Where             │
+//   ├─────────────────────┼────────────────────────┼───────────────────┤
+//   │ child_moment        │ status='published'      │ getChildMoments   │
+//   │ child_update        │ status='published'      │ getChildUpdates   │
+//   │ child_document      │ status='verified' (LEGACY)│ DocumentsBanner │
+//   │                     │ — Session 49 added a    │                   │
+//   │                     │ new 'approved' status   │                   │
+//   │                     │ that isn't yet read     │                   │
+//   │                     │ here. See audit doc.    │                   │
+//   │ child_intake_photo  │ NOT YET RENDERED        │ —                 │
+//   │ child (status)      │ status='active'         │ getChildById      │
+//   └─────────────────────┴────────────────────────┴───────────────────┘
+//
+// Reference URLs Mahmud flagged for "what currently renders":
+//   - /children/f6c4c677-46d0-4fd7-b08e-3ba6216245b6
+//   - /children/da9a8c24-38d1-40fa-95f3-20edc878f1ff
+//
+// Documents per se (the file blobs) NEVER render on this page,
+// regardless of review status — they're Tier 3 admin-only evidence,
+// not donor content. The DocumentsBanner shows ONLY the verification
+// status pills ("Birth certificate verified") to give donors
+// confidence the profile was reviewed; the file is never linked.
+
 // Privacy-preserving metadata. Title surfaces the child's
 // donor-facing display name (it's already public on the page);
 // description does NOT surface the child's story, district,
