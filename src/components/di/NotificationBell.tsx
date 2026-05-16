@@ -34,6 +34,14 @@ const POLL_INTERVAL_MS = 60_000;
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
+  // Session 52b — review queue notifications reuse the proposal pair's
+  // approval/rejection icons for visual consistency.
+  admin_approved_document: CheckCircle2,
+  admin_rejected_document: XCircle,
+  admin_approved_intake_photo: CheckCircle2,
+  admin_rejected_intake_photo: XCircle,
+  admin_approved_moment: CheckCircle2,
+  admin_rejected_moment: XCircle,
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
   admin_verified_delivery: Truck,

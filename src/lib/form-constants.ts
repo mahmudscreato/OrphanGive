@@ -501,6 +501,59 @@ export function getEducationLevelLabel(
   return lookup(EDUCATION_LEVEL_LABELS, value);
 }
 
+// Session 52b — short labels for donor-facing copy that pairs the
+// level with class_grade. The full EDUCATION_LEVEL_LABELS reads as
+// "Junior secondary (Class 6–8)" which is informative on a dropdown
+// but redundant when class_grade is rendered alongside ("Class 7,
+// Junior secondary (Class 6-8)"). Short labels drop the class-range
+// parenthesis so the donor sees "Junior secondary, class 7".
+export const EDUCATION_LEVEL_SHORT_LABELS: Record<EducationLevel, string> = {
+  not_enrolled: "Not enrolled",
+  primary_1_5: "Primary",
+  junior_secondary_6_8: "Junior secondary",
+  secondary_9_10: "Secondary",
+  higher_secondary_11_12: "Higher secondary",
+  madrasa_ibtidayee: "Madrasa (Ibtidayee)",
+  madrasa_dakhil: "Madrasa (Dakhil)",
+  madrasa_alim: "Madrasa (Alim)",
+  vocational: "Vocational",
+  other: "Other",
+};
+
+export function getEducationLevelShortLabel(
+  value: EducationLevel | string | null | undefined,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+  const v = value as EducationLevel;
+  return EDUCATION_LEVEL_SHORT_LABELS[v] ?? String(value);
+}
+
+/**
+ * Session 52b — donor-facing "schooling line" composer.
+ * Combines `education_level` (short label) with `class_grade` into
+ * one readable phrase.
+ *
+ *   "Junior secondary, class 7"       (both present)
+ *   "Class 7"                          (level missing, grade present)
+ *   "Junior secondary"                (level present, grade missing)
+ *   ""                                 (both missing)
+ *
+ * Used by EducationSection + ProfileHero so the two surfaces stay
+ * consistent. Caller decides whether/how to surface an empty
+ * string (typically omit the line entirely).
+ */
+export function composeSchoolingLine(
+  educationLevel: string | null | undefined,
+  classGrade: string | null | undefined,
+): string {
+  const levelLabel = getEducationLevelShortLabel(educationLevel);
+  const grade = classGrade?.trim() || "";
+  if (levelLabel && grade) return `${levelLabel}, class ${grade}`;
+  if (grade) return `Class ${grade}`;
+  if (levelLabel) return levelLabel;
+  return "";
+}
+
 export function getAreaOfInterestLabel(
   value: AreaOfInterest | string | null | undefined,
 ): string {

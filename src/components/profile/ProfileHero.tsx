@@ -5,7 +5,10 @@ import type { ChildProfile, ViewerTier } from "@/lib/child-profile-data";
 // Session 50 — use the shared form-constants label helper instead of
 // rendering the raw enum value (which after Session 48a's enum
 // expansion would surface slugs like `primary_1_5` to donors).
-import { getEducationLevelLabel } from "@/lib/form-constants";
+// Session 52b — composeSchoolingLine collapses the prior redundant
+// phrasing ("Class 7, Junior secondary (Class 6–8)") into the cleaner
+// "Junior secondary, class 7" pattern.
+import { composeSchoolingLine } from "@/lib/form-constants";
 
 function MetaPillIcon({ kind }: { kind: "location" | "age" | "school" }) {
   if (kind === "location") {
@@ -46,16 +49,15 @@ export function ProfileHero({
 }) {
   const photoSrc = directusAssetUrl(child.photo);
   const subhead = pickFirstSentence(child.story);
-  // Session 50 — friendly labels via the shared helper. Falls back
-  // to "school" only when education_level is null AND class_grade
-  // is set (preserves the prior phrasing); otherwise the helper
-  // returns "" for null and we omit the line entirely.
-  const eduLabel = getEducationLevelLabel(child.education_level);
-  const educationLine = child.class_grade
-    ? `Class ${child.class_grade}, ${eduLabel || "school"}`
-    : eduLabel
-      ? `${eduLabel} education`
-      : null;
+  // Session 52b — single source of truth for the schooling line.
+  // Empty string when both education_level and class_grade are
+  // missing; we coerce to null below so the existing render-when-
+  // truthy logic continues to work.
+  const composed = composeSchoolingLine(
+    child.education_level,
+    child.class_grade,
+  );
+  const educationLine = composed.length > 0 ? composed : null;
 
   return (
     <section className="relative overflow-hidden bg-cream pt-12 pb-24 px-6 max-md:pt-8 max-md:pb-16">

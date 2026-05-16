@@ -11,6 +11,13 @@ import { EducationSection } from "@/components/profile/EducationSection";
 import { SponsorCTA } from "@/components/profile/SponsorCTA";
 import { RelatedChildren } from "@/components/profile/RelatedChildren";
 import { ChildSponsorBanner } from "@/components/children/ChildSponsorBanner";
+// Session 52b — donor-facing intake photo gallery, placed between
+// hero and story. Renders only when there are approved photos.
+import { IntakePhotoGallery } from "@/components/profile/IntakePhotoGallery";
+import {
+  getApprovedIntakePhotosForChild,
+  isSponsorOfChild,
+} from "@/lib/donor-intake-photos";
 import {
   getChildById,
   getChildDocumentsStatus,
@@ -119,7 +126,7 @@ export default async function ChildProfilePage({
   // between hero and story. queueDisplay.active === null when the
   // child has no current monthly sponsor — banner is omitted in
   // that case.
-  const [child, docs, updates, moments, related, queueDisplay] =
+  const [child, docs, updates, moments, related, queueDisplay, intakePhotos] =
     await Promise.all([
       getChildById(id, tier),
       getChildDocumentsStatus(id),
@@ -127,9 +134,28 @@ export default async function ChildProfilePage({
       getChildMoments(id),
       getRandomActiveChildren(id, 4),
       getQueueDisplayForChild(id),
+      // Session 52b — approved intake photos. Empty array if none
+      // are approved yet; gallery component renders null in that
+      // case so an empty profile doesn't show a placeholder section.
+      getApprovedIntakePhotosForChild(id),
     ]);
 
   if (!child) notFound();
+
+  // Session 52b — sponsor-of-this-child check for the intake gallery
+  // blur-overlay decision. Public viewers always see the blurred
+  // form (no donor cookie). Authenticated donors without an active
+  // sponsorship of THIS child also see blurred (encourages them to
+  // sponsor THIS specific child rather than tunnel through profiles).
+  // Admin tier bypasses entirely — they already see everything via
+  // the admin surface.
+  let isSponsor = false;
+  if (tier === "admin") {
+    isSponsor = true;
+  } else if (tier === "donor") {
+    const donorForSponsorCheck = await getCurrentDonor();
+    isSponsor = await isSponsorOfChild(donorForSponsorCheck?.id ?? null, child.id);
+  }
 
   // Reveal-aware enrichment for approved donors. Public/admin/pending donors
   // skip this entirely — admin already has child.encrypted, and other tiers
@@ -200,6 +226,16 @@ export default async function ChildProfilePage({
           </div>
         </section>
       ) : null}
+      {/* Session 52b — Intake photo gallery, between hero/banner and
+          story. Renders only when there are approved intake photos.
+          Blur-overlay for non-sponsors handled inside the component. */}
+      <IntakePhotoGallery
+        childDisplayName={child.display_name}
+        childId={child.id}
+        photos={intakePhotos}
+        isSponsor={isSponsor}
+        isAuthenticated={tier !== "public"}
+      />
       <StorySection child={child} tier={tier} />
       <MomentsGallery childName={child.display_name} moments={moments} />
       <LockedFieldsBand

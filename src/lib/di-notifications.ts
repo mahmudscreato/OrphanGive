@@ -44,6 +44,16 @@ export type NotificationType =
   // Wired in Session 47 — admin-proposals.ts approve/reject paths.
   | "admin_approved_proposal"
   | "admin_rejected_proposal"
+  // Session 52b — admin review queues for documents, intake photos,
+  // and moments. Each pair (approved/rejected) ships with its own
+  // notification copy. Per-intake-photo notifications fire once per
+  // photo (not once per batch) so the DI sees individual decisions.
+  | "admin_approved_document"
+  | "admin_rejected_document"
+  | "admin_approved_intake_photo"
+  | "admin_rejected_intake_photo"
+  | "admin_approved_moment"
+  | "admin_rejected_moment"
   // TODO Session 47.5+: wire `admin_assigned_child` notification when
   // the admin UI for assigning a child to a DI is built (currently
   // admins set child.assigned_di by hand in Directus admin — no
@@ -103,6 +113,12 @@ const NOTIFICATION_FIELDS = [
 const VALID_TYPES = new Set<string>([
   "admin_approved_proposal",
   "admin_rejected_proposal",
+  "admin_approved_document",
+  "admin_rejected_document",
+  "admin_approved_intake_photo",
+  "admin_rejected_intake_photo",
+  "admin_approved_moment",
+  "admin_rejected_moment",
   "admin_assigned_child",
   "admin_assigned_task",
   "admin_verified_delivery",

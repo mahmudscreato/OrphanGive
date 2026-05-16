@@ -46,6 +46,19 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // upstream filter excludes admin_viewed_*); icon present for
   // type-safety only.
   admin_viewed_proposal: Home,
+  // Session 52b — same type-safety pattern for the new admin
+  // review actions. The approval/rejection icons match the
+  // proposal pair (CheckCircle2 / XCircle) so any future render
+  // surface stays visually consistent.
+  admin_viewed_document: Home,
+  admin_approved_document: CheckCircle2,
+  admin_rejected_document: XCircle,
+  admin_viewed_intake_photo_batch: Home,
+  admin_approved_intake_photo: CheckCircle2,
+  admin_rejected_intake_photo: XCircle,
+  admin_viewed_moment: Home,
+  admin_approved_moment: CheckCircle2,
+  admin_rejected_moment: XCircle,
 };
 
 function relativeTime(iso: string | null): string {

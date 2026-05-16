@@ -4,21 +4,27 @@
 // pre-dated Session 48a's 10-value enum and was rendering new values
 // like `primary_1_5` as raw slugs to donors) with the shared
 // `getEducationLevelLabel` + `getAreasOfInterestLabels` helpers from
-// form-constants. Now both DI dropdowns and donor pills draw from the
-// same source of truth.
+// form-constants.
+//
+// Session 52b — composeSchoolingLine collapses the "Class N,
+// EducationLevel (Class A–B)" redundancy into "EducationLevel,
+// class N" using the new short labels. Same label source still
+// drives the DI dropdowns + form-constants OPTIONS.
 
 import type { ChildProfile } from "@/lib/child-profile-data";
 import {
+  composeSchoolingLine,
   getAreasOfInterestLabels,
-  getEducationLevelLabel,
 } from "@/lib/form-constants";
 
 export function EducationSection({ child }: { child: ChildProfile }) {
-  const eduLabel = getEducationLevelLabel(child.education_level);
+  const schoolingLine = composeSchoolingLine(
+    child.education_level,
+    child.class_grade,
+  );
   const interestLabels = getAreasOfInterestLabels(child.areas_of_interest);
 
-  const hasContent =
-    eduLabel || child.class_grade || interestLabels.length > 0;
+  const hasContent = schoolingLine || interestLabels.length > 0;
   if (!hasContent) return null;
 
   return (
@@ -31,14 +37,13 @@ export function EducationSection({ child }: { child: ChildProfile }) {
         </h2>
 
         <div className="mt-10 grid grid-cols-2 gap-5 max-md:grid-cols-1">
-          {(eduLabel || child.class_grade) ? (
+          {schoolingLine ? (
             <div className="rounded-[20px] bg-white border border-ink/[0.05] px-6 py-5">
               <div className="font-mono text-[11px] tracking-[0.14em] uppercase text-slate-soft mb-2">
                 Schooling
               </div>
               <div className="font-display text-[22px] text-ink leading-snug">
-                {eduLabel}
-                {child.class_grade ? `, class ${child.class_grade}` : ""}
+                {schoolingLine}
               </div>
             </div>
           ) : null}
