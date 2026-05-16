@@ -95,6 +95,11 @@ type DocumentRow = {
   rejection_reason: string | null;
 };
 
+// Session 52e — kept as documentation of the canonical post-Session-49
+// shape but no longer used at the Directus fetch layer; we use
+// `fields=["*"]` so a legacy Directus that's missing any of the
+// post-49 fields still returns its rows instead of FORBIDDEN-out.
+// Referenced via `void` so TS doesn't strip it under noUnusedLocals.
 const DOC_FIELDS = [
   "id",
   "child",
@@ -108,6 +113,7 @@ const DOC_FIELDS = [
   "date_created",
   "rejection_reason",
 ] as const;
+void DOC_FIELDS;
 
 // File-mime hint helpers. Directus stores the mime per-file in
 // directus_files.type. We look up in a batch + map by file uuid;
@@ -320,6 +326,20 @@ export async function listAdminDocuments(opts?: {
   };
   const statusValues = STATUS_IN[filter];
 
+  // Session 52e — Bug 3: previously this fetched DOC_FIELDS
+  // explicitly and sorted by date_created. On any Directus
+  // deployment where the post-Session-49 fields (`document_type`,
+  // `notes`, `date_created`, `rejection_reason`) are missing —
+  // including Mahmud's localhost where the schema migration was
+  // never run — Directus answered with a FORBIDDEN error and an
+  // EMPTY data array (rather than ignoring the missing field).
+  // That meant: home tile says 19 pending (countPendingDocuments
+  // only asks for `id` which always exists, so it works), but the
+  // queue list rendered 0 rows. To fix without forcing a schema
+  // migration: use fields=* (Directus returns whatever columns the
+  // collection actually has) and sort client-side so a missing
+  // date_created doesn't tank the whole request. The row mapper
+  // already tolerates undefined for the post-49 fields.
   let rows: DocumentRow[] = [];
   try {
     const result = (await directusServer().request(
@@ -327,10 +347,9 @@ export async function listAdminDocuments(opts?: {
         ...(statusValues
           ? { filter: { status: { _in: statusValues } } }
           : {}),
-        fields: [...DOC_FIELDS],
-        // FIFO for pending so oldest gets reviewed first; newest-
-        // first for decided history.
-        sort: filter === "pending" ? ["date_created"] : ["-date_created"],
+        fields: ["*"],
+        // No server-side sort — sorted in-memory below so a missing
+        // date_created field can't trigger FORBIDDEN.
         limit: opts?.limit ?? 100,
       } as never),
     )) as unknown as DocumentRow[] | undefined;
@@ -342,6 +361,18 @@ export async function listAdminDocuments(opts?: {
     );
     return [];
   }
+
+  // Session 52e — client-side sort. FIFO (oldest first) for
+  // pending so admin tackles the longest-waiting row first;
+  // newest-first for decided / all so recently-actioned rows lead.
+  // When date_created is missing on every row (legacy schema),
+  // this is a no-op and rows stay in Directus's natural order.
+  const sortAsc = filter === "pending";
+  rows.sort((a, b) => {
+    const aT = a.date_created ? Date.parse(a.date_created) : 0;
+    const bT = b.date_created ? Date.parse(b.date_created) : 0;
+    return sortAsc ? aT - bT : bT - aT;
+  });
 
   if (rows.length === 0) return [];
 
@@ -373,8 +404,11 @@ export async function getAdminDocumentDetail(
   let row: DocumentRow | null = null;
   try {
     const result = (await directusServer().request(
+      // Session 52e — see listAdminDocuments for the fields=* story.
+      // Same FORBIDDEN-on-missing-field gotcha applies here, and
+      // would silently break the detail page on the legacy schema.
       readItem("child_document" as never, documentId as never, {
-        fields: [...DOC_FIELDS],
+        fields: ["*"],
       } as never),
     )) as unknown as DocumentRow | undefined;
     row = result ?? null;
@@ -669,8 +703,9 @@ export async function removeDocument(
 async function readDocOrThrow(documentId: string): Promise<DocumentRow> {
   try {
     const row = (await directusServer().request(
+      // Session 52e — fields=* (see listAdminDocuments for rationale).
       readItem("child_document" as never, documentId as never, {
-        fields: [...DOC_FIELDS],
+        fields: ["*"],
       } as never),
     )) as unknown as DocumentRow | undefined;
     if (!row) throw new NotFoundError();

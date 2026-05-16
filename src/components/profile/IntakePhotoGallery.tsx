@@ -199,8 +199,20 @@ function ThumbnailTile({
   // preset registered (the normal case post-52d), Directus's
   // preset definitions take precedence over individual query
   // params and the blur is applied.
+  // Session 52e — `v` is a cache-buster (NOT forwarded to Directus
+  // by the asset proxy because it's not in TRANSFORM_PARAMS). The
+  // bug it solves: pre-52d, when the `intake-locked` preset wasn't
+  // registered, Directus ignored ?key=intake-locked and the proxy
+  // returned the raw full-resolution image with
+  // `Cache-Control: immutable, max-age=1y`. The browser pinned that
+  // wrong response for a year. After 52d registered the preset, the
+  // same URL now returns the correct 1.6KB blurred JPEG, but the
+  // browser refuses to re-fetch. Bumping `v` changes the URL the
+  // browser sees, so it requests fresh. The 52e asset-proxy change
+  // also drops `immutable` for transformed responses, so this
+  // bandage shouldn't be needed again.
   const lockedUrl =
-    `${photo.photoUrl}?key=intake-locked&width=240&height=240&fit=contain&quality=60&format=jpg`;
+    `${photo.photoUrl}?key=intake-locked&width=240&height=240&fit=contain&quality=60&format=jpg&v=52e`;
   return (
     <BlurredPhotoModalTrigger
       photoUrl={lockedUrl}

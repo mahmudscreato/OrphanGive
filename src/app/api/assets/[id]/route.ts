@@ -35,9 +35,17 @@ export async function GET(
   }
 
   const upstream = new URL(`${base.replace(/\/$/, "")}/assets/${id}`);
+  // Track whether we forwarded any transform param. If yes, the
+  // response is preset/transform-driven and may CHANGE between
+  // deployments (e.g., a preset definition changes) — so we must
+  // NOT mark it `immutable`. See cache-policy block below.
+  let hasTransform = false;
   for (const key of TRANSFORM_PARAMS) {
     const value = request.nextUrl.searchParams.get(key);
-    if (value) upstream.searchParams.set(key, value);
+    if (value) {
+      upstream.searchParams.set(key, value);
+      hasTransform = true;
+    }
   }
 
   // Forward the browser's Range header so videos can stream and seek.
@@ -73,9 +81,32 @@ export async function GET(
     response.headers.get("content-type") ?? "application/octet-stream";
 
   // Build response headers: keep cache directives, surface range support.
+  //
+  // Session 52e — split cache policy by transform vs raw.
+  //
+  // Raw assets (no query params) are content-addressed by UUID and
+  // truly never change, so `immutable, max-age=1y` is correct and
+  // saves bandwidth.
+  //
+  // Transformed assets (?key=intake-locked, ?width=…, ?quality=…,
+  // ?format=…, ?fit=…) depend on Directus's storage preset
+  // definitions and global storage_asset_transform settings —
+  // those CAN change between deployments. Pre-52d the
+  // `intake-locked` preset wasn't registered so requests with
+  // ?key=intake-locked returned the raw full-resolution image;
+  // those responses got cached as `immutable` for a year. After
+  // 52d registered the preset, the SAME URL now returns the
+  // 1.6KB blurred variant, but the browser refuses to re-fetch
+  // because of the immutable header. We've poisoned our own
+  // cache. The fix:
+  //   - drop `immutable` for transformed responses
+  //   - shorten max-age so the browser revalidates within a day
+  //   - keep raw-asset immutability as-is
   const responseHeaders: Record<string, string> = {
     "Content-Type": contentType,
-    "Cache-Control": "public, max-age=31536000, immutable",
+    "Cache-Control": hasTransform
+      ? "public, max-age=300, must-revalidate"
+      : "public, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
   };
 

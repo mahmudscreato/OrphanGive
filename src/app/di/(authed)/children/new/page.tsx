@@ -22,6 +22,8 @@ import { ChevronLeft } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import { getBdDistricts, getBdDivisions } from "@/lib/di-children";
 import { getAssignedDivisionsForUser, getDraftForUser } from "@/lib/di-proposals";
+import { listIntakePhotosForChild } from "@/lib/di-intake-photos";
+import { listDocumentsForChild } from "@/lib/di-documents";
 import { ChildForm } from "@/components/di/ChildForm";
 import { AssignedDivisionsEmptyState } from "@/components/di/AssignedDivisionsEmptyState";
 
@@ -74,6 +76,30 @@ export default async function DiNewChildPage({
     getBdDistricts(),
   ]);
 
+  // Session 52e — Bug 2: when resuming a CREATE-mode draft, the
+  // server pre-created a stub child at first save (Session 52a) and
+  // the DI may have already uploaded intake photos + documents
+  // against it before leaving the page. The edit page hydrates these
+  // via listIntakePhotosForChild + listDocumentsForChild; this page
+  // wasn't doing the same fetch, so resumed drafts always showed
+  // empty Documents + IntakePhotoGrid sections. Mirror the edit
+  // page's pattern: when existingDraft has a target_child stub, pull
+  // both attached collections so the form hydrates with what's
+  // already there.
+  const stubChildId =
+    existingDraft &&
+    typeof (existingDraft as { target_child?: string | null }).target_child ===
+      "string"
+      ? ((existingDraft as { target_child?: string | null })
+          .target_child as string)
+      : null;
+  const [intakePhotos, documents] = stubChildId
+    ? await Promise.all([
+        listIntakePhotosForChild(session.userId, stubChildId),
+        listDocumentsForChild(session.userId, stubChildId),
+      ])
+    : [[], []];
+
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-3xl mx-auto">
       {/* Back link */}
@@ -105,6 +131,8 @@ export default async function DiNewChildPage({
         districts={districts}
         draftId={existingDraft ? draftIdParam : null}
         existingDraft={existingDraft}
+        intakePhotos={intakePhotos}
+        documents={documents}
       />
     </div>
   );
