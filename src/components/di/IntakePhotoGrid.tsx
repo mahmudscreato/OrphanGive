@@ -78,13 +78,30 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
       .sort((a, b) => a.displayOrder - b.displayOrder)
       .map(toDraftSlot),
   );
-  const [uploading, setUploading] = useState(false);
+  // Session 51.5 — inflight uploads. Each entry renders as a
+  // placeholder card in the grid (showing the file name + spinner /
+  // error). Cleared as each upload completes. We track per-file
+  // status so a multi-file selection where one file fails (e.g.
+  // a single PDF dropped into the JPEG-only intake-photo path)
+  // shows the failed file by name without nuking the rest.
+  type InflightUpload = {
+    localId: string;
+    fileName: string;
+    error: string | null;
+  };
+  const [inflight, setInflight] = useState<InflightUpload[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Drag-and-drop tracking. Holds the index of the slot currently
-  // being dragged; drop target reorders and clears.
+  // being dragged (for reorder); drop target reorders and clears.
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Session 51.5 — file-drop tracking. Distinct from the reorder
+  // dragIndex above because the source is the OS (dataTransfer.files
+  // populated) rather than another slot card. We render the grid
+  // container with a tangerine ring while dragOver to give visual
+  // feedback that a drop will trigger upload.
+  const [fileDragOver, setFileDragOver] = useState(false);
 
   // ─── CREATE-mode hint ──
   if (!childId) {
@@ -113,33 +130,44 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
 
   // ─── Helpers ──
   const usedSlots = slots.length;
-  const canUploadMore = usedSlots < MAX_INTAKE_PHOTOS;
+  const inflightCount = inflight.length;
+  const totalSlots = usedSlots + inflightCount;
+  const remainingCapacity = Math.max(0, MAX_INTAKE_PHOTOS - totalSlots);
+  const canUploadMore = remainingCapacity > 0;
+  const isUploading = inflightCount > 0;
 
   function pickFile() {
     fileInputRef.current?.click();
   }
 
-  async function handleUpload(file: File) {
-    if (!childId) return;
+  // Session 51.5 — per-file upload returning a result so the batch
+  // can settle independently. Pre-allocates display_order so two
+  // parallel uploads don't both append at the same slot index.
+  async function uploadSingleAndRegister(
+    file: File,
+    localId: string,
+    displayOrder: number,
+  ): Promise<
+    | { ok: true; photoId: string; fileUuid: string }
+    | { ok: false; error: string }
+  > {
+    if (!childId) return { ok: false, error: "No child to attach to." };
     if (!(PHOTO_LIMITS.allowedTypes as readonly string[]).includes(file.type)) {
-      setUploadError(
-        "That file type isn't supported. Please use JPEG, PNG, or WebP.",
-      );
-      return;
+      return {
+        ok: false,
+        error: "Unsupported file type — JPEG, PNG, or WebP only.",
+      };
     }
     if (file.size > PHOTO_LIMITS.maxBytes) {
-      setUploadError(
-        `That image is ${formatBytes(file.size)} — too large. Please use one under ${formatBytes(
-          PHOTO_LIMITS.maxBytes,
-        )}.`,
-      );
-      return;
+      return {
+        ok: false,
+        error: `Too large — ${formatBytes(file.size)} (max ${formatBytes(PHOTO_LIMITS.maxBytes)}).`,
+      };
     }
 
-    setUploadError(null);
-    setUploading(true);
+    // Step 1: file blob upload.
+    let fileUuid: string;
     try {
-      // Step 1 — push the bytes to directus_files.
       const fileForm = new FormData();
       fileForm.append("photo", file);
       const fileRes = await fetch("/api/di/uploads/photo", {
@@ -147,56 +175,42 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
         body: fileForm,
       });
       if (!fileRes.ok) {
-        if (fileRes.status === 413) {
-          setUploadError("That image is too large. Please use one under 5 MB.");
-        } else if (fileRes.status === 415) {
-          setUploadError(
-            "That file type isn't supported. Please use JPEG, PNG, or WebP.",
-          );
-        } else if (fileRes.status === 401) {
-          setUploadError("Your session expired. Please sign in again.");
-        } else {
-          setUploadError("Upload failed. Please try again.");
-        }
-        return;
+        if (fileRes.status === 413) return { ok: false, error: "Too large (max 5 MB)." };
+        if (fileRes.status === 415) return { ok: false, error: "Unsupported file type." };
+        if (fileRes.status === 401) return { ok: false, error: "Session expired." };
+        return { ok: false, error: "Upload failed." };
       }
       const fileBody = (await fileRes.json()) as { fileUuid?: string };
-      const fileUuid = fileBody.fileUuid;
-      if (!fileUuid) {
-        setUploadError("Upload returned no file id. Please try again.");
-        return;
-      }
+      if (!fileBody.fileUuid) return { ok: false, error: "Server returned no file id." };
+      fileUuid = fileBody.fileUuid;
+    } catch {
+      return { ok: false, error: "Network error during upload." };
+    }
 
-      // Step 2 — register the intake-photo row. Display order goes
-      // at the end of the current list.
-      const nextOrder =
-        slots.length > 0
-          ? Math.max(...slots.map((s) => s.displayOrder)) + 1
-          : 0;
+    // Step 2: register the intake-photo row.
+    try {
       const createRes = await fetch("/api/di/intake-photos", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           childId,
           photoUuid: fileUuid,
-          displayOrder: nextOrder,
+          displayOrder,
         }),
       });
       if (!createRes.ok) {
         if (createRes.status === 404) {
-          setUploadError("This child is no longer in your scope.");
-        } else {
-          setUploadError("Couldn't save that photo. Please try again.");
+          return { ok: false, error: "This child is no longer in your scope." };
         }
-        return;
+        return { ok: false, error: "Couldn't save that photo." };
       }
       const created = (await createRes.json()) as { photoId?: string };
       if (!created.photoId) {
-        setUploadError("Server returned no photo id. Please try again.");
-        return;
+        return { ok: false, error: "Server returned no photo id." };
       }
-      // Optimistic insert. We don't have all the metadata back from
-      // the create endpoint, so we synthesize what we know.
+
+      // On success: drop the inflight placeholder and append the
+      // real slot. (Caller uses these returns to drive state.)
       setSlots((prev) => [
         ...prev,
         toDraftSlot({
@@ -205,19 +219,99 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
           photoUrl: `/api/assets/${fileUuid}`,
           photoUuid: fileUuid,
           caption: null,
-          displayOrder: nextOrder,
+          displayOrder,
           status: "pending",
           uploadedAt: new Date().toISOString(),
-          uploadedByUserId: null, // unknown locally; isOwn will be true
+          uploadedByUserId: null,
           isOwn: true,
           rejectionReason: null,
         }),
       ]);
+      setInflight((prev) => prev.filter((u) => u.localId !== localId));
+      return { ok: true, photoId: created.photoId, fileUuid };
     } catch {
-      setUploadError("Upload failed. Please check your connection.");
-    } finally {
-      setUploading(false);
+      return { ok: false, error: "Network error saving the photo." };
     }
+  }
+
+  /**
+   * Session 51.5 — multi-file batch upload. Used by both the file
+   * picker (with `<input multiple>`) and drag-and-drop from the OS.
+   * Pre-allocates display_orders, fans out via Promise.all, surfaces
+   * a "max N reached" toast if the user selected more files than
+   * remaining capacity allows.
+   */
+  async function handleUploadMany(files: File[]) {
+    if (!childId || files.length === 0) return;
+    setUploadError(null);
+
+    // Capacity check: drop excess files past MAX_INTAKE_PHOTOS.
+    const capacity = Math.max(
+      0,
+      MAX_INTAKE_PHOTOS - slots.length - inflight.length,
+    );
+    if (capacity === 0) {
+      setUploadError(`Maximum ${MAX_INTAKE_PHOTOS} intake photos per child.`);
+      return;
+    }
+    const accepted = files.slice(0, capacity);
+    const rejectedCount = files.length - accepted.length;
+    if (rejectedCount > 0) {
+      setUploadError(
+        `Maximum ${MAX_INTAKE_PHOTOS} intake photos per child — uploaded the first ${accepted.length}, skipped ${rejectedCount}.`,
+      );
+    }
+
+    // Pre-allocate display orders so parallel inserts don't collide.
+    const startOrder =
+      slots.length > 0
+        ? Math.max(...slots.map((s) => s.displayOrder)) + 1
+        : 0;
+
+    // Stage all inflight placeholders in one render.
+    const stamped = accepted.map((file, i) => ({
+      file,
+      localId: `inflight-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+      displayOrder: startOrder + i,
+    }));
+    setInflight((prev) => [
+      ...prev,
+      ...stamped.map(({ localId, file }) => ({
+        localId,
+        fileName: file.name || "photo",
+        error: null,
+      })),
+    ]);
+
+    // Fan out uploads in parallel. Each call mutates state on success
+    // (drops the placeholder, appends a real slot) or on failure
+    // (marks the placeholder with an error message for visibility).
+    const results = await Promise.all(
+      stamped.map(({ file, localId, displayOrder }) =>
+        uploadSingleAndRegister(file, localId, displayOrder).then((r) => ({
+          localId,
+          fileName: file.name,
+          ...r,
+        })),
+      ),
+    );
+
+    // For any failures, leave the placeholder with the error text;
+    // the user dismisses by re-trying (which uploads a fresh entry).
+    const failures = results.filter((r) => !r.ok);
+    if (failures.length > 0) {
+      setInflight((prev) =>
+        prev.map((u) => {
+          const fail = failures.find((f) => f.localId === u.localId);
+          if (!fail) return u;
+          return { ...u, error: fail.ok ? null : fail.error };
+        }),
+      );
+    }
+  }
+
+  function dismissFailedInflight(localId: string) {
+    setInflight((prev) => prev.filter((u) => u.localId !== localId));
   }
 
   async function handleCaptionBlur(slot: DraftSlot) {
@@ -329,6 +423,27 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
     }
   }
 
+  // ─── File-drop from OS (Session 51.5) ──
+  // Distinct from the slot-card reorder drag below: file drops have
+  // `dataTransfer.files.length > 0`. The grid wrapper handles these;
+  // slot cards handle the in-grid reorder. The two coexist because
+  // their drop targets and dataTransfer shapes don't collide.
+  function onGridDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    setFileDragOver(true);
+  }
+  function onGridDragLeave(e: React.DragEvent) {
+    if (e.currentTarget === e.target) setFileDragOver(false);
+  }
+  function onGridDrop(e: React.DragEvent) {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    setFileDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    void handleUploadMany(files);
+  }
+
   // ─── Reorder ──
   function onDragStart(idx: number) {
     setDragIndex(idx);
@@ -402,40 +517,61 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
           <button
             type="button"
             onClick={pickFile}
-            disabled={uploading}
+            disabled={isUploading}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-tangerine text-tangerine-deeper bg-white text-[13px] font-medium hover:bg-tangerine-mist/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {uploading ? (
+            {isUploading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
             ) : (
               <Camera className="w-3.5 h-3.5 stroke-[1.75]" aria-hidden="true" />
             )}
-            {uploading ? "Uploading…" : "Add photo"}
+            {isUploading
+              ? `Uploading ${inflightCount}…`
+              : remainingCapacity === MAX_INTAKE_PHOTOS
+                ? "Add photos"
+                : `Add up to ${remainingCapacity} more`}
           </button>
         ) : null}
       </div>
 
       {uploadError ? (
-        <p className="mb-3 text-[13px] text-[#D04848]">{uploadError}</p>
+        <p className="mb-3 text-[13px] text-amber-800">{uploadError}</p>
       ) : null}
 
-      {/* Hidden file input */}
+      {/* Hidden file input — `multiple` enables OS-level multi-pick.
+          Session 51.5: previously a single-file picker; now the user
+          can shift-click / cmd-click a batch and we fan out uploads
+          via Promise.all up to the remaining capacity. */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp"
+        multiple
         className="hidden"
         aria-hidden="true"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = ""; // allow re-pick
-          if (file) void handleUpload(file);
+          const files = e.target.files ? Array.from(e.target.files) : [];
+          e.target.value = ""; // allow re-pick of same files later
+          if (files.length > 0) void handleUploadMany(files);
         }}
       />
 
-      {/* Grid */}
-      {slots.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-stone-300 p-8 text-center">
+      {/* Grid wrapper accepts OS file-drops (Session 51.5). The
+          `fileDragOver` state gives a tangerine ring around the
+          drop target so the user sees the affordance. Per-slot drag
+          handlers inside still drive reorder — see the file-drop vs
+          reorder distinction in onGridDragOver. */}
+      {slots.length === 0 && inflight.length === 0 ? (
+        <div
+          onDragOver={onGridDragOver}
+          onDragLeave={onGridDragLeave}
+          onDrop={onGridDrop}
+          className={`rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${
+            fileDragOver
+              ? "border-tangerine bg-tangerine-mist/30"
+              : "border-stone-300"
+          }`}
+        >
           <ImagePlus
             className="w-10 h-10 text-stone-400 mx-auto mb-3 stroke-[1.5]"
             aria-hidden="true"
@@ -444,9 +580,19 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
             No intake photos yet. Add 3–5 photos from your first visit
             so admin can verify the profile.
           </p>
+          <p className="mt-2 text-[12px] text-ink-soft italic">
+            Tap &quot;Add photos&quot; above, or drop files here.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div
+          onDragOver={onGridDragOver}
+          onDragLeave={onGridDragLeave}
+          onDrop={onGridDrop}
+          className={`grid grid-cols-2 sm:grid-cols-3 gap-3 rounded-2xl transition-colors ${
+            fileDragOver ? "outline outline-2 outline-tangerine outline-offset-4" : ""
+          }`}
+        >
           {slots.map((slot, idx) => {
             const editable = slot.isOwn && slot.status === "pending";
             const isDragOver = dragOverIndex === idx;
@@ -584,6 +730,54 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
               </div>
             );
           })}
+
+          {/* Session 51.5 — inflight upload placeholder cards. Each
+              entry renders a dashed-border card with the file name
+              and a spinner; on failure it shows the error + a
+              dismiss button. Successful uploads have already moved
+              themselves out of `inflight` and into `slots` by the
+              time we render. */}
+          {inflight.map((up) => (
+            <div
+              key={up.localId}
+              className={`relative rounded-2xl border-2 border-dashed ${
+                up.error
+                  ? "border-[#F5C8C8] bg-[#FCE9E9]/60"
+                  : "border-tangerine-soft bg-tangerine-mist/30"
+              } overflow-hidden flex flex-col items-center justify-center aspect-square p-3 text-center`}
+            >
+              {up.error ? (
+                <>
+                  <p className="text-[12px] font-medium text-[#A02020] leading-snug break-words">
+                    {up.fileName}
+                  </p>
+                  <p className="mt-1 text-[11.5px] text-[#A02020]/80 leading-snug">
+                    {up.error}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => dismissFailedInflight(up.localId)}
+                    className="mt-2 text-[11px] font-medium text-[#A02020] hover:underline"
+                  >
+                    Dismiss
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Loader2
+                    className="w-7 h-7 text-tangerine-deeper animate-spin mb-2"
+                    aria-hidden="true"
+                  />
+                  <p className="text-[12px] text-tangerine-deeper font-medium leading-snug break-words">
+                    {up.fileName}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-tangerine-deeper/80">
+                    Uploading…
+                  </p>
+                </>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

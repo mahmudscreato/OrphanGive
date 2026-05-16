@@ -56,6 +56,17 @@ const patchDraftBodySchema = z
   .object({
     fields: z.record(z.string(), z.unknown()).default({}),
     photoUuid: z.string().min(8).nullable().optional(),
+    // Session 51.5 — the form reuses one buildDraftBody() for both
+    // POST (new draft) and PATCH (existing draft) and always sends
+    // these three discriminator/context keys. We accept-and-ignore
+    // them here: the URL [id] is the authoritative target, and
+    // operation is implied by the existing draft row (you can't
+    // morph a CREATE draft into an UPDATE via PATCH anyway). Without
+    // this allowance, the .strict() guard rejected every save with
+    // "Couldn't save your draft".
+    mode: z.literal("draft").optional(),
+    operation: z.enum(["create", "update"]).optional(),
+    childId: z.string().uuid().optional(),
   })
   .strict();
 

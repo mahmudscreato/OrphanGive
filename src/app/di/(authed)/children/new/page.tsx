@@ -2,13 +2,19 @@
 //
 // Server component. Reads the DI's assigned_divisions; if empty,
 // renders the AssignedDivisionsEmptyState (no form). Otherwise,
-// fetches the bd_division rows restricted to those codes and hands
-// them to a blank ChildForm in 'create' mode.
+// fetches the full bd_division list (all 8 divisions) and hands them
+// to a blank ChildForm in 'create' mode.
 //
-// Why restrict at the dropdown level (UX) AND server-side (security):
-// the dropdown enforcement is purely cosmetic — anyone could craft a
-// raw POST. The server's createProposal re-validates via
-// isDivisionAllowedForUser, so the security boundary holds either way.
+// Session 51.5 — the dropdown used to be restricted to the DI's
+// assigned_divisions, which surfaced as "only 2 of 8 divisions appear"
+// for the typical DI (Mahmud's smoke test caught this). The dropdown
+// is now ALWAYS the full 8; the server's createProposal continues
+// to enforce assigned_divisions via isDivisionAllowedForUser →
+// DivisionNotAllowedError. This separation matches the brief's
+// design: "what divisions a DI can work in" (always all 8 — they
+// might be reassigning a child geographically) vs "what children a
+// DI can see" (scoped to assigned_divisions). The security boundary
+// is the server, not the dropdown.
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -58,8 +64,13 @@ export default async function DiNewChildPage({
   // Session 46-fix-2 — also fetch districts for the cascade dropdown.
   // Pass the FULL district list; the BdDistrictField filters
   // client-side based on the currently-selected division.
+  // Session 51.5 — divisions is the full 8 (see header). The
+  // edit-page already uses getBdDivisions() with no arg (the
+  // existing child may already be in a division the DI isn't
+  // formally assigned to — we don't lock them out of fixing that
+  // record); the new-page now matches that pattern.
   const [divisions, districts] = await Promise.all([
-    getBdDivisions(assignedCodes),
+    getBdDivisions(),
     getBdDistricts(),
   ]);
 
