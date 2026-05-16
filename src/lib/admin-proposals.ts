@@ -300,34 +300,65 @@ export async function approveProposal(
       }
     }
   } else {
-    // CREATE: insert a new child row from the proposal payload.
-    // Stamp uploaded_by_di = proposal.created_by so future scope
-    // checks for the original DI work.
+    // CREATE: Session 52a — two sub-paths based on whether the
+    // proposal already has a stub child attached.
+    //   (a) target_child is set (Session 52a stub from draft / direct
+    //       submit): UPDATE the existing stub in place. Documents +
+    //       intake photos uploaded during proposal entry are already
+    //       FK-attached to this row, so we MUST preserve its id.
+    //       Status flips from 'awaiting_intake' to 'active'.
+    //   (b) target_child is null (legacy CREATE proposal from before
+    //       Session 52a, or future variant that intentionally skips
+    //       the stub): INSERT a brand-new child row as before.
     if (!proposal.created_by) {
       throw new ChildWriteFailedError(
         new Error("CREATE proposal has no created_by"),
       );
     }
-    const insertPayload: Record<string, unknown> = {
-      ...payload,
-      uploaded_by_di: proposal.created_by,
-      assigned_di: proposal.created_by, // first DI is also the assignee
-      // Status defaults to 'active' on child; admin can adjust later.
-      status: "active",
-    };
-    try {
-      const created = (await directusServer().request(
-        createItem("child" as never, insertPayload as never),
-      )) as unknown as { id?: string } | undefined;
-      if (!created?.id) {
-        throw new ChildWriteFailedError(
-          new Error("Insert returned no child id"),
+    if (proposal.target_child) {
+      // (a) UPDATE the stub — apply mirror columns + flip status.
+      targetChildId = proposal.target_child;
+      const updatePayload: Record<string, unknown> = {
+        ...payload,
+        status: "active",
+        // uploaded_by_di / assigned_di were already stamped at stub
+        // creation time. We don't overwrite them on approval — the
+        // stub is the source of truth for those fields.
+      };
+      try {
+        await directusServer().request(
+          updateItem(
+            "child" as never,
+            targetChildId as never,
+            updatePayload as never,
+          ),
         );
+      } catch (err) {
+        throw new ChildWriteFailedError(err);
       }
-      targetChildId = String(created.id);
-    } catch (err) {
-      if (err instanceof ChildWriteFailedError) throw err;
-      throw new ChildWriteFailedError(err);
+    } else {
+      // (b) Legacy / fallback INSERT path.
+      const insertPayload: Record<string, unknown> = {
+        ...payload,
+        uploaded_by_di: proposal.created_by,
+        assigned_di: proposal.created_by, // first DI is also the assignee
+        // Status defaults to 'active' on child; admin can adjust later.
+        status: "active",
+      };
+      try {
+        const created = (await directusServer().request(
+          createItem("child" as never, insertPayload as never),
+        )) as unknown as { id?: string } | undefined;
+        if (!created?.id) {
+          throw new ChildWriteFailedError(
+            new Error("Insert returned no child id"),
+          );
+        }
+        targetChildId = String(created.id);
+      } catch (err) {
+        if (err instanceof ChildWriteFailedError) throw err;
+        throw new ChildWriteFailedError(err);
+      }
     }
   }
 
@@ -449,6 +480,15 @@ async function fetchChildDisplayName(childId: string): Promise<string> {
  * Reject a child_proposal. Sets status='rejected', approved_by, and
  * rejection_reason. No row mutation on child. Audit
  * admin_rejected_proposal.
+ *
+ * Session 52a note: when rejecting a CREATE proposal that already
+ * has a target_child (the Session 52a stub created at draft time),
+ * we LEAVE the stub in place with status='awaiting_intake'. The DI
+ * can resubmit (the documents + intake photos they uploaded against
+ * the stub are still attached and will surface on the next
+ * approval). Future cleanup pass: a scheduled job to GC stubs whose
+ * proposals have been rejected + N days have passed without
+ * resubmission. Out of scope for the hotfix.
  */
 export async function rejectProposal(
   proposalId: string,

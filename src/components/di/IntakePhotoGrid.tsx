@@ -103,7 +103,12 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
   // feedback that a drop will trigger upload.
   const [fileDragOver, setFileDragOver] = useState(false);
 
-  // ─── CREATE-mode hint ──
+  // ─── Pre-stub hint (Session 52a) ──
+  // Renders only on a fresh CREATE form before the first draft save.
+  // After the first save, the server has allocated a stub child id
+  // and the parent form passes it in as `childId` — uploads unlock
+  // immediately. In edit-mode `childId` is always populated so this
+  // branch is never hit.
   if (!childId) {
     return (
       <div className="rounded-2xl bg-amber-50/60 border border-amber-200 p-5">
@@ -114,13 +119,13 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
           />
           <div className="min-w-0">
             <p className="text-[14px] text-amber-900 font-medium leading-snug">
-              Intake photos open up after admin approves the new
-              profile.
+              Save as draft first to enable photo uploads.
             </p>
             <p className="mt-1 text-[13px] text-amber-800 leading-relaxed">
-              Submit this profile first. Once it&apos;s approved,
-              you&apos;ll be able to upload 3–5 evidence photos from
-              your initial visit on the child&apos;s edit page.
+              Hit &quot;Save as draft&quot; below — we&apos;ll create
+              a placeholder so you can attach the 3–5 evidence
+              photos from your initial visit. Donors never see this
+              placeholder.
             </p>
           </div>
         </div>

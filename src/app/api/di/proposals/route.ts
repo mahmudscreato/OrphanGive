@@ -320,14 +320,21 @@ export async function POST(req: NextRequest) {
       );
     }
     try {
-      const { proposalId } = await createDraftProposal(session.userId, {
-        operation: parsedDraft.data.operation,
-        childId: parsedDraft.data.childId,
-        fields: parsedDraft.data.fields,
-        photoUuid: parsedDraft.data.photoUuid ?? null,
-      });
+      const { proposalId, childId } = await createDraftProposal(
+        session.userId,
+        {
+          operation: parsedDraft.data.operation,
+          childId: parsedDraft.data.childId,
+          fields: parsedDraft.data.fields,
+          photoUuid: parsedDraft.data.photoUuid ?? null,
+        },
+      );
+      // Session 52a — `childId` echoes back the stub-child id that
+      // createDraftProposal allocated for CREATE drafts (null for
+      // UPDATE drafts). The form uses this to unlock documents +
+      // intake photo uploads immediately after the first save.
       // No audit, no notify — drafts are personal scratch.
-      return NextResponse.json({ proposalId, mode: "draft" });
+      return NextResponse.json({ proposalId, childId, mode: "draft" });
     } catch (err) {
       if (err instanceof OutOfScopeError) {
         return NextResponse.json({ error: "not_found" }, { status: 404 });

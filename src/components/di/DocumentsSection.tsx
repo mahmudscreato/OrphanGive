@@ -157,7 +157,10 @@ export function DocumentsSection({
     {} as Record<DocumentType, HTMLInputElement | null>,
   );
 
-  // ─── CREATE-mode hint ──
+  // ─── Pre-stub hint (Session 52a) ──
+  // Same pattern as IntakePhotoGrid — only appears on a fresh
+  // CREATE form before the first Save as draft. After save, the
+  // server allocates the stub child id and documents unlock.
   if (!childId) {
     return (
       <div className="rounded-2xl bg-amber-50/60 border border-amber-200 p-5">
@@ -168,13 +171,13 @@ export function DocumentsSection({
           />
           <div className="min-w-0">
             <p className="text-[14px] text-amber-900 font-medium leading-snug">
-              Documents open up after admin approves the new profile.
+              Save as draft first to enable document uploads.
             </p>
             <p className="mt-1 text-[13px] text-amber-800 leading-relaxed">
-              Submit this profile first. Once it&apos;s approved,
-              you&apos;ll be able to upload the four verification
-              documents from the child&apos;s edit page. Submitting
-              without documents is fine — admin will follow up.
+              Hit &quot;Save as draft&quot; below — we&apos;ll create
+              a placeholder so you can attach the four verification
+              documents. Submitting without documents is still fine
+              — admin will follow up. Donors never see them either way.
             </p>
           </div>
         </div>

@@ -22,12 +22,12 @@ const STATUS_TABS: ReadonlyArray<{
 }> = [
   { value: "all", label: "All" },
   { value: "active", label: "Active" },
-  { value: "pending_intake", label: "Pending intake" },
+  { value: "awaiting_intake", label: "Awaiting intake" },
   { value: "withdrawn", label: "Withdrawn" },
 ];
 
 function parseStatus(s: string | undefined): AdminChildStatusFilter {
-  if (s === "active" || s === "withdrawn" || s === "pending_intake") return s;
+  if (s === "active" || s === "withdrawn" || s === "awaiting_intake") return s;
   return "all";
 }
 

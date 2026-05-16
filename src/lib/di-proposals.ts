@@ -192,6 +192,14 @@ export type CreateProposalInput =
       operation: "create";
       fields: ChildCreatableFields;
       photoUuid: string; // required
+      // Session 52a — when a draft is being promoted to pending via
+      // /api/di/proposals/[id]/submit, the draft already has a stub
+      // `child` row from createDraftProposal. Pass it through so
+      // createCreateProposal reuses it instead of creating a second
+      // stub (which would orphan the first). Direct submits with no
+      // prior draft omit this; createCreateProposal will create the
+      // stub itself.
+      existingStubChildId?: string | null;
     };
 
 // ─── Output shapes ──────────────────────────────────────────────────
@@ -697,6 +705,25 @@ async function createCreateProposal(
     throw new DivisionNotAllowedError(f.bd_division, assignedCodes);
   }
 
+  // Session 52a — pre-create the stub child (or reuse the one the
+  // draft already has) so documents + intake photos attached to
+  // this proposal (via child_document.child / child_intake_photo.child)
+  // have a real FK target. On admin approval the stub is UPDATED
+  // in place (status flips to 'active', mirror columns applied)
+  // rather than re-inserted — see the approveProposal CREATE branch
+  // in admin-proposals.ts.
+  //
+  // Direct submits (no prior draft) get a fresh stub here. Draft
+  // submits arrive via submitDraftProposal → /[id]/submit which
+  // passes `existingStubChildId` to skip stub creation and reuse
+  // the draft's stub (otherwise we'd orphan the first stub).
+  const stubChildId =
+    input.existingStubChildId ??
+    (await createStubChildForCreate(userId, {
+      display_name: f.display_name,
+      bd_division: f.bd_division,
+    }));
+
   // Session 46-fix-2 — assemble the full payload including the 17
   // new mirror columns. Optional fields fall through as undefined →
   // omitted from the insert (Directus treats them as default/null).
@@ -705,7 +732,7 @@ async function createCreateProposal(
   const created = (await directusServer().request(
     createItem("child_proposal" as never, {
       proposal_type: "create",
-      target_child: null,
+      target_child: stubChildId,
       status: "pending",
       created_by: userId,
       // See note in createUpdateProposal — date_created has no
@@ -1324,6 +1351,60 @@ export async function getDraftForUser(
  * createUpdateProposal but writes only the keys present in `fields`,
  * with no required-field checks.
  */
+/**
+ * Session 52a — pre-create a stub `child` row so DI can attach
+ * documents + intake photos during initial profile entry (before
+ * admin approval). The stub has `status='awaiting_intake'` which
+ * every donor-facing query filters out (each gates on
+ * `status='active'`), so the placeholder is invisible to donors.
+ *
+ * The display_name + bd_division come from whatever the DI has
+ * typed so far; both are recovered from the proposal's flat
+ * columns. display_name has a fallback because the bootstrap
+ * defines `child.display_name` as required. bd_division is included
+ * only if the DI has selected one (column is nullable in current
+ * installs; if it ever becomes NOT NULL, the insert would fail
+ * with a clear constraint error — handle then).
+ *
+ * uploaded_by_di + assigned_di are stamped to the current DI so the
+ * stub is in their scope across the dashboard.
+ *
+ * On admin approval the stub is UPDATED (not re-inserted) with the
+ * proposal's fields and its status flipped to 'active'. See the
+ * approveProposal CREATE branch in admin-proposals.ts.
+ */
+async function createStubChildForCreate(
+  userId: string,
+  hint: {
+    display_name?: unknown;
+    bd_division?: unknown;
+  },
+): Promise<string> {
+  const displayName =
+    typeof hint.display_name === "string" && hint.display_name.trim().length > 0
+      ? hint.display_name.trim()
+      : "Awaiting profile completion";
+
+  const insertPayload: Record<string, unknown> = {
+    display_name: displayName,
+    status: "awaiting_intake",
+    uploaded_by_di: userId,
+    assigned_di: userId,
+  };
+  if (typeof hint.bd_division === "string" && hint.bd_division.trim().length > 0) {
+    insertPayload.bd_division = hint.bd_division.trim();
+  }
+
+  const created = (await directusServer().request(
+    createItem("child" as never, insertPayload as never),
+  )) as unknown as { id?: string } | undefined;
+  const id = created?.id;
+  if (!id) {
+    throw new Error("[di-proposals] createStubChildForCreate: no id returned");
+  }
+  return String(id);
+}
+
 export async function createDraftProposal(
   userId: string,
   input: {
@@ -1332,7 +1413,7 @@ export async function createDraftProposal(
     fields: Record<string, unknown>;
     photoUuid?: string | null;
   },
-): Promise<{ proposalId: string }> {
+): Promise<{ proposalId: string; childId: string | null }> {
   // For UPDATE drafts, scope-check the target child exists in the
   // DI's care. We don't enforce required fields, but the child
   // reference still has to make sense.
@@ -1360,10 +1441,21 @@ export async function createDraftProposal(
         : null;
   }
 
+  // Session 52a — for CREATE drafts pre-create the stub child so
+  // documents + intake photos can attach to a real child.id during
+  // form entry. UPDATE drafts already have childId from the route.
+  let targetChild: string | null = input.childId ?? null;
+  if (input.operation === "create" && !targetChild) {
+    targetChild = await createStubChildForCreate(userId, {
+      display_name: fields.display_name,
+      bd_division: fields.bd_division,
+    });
+  }
+
   const created = (await directusServer().request(
     createItem("child_proposal" as never, {
       proposal_type: input.operation,
-      target_child: input.childId ?? null,
+      target_child: targetChild,
       status: "draft",
       created_by: userId,
       date_created: new Date().toISOString(),
@@ -1375,7 +1467,7 @@ export async function createDraftProposal(
 
   const id = created?.id;
   if (!id) throw new Error("[di-proposals] createDraftProposal: no id returned");
-  return { proposalId: String(id) };
+  return { proposalId: String(id), childId: targetChild };
 }
 
 /**

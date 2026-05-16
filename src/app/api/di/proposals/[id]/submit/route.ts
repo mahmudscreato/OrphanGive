@@ -122,10 +122,16 @@ function buildSubmissionInput(
     // up front gives a clearer error than the zod issue list.
     return { error: "create draft has no Photo" };
   }
+  // Session 52a — CREATE drafts already have a stub `child` row
+  // created at draft-save time (so documents + intake photos could
+  // attach during the draft). Pass it through so createProposal
+  // reuses the stub rather than spawning a second one.
+  const existingStubChildId = draft.target_child as string | null;
   return {
     operation: "create",
     fields: fields as never,
     photoUuid,
+    existingStubChildId,
   };
 }
 
