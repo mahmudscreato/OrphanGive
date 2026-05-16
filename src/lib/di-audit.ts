@@ -48,6 +48,13 @@ export type AuditAction =
   | "di_completed_task"
   | "di_uploaded_photo"
   | "di_uploaded_video"
+  // Session 48b — child_intake_photo lifecycle (initial-visit
+  // evidence photos). Distinct from di_uploaded_photo (which audits
+  // a raw directus_files upload before the row that consumes it
+  // exists).
+  | "di_uploaded_intake_photo"
+  | "di_edited_intake_photo"
+  | "di_deleted_intake_photo"
   // Admin-side actions (Session 46-fix-2 + Session 47).
   // The DI sees these in their Recent Activity feed when the action
   // touched a child in the DI's scope.
@@ -242,6 +249,9 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   di_completed_task: (a) => `${a} marked a task complete`,
   di_uploaded_photo: (a) => `${a} uploaded a photo`,
   di_uploaded_video: (a) => `${a} uploaded a video`,
+  di_uploaded_intake_photo: (a) => `${a} added an intake photo`,
+  di_edited_intake_photo: (a) => `${a} edited an intake photo`,
+  di_deleted_intake_photo: (a) => `${a} removed an intake photo`,
   // Admin actions are described from the DI's POV — "Admin approved
   // your edit" rather than literal "Admin approved a proposal" so
   // the Recent Activity feed reads as personal news.
@@ -284,6 +294,8 @@ const HISTORY_AUDIT_COLLECTIONS = [
   "child_update",
   "aid_delivery",
   "task",
+  // Session 48b — intake photos surface in the History tab too.
+  "child_intake_photo",
 ];
 
 export async function listAuditEventsForChild(

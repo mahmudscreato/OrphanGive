@@ -15,12 +15,12 @@
 //   3. This module has no React or server-only deps so it's safe to
 //      import from both client + server contexts.
 //
-// What's NOT here yet (intentional — Session 48a left them inline):
-//   SUPPORT_TYPES, BLOOD_GROUPS, VACCINATION_STATUSES,
-//   DISABILITY_STATUSES, GENDERS, HOUSEHOLD_INCOME_SOURCES.
-//   These already live at the top of src/app/api/di/proposals/route.ts.
-//   Consolidating them here is purely refactoring — out of scope for
-//   48a; flag for a follow-up cleanup if Mahmud wants symmetry.
+// Session 48b — consolidation completed. The 6 enums that Session 48a
+// flagged for follow-up (SUPPORT_TYPES, BLOOD_GROUPS, VACCINATION_STATUSES,
+// DISABILITY_STATUSES, GENDERS, HOUSEHOLD_INCOME_SOURCES) now live
+// here too. Server-side Zod schemas in /api/di/proposals/route.ts
+// import from this module; the form's inline OPTIONS arrays are
+// re-exported from here so future label tweaks land in one place.
 
 // ─── 1. Education levels ────────────────────────────────────────────
 //
@@ -248,4 +248,152 @@ export const GUARDIAN_RELATIONSHIP_OPTIONS: ReadonlyArray<{
   { value: "community_member", label: "Community member" },
   { value: "orphanage_only", label: "Orphanage only" },
   { value: "other", label: "Other" },
+];
+
+// ─── 7. Support types (Session 48b — moved from inline) ─────────────
+//
+// Coarse buckets for what kind of help is being requested. Stored on
+// `child.support_type` and `child_proposal.support_type`. Tier 1
+// public-visible.
+
+export const SUPPORT_TYPES = [
+  "education",
+  "food",
+  "healthcare",
+  "clothing",
+  "general_care",
+  "other",
+] as const;
+
+export type SupportType = (typeof SUPPORT_TYPES)[number];
+
+export const SUPPORT_TYPE_OPTIONS: ReadonlyArray<{
+  value: SupportType;
+  label: string;
+}> = [
+  { value: "education", label: "Education" },
+  { value: "food", label: "Food" },
+  { value: "healthcare", label: "Healthcare" },
+  { value: "clothing", label: "Clothing" },
+  { value: "general_care", label: "General care" },
+  { value: "other", label: "Other" },
+];
+
+// ─── 8. Genders (Session 48b — moved from inline) ───────────────────
+
+export const GENDERS = ["male", "female"] as const;
+
+export type Gender = (typeof GENDERS)[number];
+
+export const GENDER_OPTIONS: ReadonlyArray<{
+  value: Gender;
+  label: string;
+}> = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+];
+
+// ─── 9. Blood groups (Session 48b — moved from inline) ──────────────
+//
+// Standard ABO + Rh notation. `unknown` covers unrecorded — the
+// commonest entry in Bangladesh because routine blood typing isn't
+// universal.
+
+export const BLOOD_GROUPS = [
+  "A+",
+  "A-",
+  "B+",
+  "B-",
+  "AB+",
+  "AB-",
+  "O+",
+  "O-",
+  "unknown",
+] as const;
+
+export type BloodGroup = (typeof BLOOD_GROUPS)[number];
+
+// Blood-group "options" intentionally use the value as the label too
+// (the canonical notation is already the friendliest display form).
+export const BLOOD_GROUP_OPTIONS: ReadonlyArray<{
+  value: BloodGroup;
+  label: string;
+}> = BLOOD_GROUPS.map((b) => ({ value: b, label: b }));
+
+// ─── 10. Vaccination statuses (Session 48b — moved from inline) ─────
+
+export const VACCINATION_STATUSES = [
+  "up_to_date",
+  "partial",
+  "unknown",
+  "not_started",
+] as const;
+
+export type VaccinationStatus = (typeof VACCINATION_STATUSES)[number];
+
+export const VACCINATION_STATUS_OPTIONS: ReadonlyArray<{
+  value: VaccinationStatus;
+  label: string;
+}> = [
+  { value: "up_to_date", label: "Up to date" },
+  { value: "partial", label: "Partial" },
+  { value: "unknown", label: "Unknown" },
+  { value: "not_started", label: "Not started" },
+];
+
+// ─── 11. Disability statuses (Session 48b — moved from inline) ──────
+//
+// Self-reported categorisation. Selecting anything other than `none`
+// surfaces the conditional `disability_notes` textarea on the form.
+
+export const DISABILITY_STATUSES = [
+  "none",
+  "physical",
+  "visual",
+  "hearing",
+  "cognitive",
+  "multiple",
+  "other",
+] as const;
+
+export type DisabilityStatus = (typeof DISABILITY_STATUSES)[number];
+
+export const DISABILITY_STATUS_OPTIONS: ReadonlyArray<{
+  value: DisabilityStatus;
+  label: string;
+}> = [
+  { value: "none", label: "None" },
+  { value: "physical", label: "Physical" },
+  { value: "visual", label: "Visual" },
+  { value: "hearing", label: "Hearing" },
+  { value: "cognitive", label: "Cognitive" },
+  { value: "multiple", label: "Multiple" },
+  { value: "other", label: "Other" },
+];
+
+// ─── 12. Household income sources (Session 48b — moved from inline) ─
+
+export const HOUSEHOLD_INCOME_SOURCES = [
+  "none",
+  "day_labor",
+  "agriculture",
+  "small_business",
+  "remittance",
+  "mixed",
+  "unknown",
+] as const;
+
+export type HouseholdIncomeSource = (typeof HOUSEHOLD_INCOME_SOURCES)[number];
+
+export const HOUSEHOLD_INCOME_SOURCE_OPTIONS: ReadonlyArray<{
+  value: HouseholdIncomeSource;
+  label: string;
+}> = [
+  { value: "none", label: "None" },
+  { value: "day_labor", label: "Day labor" },
+  { value: "agriculture", label: "Agriculture" },
+  { value: "small_business", label: "Small business" },
+  { value: "remittance", label: "Remittance" },
+  { value: "mixed", label: "Mixed" },
+  { value: "unknown", label: "Unknown" },
 ];

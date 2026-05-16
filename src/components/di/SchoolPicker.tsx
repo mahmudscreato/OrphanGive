@@ -1,18 +1,30 @@
 // Session 48a — M2O school picker with inline-create modal.
+// Session 48b — refactored from native <select> to a typeahead.
 //
-// Renders a select with the DI's school list (pulled from
-// /api/di/schools on mount), plus an "+ Add a new school" link that
-// opens a small modal. On modal submit, POSTs to
-// /api/di/schools/create and auto-selects the new id.
+// Why: the school table grows over time. A 50-row select page becomes
+// unusable past ~30 entries (no search), and even with the inline-add
+// link DIs default to "I can't find it, add a new one" which spawns
+// duplicates. The typeahead surfaces only matches as the DI types,
+// debounced 300ms, with a scrollable popover list.
 //
-// Empty state: when no schools exist yet, the select shows "No
-// schools yet — add one below" and the inline-create link is
-// immediately visible.
+// Behavior:
+//   - Empty input on mount: hitting focus loads the first 20 schools
+//     alphabetically (cheap, gives DIs something to scroll without
+//     forcing them to type).
+//   - Each keystroke after the first character (debounced 300ms)
+//     fetches /api/di/schools?q=<value>&limit=20.
+//   - Up/Down arrows navigate; Enter selects; Escape closes.
+//   - Click outside closes.
+//   - "+ Add a new school" link sits at the popover footer; opens
+//     the existing inline-create modal (unchanged).
+//   - When a value is set, the input displays the school's name
+//     and a tiny "Change" link replaces the popover trigger so DIs
+//     don't accidentally lose their selection by typing.
 
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { Loader2, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { Loader2, Plus, Search, X } from "lucide-react";
 
 interface SchoolOption {
   id: string;
@@ -32,13 +44,14 @@ const SCHOOL_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+const DEBOUNCE_MS = 300;
+
 export interface SchoolPickerProps {
   /** Currently selected school UUID, or empty string if none. */
   value: string;
   onChange: (id: string) => void;
   /** Optional initial label for the currently-selected school (when
-   * editing an existing child whose school is already linked). The
-   * list-fetch fills in any missing labels on mount. */
+   * editing an existing child whose school is already linked). */
   initialSelectedLabel?: string | null;
   disabled?: boolean;
   /** Optional pre-fill for the inline create modal — passes the
@@ -55,87 +68,309 @@ export function SchoolPicker({
   defaultDivision,
   defaultDistrict,
 }: SchoolPickerProps) {
-  const [schools, setSchools] = useState<SchoolOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Resolved labels keyed by school UUID. Seeded from
+  // initialSelectedLabel; grows as we hit the search API and as the
+  // DI selects new rows. The displayed label is derived: when a
+  // value is set, we look it up here; if missing, we kick off an
+  // async lookup that adds to the map (no synchronous setState in
+  // an effect — see the value-lookup effect below).
+  const [labelMap, setLabelMap] = useState<Map<string, string>>(() => {
+    const m = new Map<string, string>();
+    if (value && initialSelectedLabel) m.set(value, initialSelectedLabel);
+    return m;
+  });
+  const selectedLabel = value ? labelMap.get(value) ?? null : null;
+
+  // Search input value (only relevant when editing/searching).
+  const [query, setQuery] = useState("");
+  // Open state of the popover.
+  const [open, setOpen] = useState(false);
+  // Result list + loading flag.
+  const [results, setResults] = useState<SchoolOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  // Keyboard nav highlight index.
+  const [activeIdx, setActiveIdx] = useState<number>(-1);
   const [showModal, setShowModal] = useState(false);
 
-  // Fetch schools on mount.
-  useEffect(() => {
-    let alive = true;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceTimer = useRef<number | null>(null);
+  const lastFetchedQuery = useRef<string>("__nope__"); // de-dup
+
+  // ─── Fetch ────────────────────────────────────────────────────────
+  const fetchSchools = useCallback(async (q: string) => {
+    if (lastFetchedQuery.current === q) return;
+    lastFetchedQuery.current = q;
     setLoading(true);
-    fetch("/api/di/schools?limit=50", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { schools: [] }))
-      .then((body: { schools?: SchoolOption[] }) => {
+    try {
+      const url = q.trim().length > 0
+        ? `/api/di/schools?q=${encodeURIComponent(q)}&limit=20`
+        : "/api/di/schools?limit=20";
+      const res = await fetch(url, { cache: "no-store" });
+      const body = (res.ok ? await res.json() : { schools: [] }) as {
+        schools?: SchoolOption[];
+      };
+      const schools = Array.isArray(body.schools) ? body.schools : [];
+      setResults(schools);
+      // Backfill labelMap with anything we just fetched. Cheap.
+      if (schools.length > 0) {
+        setLabelMap((prev) => {
+          const next = new Map(prev);
+          for (const s of schools) {
+            if (!next.has(s.id)) next.set(s.id, s.name);
+          }
+          return next;
+        });
+      }
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Debounce input → fetch. Also handles the initial-open case:
+  // when `open` first flips true, this effect runs with query="",
+  // schedules a 300ms timer that loads the alphabetical first 20.
+  // The 300ms delay is invisible UX-wise and avoids a synchronous
+  // setState burst inside the effect body.
+  useEffect(() => {
+    if (!open) return;
+    if (debounceTimer.current !== null) {
+      window.clearTimeout(debounceTimer.current);
+    }
+    debounceTimer.current = window.setTimeout(() => {
+      void fetchSchools(query);
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceTimer.current !== null) {
+        window.clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [query, open, fetchSchools]);
+
+  // If parent passes a value with no resolved label, kick off an
+  // async lookup. State updates only happen inside the async IIFE
+  // (never synchronously in the effect body), so this is safe under
+  // the react-hooks/set-state-in-effect rule.
+  useEffect(() => {
+    if (!value) return;
+    if (labelMap.has(value)) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/di/schools?limit=50", { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as { schools?: SchoolOption[] };
         if (!alive) return;
-        setSchools(Array.isArray(body.schools) ? body.schools : []);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setSchools([]);
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
+        const hit = body.schools?.find((s) => s.id === value);
+        if (hit) {
+          setLabelMap((prev) => {
+            if (prev.has(value)) return prev;
+            const next = new Map(prev);
+            next.set(value, hit.name);
+            return next;
+          });
+        }
+      } catch {
+        // silent — selectedLabel stays null, the readout shows the
+        // UUID. Edge case (admin-entered value or stale row).
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [value, labelMap]);
 
-  // If the form has a pre-selected value (edit mode) whose row isn't
-  // in the first page of results, synthesize a placeholder option so
-  // the <select> renders the right label until the full list catches
-  // up.
-  const optionsForSelect: SchoolOption[] = (() => {
-    if (value && !schools.find((s) => s.id === value) && initialSelectedLabel) {
-      return [{ id: value, name: initialSelectedLabel, type: null }, ...schools];
+  // Click-outside to close.
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+        setActiveIdx(-1);
+      }
     }
-    return schools;
-  })();
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  // ─── Selection helpers ────────────────────────────────────────────
+  function pick(s: SchoolOption) {
+    setLabelMap((prev) => {
+      if (prev.get(s.id) === s.name) return prev;
+      const next = new Map(prev);
+      next.set(s.id, s.name);
+      return next;
+    });
+    onChange(s.id);
+    setQuery("");
+    setOpen(false);
+    setActiveIdx(-1);
+  }
+
+  function clearSelection() {
+    onChange("");
+    setQuery("");
+    setOpen(true);
+    // Move focus into the input so the DI can immediately type.
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
 
   function onCreated(school: SchoolOption) {
-    setSchools((arr) => {
-      const next = [...arr];
-      const existing = next.find((s) => s.id === school.id);
-      if (!existing) next.unshift(school);
-      return next.sort((a, b) => a.name.localeCompare(b.name));
-    });
-    onChange(school.id);
+    pick(school);
     setShowModal(false);
   }
 
+  // ─── Keyboard nav ──
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      setActiveIdx((idx) => Math.min(idx + 1, results.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((idx) => Math.max(idx - 1, 0));
+    } else if (e.key === "Enter") {
+      if (open && activeIdx >= 0 && activeIdx < results.length) {
+        e.preventDefault();
+        pick(results[activeIdx]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setActiveIdx(-1);
+    }
+  }
+
+  // ─── Render ────────────────────────────────────────────────────────
   return (
-    <div>
-      <select
-        className={inputClass}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled || loading}
-      >
-        <option value="">
-          {loading
-            ? "Loading schools…"
-            : schools.length === 0
-              ? "No schools yet — add one below"
-              : "Pick a school…"}
-        </option>
-        {optionsForSelect.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-            {s.type ? ` (${SCHOOL_TYPE_LABELS[s.type] ?? s.type})` : ""}
-          </option>
-        ))}
-      </select>
-      <div className="mt-2">
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          disabled={disabled}
-          className="inline-flex items-center gap-1 text-[13px] font-medium text-tangerine-deeper hover:underline disabled:opacity-60"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />
-          Add a new school
-        </button>
-      </div>
+    <div ref={containerRef} className="relative">
+      {value && selectedLabel ? (
+        // SELECTED STATE: pill-style readout with a Change link.
+        <div className="flex items-center gap-3">
+          <div
+            className={`${inputClass} flex items-center justify-between`}
+            aria-label="Selected school"
+          >
+            <span className="truncate text-ink">{selectedLabel}</span>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={disabled}
+              className="ml-3 inline-flex items-center gap-1 text-[12px] font-medium text-tangerine-deeper hover:underline disabled:opacity-60"
+              aria-label="Change school"
+            >
+              <X className="w-3 h-3 stroke-[2]" aria-hidden="true" />
+              Change
+            </button>
+          </div>
+        </div>
+      ) : (
+        // SEARCH STATE: typeahead input + popover.
+        <>
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-soft pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              ref={inputRef}
+              type="text"
+              role="combobox"
+              aria-expanded={open}
+              aria-autocomplete="list"
+              aria-controls="school-picker-listbox"
+              className={`${inputClass} pl-9`}
+              placeholder="Type to search schools…"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (!open) setOpen(true);
+                setActiveIdx(-1);
+              }}
+              onFocus={() => setOpen(true)}
+              onKeyDown={onKeyDown}
+              disabled={disabled}
+            />
+            {loading ? (
+              <Loader2
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-tangerine-deeper animate-spin"
+                aria-hidden="true"
+              />
+            ) : null}
+          </div>
+
+          {open ? (
+            <div
+              id="school-picker-listbox"
+              role="listbox"
+              className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-xl border border-stone-200 bg-white shadow-lg"
+            >
+              {results.length === 0 ? (
+                <div className="px-4 py-3 text-[13.5px] text-ink-soft leading-relaxed">
+                  {loading
+                    ? "Searching…"
+                    : query.trim().length > 0
+                      ? "No schools match. Add a new one below."
+                      : "Start typing to search."}
+                </div>
+              ) : (
+                <ul className="py-1">
+                  {results.map((s, i) => (
+                    <li
+                      key={s.id}
+                      role="option"
+                      aria-selected={i === activeIdx}
+                      // Use onMouseDown so the click fires before the
+                      // input's onBlur/document-click closes the
+                      // popover.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pick(s);
+                      }}
+                      onMouseEnter={() => setActiveIdx(i)}
+                      className={`px-4 py-2 cursor-pointer text-[14.5px] leading-snug ${
+                        i === activeIdx
+                          ? "bg-tangerine-mist/60 text-ink"
+                          : "text-ink hover:bg-tangerine-mist/30"
+                      }`}
+                    >
+                      <span className="font-medium">{s.name}</span>
+                      {s.type ? (
+                        <span className="ml-2 text-[12.5px] text-ink-soft">
+                          {SCHOOL_TYPE_LABELS[s.type] ?? s.type}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="border-t border-stone-200 px-3 py-2 bg-stone-50/60">
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setShowModal(true);
+                    setOpen(false);
+                  }}
+                  disabled={disabled}
+                  className="inline-flex items-center gap-1 text-[13px] font-medium text-tangerine-deeper hover:underline disabled:opacity-60"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2]" aria-hidden="true" />
+                  Add a new school
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
 
       {showModal ? (
         <SchoolCreateModal
@@ -143,6 +378,7 @@ export function SchoolPicker({
           onCreated={onCreated}
           defaultDivision={defaultDivision}
           defaultDistrict={defaultDistrict}
+          prefillName={query.trim()}
         />
       ) : null}
     </div>
@@ -150,19 +386,23 @@ export function SchoolPicker({
 }
 
 // ─── Inline-create modal ───────────────────────────────────────────
+// Session 48b — added prefillName so the modal opens with whatever
+// the DI was just typing in the typeahead. Saves a copy/paste step.
 
 function SchoolCreateModal({
   onClose,
   onCreated,
   defaultDivision,
   defaultDistrict,
+  prefillName,
 }: {
   onClose: () => void;
   onCreated: (school: SchoolOption) => void;
   defaultDivision?: string;
   defaultDistrict?: string;
+  prefillName?: string;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(prefillName ?? "");
   const [type, setType] = useState<string>("school");
   const [bdDivision, setBdDivision] = useState(defaultDivision ?? "");
   const [bdDistrict, setBdDistrict] = useState(defaultDistrict ?? "");

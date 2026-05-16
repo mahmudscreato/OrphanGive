@@ -11,6 +11,7 @@ import {
   Edit3,
   FileBarChart,
   Home,
+  ImagePlus,
   ListChecks,
   Trash2,
   Truck,
@@ -30,6 +31,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_completed_task: ListChecks,
   di_uploaded_photo: Camera,
   di_uploaded_video: Video,
+  // Session 48b — intake-photo lifecycle.
+  di_uploaded_intake_photo: ImagePlus,
+  di_edited_intake_photo: Edit3,
+  di_deleted_intake_photo: Trash2,
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
 };

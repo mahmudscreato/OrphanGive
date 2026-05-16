@@ -38,7 +38,13 @@
 
 import "server-only";
 
-import { createItem, deleteItem, readItems, readUser } from "@directus/sdk";
+import {
+  createItem,
+  deleteItem,
+  readItems,
+  readUser,
+  updateItem,
+} from "@directus/sdk";
 import { directusServer } from "./directus";
 import { getChildEditSnapshot, getDiChildById } from "./di-children";
 
@@ -1137,6 +1143,335 @@ export async function getPendingProposalCountForUser(
       "[di-proposals] getPendingProposalCountForUser failed",
       err instanceof Error ? err.message : err,
     );
+    return 0;
+  }
+}
+
+// ─── Session 48b — draft mode ───────────────────────────────────────
+//
+// Draft mode is the DI form's "save partial progress" feature.
+// Drafts are personal scratch — only the DI who created them can
+// see them, and they don't write to audit_log or notify admin
+// until the DI submits.
+//
+// Storage: same `child_proposal` table, just with status='draft'
+// (which the existing schema enum already includes — Sessions 41-46
+// set the column up that way). When the DI submits a draft, status
+// flips to 'pending' AFTER full validation, audit fires, admin
+// notify fires.
+
+export interface DraftSummary {
+  id: string;
+  proposal_type: ProposalType;
+  target_child: string | null;
+  // Resolved at query time (live child's display_name for UPDATE
+  // drafts; the proposed display_name for CREATE drafts).
+  child_display_name: string | null;
+  proposed_display_name: string | null;
+  date_created: string | null;
+}
+
+/**
+ * List drafts for the DI. Filtered to status='draft' AND
+ * created_by=userId (defence-in-depth alongside the route-level
+ * session check). Sorted newest-first.
+ */
+export async function listDraftsForUser(
+  userId: string,
+): Promise<DraftSummary[]> {
+  let rows: Array<{
+    id: string;
+    proposal_type: string;
+    target_child: string | null;
+    display_name: string | null;
+    date_created: string | null;
+  }> = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("child_proposal" as never, {
+        filter: {
+          _and: [
+            { created_by: { _eq: userId } },
+            { status: { _eq: "draft" } },
+          ],
+        },
+        fields: [
+          "id",
+          "proposal_type",
+          "target_child",
+          "display_name",
+          "date_created",
+        ],
+        sort: ["-date_created"],
+        limit: -1,
+      } as never),
+    )) as unknown as typeof rows | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[di-proposals] listDraftsForUser failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+
+  if (rows.length === 0) return [];
+
+  // Resolve live display_name for UPDATE drafts (the proposal's own
+  // display_name column may be null — drafts often have empty
+  // fields). Single batch read.
+  const targetIds = Array.from(
+    new Set(
+      rows
+        .filter((r) => r.proposal_type === "update" && r.target_child)
+        .map((r) => r.target_child as string),
+    ),
+  );
+  const nameByChildId = new Map<string, string>();
+  if (targetIds.length > 0) {
+    try {
+      const childRows = (await directusServer().request(
+        readItems("child" as never, {
+          filter: { id: { _in: targetIds } },
+          fields: ["id", "display_name"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{ id: string; display_name: string | null }> | undefined;
+      if (Array.isArray(childRows)) {
+        for (const c of childRows) {
+          if (c.display_name?.trim())
+            nameByChildId.set(c.id, c.display_name.trim());
+        }
+      }
+    } catch {
+      // Non-fatal — drafts page falls back to "(child name unavailable)".
+    }
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    proposal_type: r.proposal_type === "create" ? "create" : "update",
+    target_child: r.target_child,
+    child_display_name:
+      r.proposal_type === "update" && r.target_child
+        ? nameByChildId.get(r.target_child) ?? null
+        : null,
+    proposed_display_name:
+      r.proposal_type === "create" ? r.display_name?.trim() ?? null : null,
+    date_created: r.date_created,
+  }));
+}
+
+/**
+ * Read one draft for the DI. Returns the full proposal row (for
+ * pre-filling the form). Returns null if not owned, not found, or
+ * not a draft (so the route can 404 cleanly without leaking
+ * existence of others' drafts).
+ */
+export async function getDraftForUser(
+  draftId: string,
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  if (!draftId) return null;
+  try {
+    const rows = (await directusServer().request(
+      readItems("child_proposal" as never, {
+        filter: {
+          _and: [
+            { id: { _eq: draftId } },
+            { created_by: { _eq: userId } },
+            { status: { _eq: "draft" } },
+          ],
+        },
+        fields: ["*"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<Record<string, unknown>> | undefined;
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (err) {
+    console.warn(
+      "[di-proposals] getDraftForUser failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
+ * Create a new draft proposal. Skips ALL validation (drafts are
+ * partial scratch; the DI may not have figured out half the fields
+ * yet). Status='draft', created_by=userId, target_child set for
+ * UPDATE drafts, null for CREATE drafts.
+ *
+ * Reuses the same flat-column shape as createCreateProposal +
+ * createUpdateProposal but writes only the keys present in `fields`,
+ * with no required-field checks.
+ */
+export async function createDraftProposal(
+  userId: string,
+  input: {
+    operation: "create" | "update";
+    childId?: string;
+    fields: Record<string, unknown>;
+    photoUuid?: string | null;
+  },
+): Promise<{ proposalId: string }> {
+  // For UPDATE drafts, scope-check the target child exists in the
+  // DI's care. We don't enforce required fields, but the child
+  // reference still has to make sense.
+  if (input.operation === "update") {
+    if (!input.childId) {
+      throw new MissingRequiredFieldError("childId");
+    }
+    const current = await getChildEditSnapshot(input.childId, userId);
+    if (!current) throw new OutOfScopeError();
+  }
+
+  // Mirror submission_date ↔ last_visit_date even on drafts so the
+  // pre-fill on resume stays coherent.
+  const fields = mirrorSubmissionDate(input.fields as never) as Record<
+    string,
+    unknown
+  >;
+
+  // Format text[] columns as Postgres array literals (Session 48a
+  // limitation).
+  if (Array.isArray(fields.areas_of_interest)) {
+    fields.areas_of_interest =
+      (fields.areas_of_interest as string[]).length > 0
+        ? toPgTextArrayLiteral(fields.areas_of_interest as string[])
+        : null;
+  }
+
+  const created = (await directusServer().request(
+    createItem("child_proposal" as never, {
+      proposal_type: input.operation,
+      target_child: input.childId ?? null,
+      status: "draft",
+      created_by: userId,
+      date_created: new Date().toISOString(),
+      previous_snapshot: null,
+      ...(input.photoUuid ? { Photo: input.photoUuid } : {}),
+      ...fields,
+    } as never),
+  )) as unknown as { id?: string } | undefined;
+
+  const id = created?.id;
+  if (!id) throw new Error("[di-proposals] createDraftProposal: no id returned");
+  return { proposalId: String(id) };
+}
+
+/**
+ * Update an existing draft. Same skip-validation behavior. Verifies
+ * ownership + status='draft' before writing. Throws OutOfScopeError
+ * if the draft isn't found or isn't owned (collapsed for privacy).
+ */
+export async function updateDraftProposal(
+  userId: string,
+  draftId: string,
+  fields: Record<string, unknown>,
+  photoUuid?: string | null,
+): Promise<void> {
+  // Ownership + status check.
+  const draft = await getDraftForUser(draftId, userId);
+  if (!draft) throw new OutOfScopeError();
+
+  // Same mirror + array-literal handling as create.
+  const f = mirrorSubmissionDate(fields as never) as Record<string, unknown>;
+  if (Array.isArray(f.areas_of_interest)) {
+    f.areas_of_interest =
+      (f.areas_of_interest as string[]).length > 0
+        ? toPgTextArrayLiteral(f.areas_of_interest as string[])
+        : null;
+  }
+
+  await directusServer().request(
+    updateItem("child_proposal" as never, draftId as never, {
+      ...f,
+      ...(photoUuid !== undefined ? { Photo: photoUuid } : {}),
+    } as never),
+  );
+}
+
+/**
+ * Promote a draft to a pending submission. Re-validates the full
+ * shape against the create/update Zod schemas (caller's job — this
+ * helper just flips the status after the route verified everything).
+ *
+ * The route handler is responsible for:
+ *   1. Fetching the draft via getDraftForUser
+ *   2. Building the equivalent CreateProposalInput from the draft
+ *      columns
+ *   3. Validating it against the Zod schema (same path as a fresh
+ *      submit)
+ *   4. Calling this function to flip status + write audit + notify
+ *
+ * Throws OutOfScopeError if the draft isn't owned / isn't a draft.
+ */
+export async function submitDraftProposal(
+  userId: string,
+  draftId: string,
+): Promise<void> {
+  const draft = await getDraftForUser(draftId, userId);
+  if (!draft) throw new OutOfScopeError();
+
+  await directusServer().request(
+    updateItem("child_proposal" as never, draftId as never, {
+      status: "pending",
+      // Same explicit timestamp the createCreateProposal path uses
+      // — keeps published_at null until admin reviews.
+      date_created: new Date().toISOString(),
+    } as never),
+  );
+}
+
+/**
+ * Hard-delete a draft. Allowed only when the row is owned by this
+ * DI AND status='draft'. Returns false if those conditions don't
+ * match (route maps to 404).
+ */
+export async function discardDraftProposal(
+  userId: string,
+  draftId: string,
+): Promise<boolean> {
+  const draft = await getDraftForUser(draftId, userId);
+  if (!draft) return false;
+  try {
+    await directusServer().request(
+      deleteItem("child_proposal" as never, draftId as never),
+    );
+    return true;
+  } catch (err) {
+    console.warn(
+      "[di-proposals] discardDraftProposal failed",
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
+/**
+ * Count drafts for the bell-style indicator next to "Drafts" in the
+ * sidebar nav.
+ */
+export async function getDraftCountForUser(
+  userId: string,
+): Promise<number> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("child_proposal" as never, {
+        filter: {
+          _and: [
+            { created_by: { _eq: userId } },
+            { status: { _eq: "draft" } },
+          ],
+        },
+        fields: ["id"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ id: string }> | undefined;
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch {
     return 0;
   }
 }

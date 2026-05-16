@@ -11,21 +11,48 @@
 // isDivisionAllowedForUser, so the security boundary holds either way.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import { getBdDistricts, getBdDivisions } from "@/lib/di-children";
-import { getAssignedDivisionsForUser } from "@/lib/di-proposals";
+import { getAssignedDivisionsForUser, getDraftForUser } from "@/lib/di-proposals";
 import { ChildForm } from "@/components/di/ChildForm";
 import { AssignedDivisionsEmptyState } from "@/components/di/AssignedDivisionsEmptyState";
 
 export const dynamic = "force-dynamic";
 
-export default async function DiNewChildPage() {
+export default async function DiNewChildPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ draftId?: string }>;
+}) {
   const session = await requireDiUser();
 
   const assignedCodes = await getAssignedDivisionsForUser(session.userId);
   if (assignedCodes.length === 0) {
     return <AssignedDivisionsEmptyState />;
+  }
+
+  // Session 48b — if the URL carries ?draftId=, attempt to load that
+  // draft and pre-fill the form. Two failure modes are silently
+  // ignored (form just renders blank): draft missing/not-owned, or
+  // draft is an UPDATE-type that should be on the edit page (we
+  // redirect there).
+  const sp = await searchParams;
+  const draftIdParam = sp.draftId?.trim() || null;
+  let existingDraft: Record<string, unknown> | null = null;
+  if (draftIdParam) {
+    existingDraft = await getDraftForUser(draftIdParam, session.userId);
+    if (
+      existingDraft &&
+      existingDraft.proposal_type === "update" &&
+      existingDraft.target_child
+    ) {
+      // Wrong page — bounce to edit with the same draftId.
+      redirect(
+        `/di/children/${existingDraft.target_child}/edit?draftId=${draftIdParam}`,
+      );
+    }
   }
 
   // Session 46-fix-2 — also fetch districts for the cascade dropdown.
@@ -65,6 +92,8 @@ export default async function DiNewChildPage() {
         mode="create"
         divisions={divisions}
         districts={districts}
+        draftId={existingDraft ? draftIdParam : null}
+        existingDraft={existingDraft}
       />
     </div>
   );

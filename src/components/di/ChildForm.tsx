@@ -23,14 +23,16 @@
 
 "use client";
 
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
 import type { Route } from "next";
-import { Loader2 } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { PhotoUploadField } from "./PhotoUploadField";
 import { BdDistrictField } from "./BdDistrictField";
 import { SchoolPicker } from "./SchoolPicker";
+import { IntakePhotoGrid } from "./IntakePhotoGrid";
 import type { BdDistrictOption } from "@/lib/di-children";
+import type { IntakePhotoSummary } from "@/lib/di-intake-photos";
 // Session 48a — single source of truth for the new + extended enums.
 import {
   AREA_OF_INTEREST_OPTIONS,
@@ -175,6 +177,27 @@ export interface ChildFormProps {
   divisions: ChildFormDivisionOption[];
   districts: BdDistrictOption[];
   existing?: ChildFormExistingChild;
+  // Session 48b — draft pre-fill. When draftId + existingDraft are
+  // present, the form is in "resume draft" mode:
+  //   - pre-fills from existingDraft (raw child_proposal row) on
+  //     top of `existing` if present
+  //   - amber banner at top
+  //   - Save as draft → PATCH /api/di/proposals/[draftId]
+  //   - Submit → POST /api/di/proposals/[draftId]/submit (which
+  //     re-runs strict validation, then deletes the draft on success)
+  //
+  // When draftId is null (the common case), Save as draft → POST
+  // /api/di/proposals mode=draft (which returns a new id we then
+  // hold for subsequent saves) and Submit → POST mode=submit.
+  draftId?: string | null;
+  existingDraft?: Record<string, unknown> | null;
+  // Session 48b — initial intake photo set, fetched server-side on
+  // the edit page. The IntakePhotoGrid manages its own state after
+  // hydration. In create mode this stays empty; the grid renders a
+  // hint explaining intake photos open up after admin approval
+  // (because child_intake_photo.child is NOT NULL — there's no
+  // child UUID to attach to until then).
+  intakePhotos?: IntakePhotoSummary[];
 }
 
 // ─── Internal form state ────────────────────────────────────────────
@@ -347,6 +370,81 @@ function toggleSetMember(set: Set<string>, value: string): Set<string> {
   return next;
 }
 
+// Session 48b — adapter from a raw child_proposal row (draft) to the
+// ChildFormExistingChild shape stateFromExisting expects. The row
+// uses different column names than the ChildEditSnapshot path:
+//   - `Photo` (raw uuid) instead of `current_photo_uuid`
+//   - `bd_division` / `bd_district` (slug strings) instead of the
+//     `_code` suffixed keys
+//   - everything else is column-name-equivalent
+//
+// `live` is the optional live child snapshot (edit mode); the draft
+// values OVERLAY on top of live so a partial draft still pre-fills
+// the unchanged fields with their current live values. For create
+// mode `live` is undefined — only the draft's own values populate.
+function draftRowToExistingShape(
+  row: Record<string, unknown>,
+  live?: ChildFormExistingChild,
+): ChildFormExistingChild {
+  // Helper that prefers the draft's value, falling back to live, then
+  // null. String values are coerced to "" → null so the form's
+  // text-input pre-fill doesn't show literal "null".
+  const pick = <K extends keyof ChildFormExistingChild>(
+    key: K,
+    rowKey?: string,
+  ): ChildFormExistingChild[K] => {
+    const k = rowKey ?? (key as string);
+    const v = row[k];
+    if (v !== undefined && v !== null) return v as ChildFormExistingChild[K];
+    if (live) return live[key];
+    return null as never;
+  };
+
+  return {
+    id: (row.id as string) ?? live?.id ?? "",
+    display_name: pick("display_name"),
+    gender: pick("gender"),
+    date_of_birth: pick("date_of_birth"),
+    photo_consent: pick("photo_consent"),
+    current_photo_uuid: (row.Photo as string | null) ?? live?.current_photo_uuid ?? null,
+    bd_division_code: pick("bd_division_code", "bd_division"),
+    bd_district_code: pick("bd_district_code", "bd_district"),
+    district_internal: pick("district_internal"),
+    permanent_address: pick("permanent_address"),
+    education_level: pick("education_level"),
+    class_grade: pick("class_grade"),
+    educational_organization: pick("educational_organization"),
+    school_name_raw: pick("school_name_raw"),
+    areas_of_interest: pick("areas_of_interest"),
+    story: pick("story"),
+    support_type: pick("support_type"),
+    monthly_cost: pick("monthly_cost"),
+    priority_support: pick("priority_support"),
+    priority_notes: pick("priority_notes"),
+    blood_group: pick("blood_group"),
+    vaccination_status: pick("vaccination_status"),
+    last_medical_checkup: pick("last_medical_checkup"),
+    disability_status: pick("disability_status"),
+    disability_notes: pick("disability_notes"),
+    parent_loss: pick("parent_loss"),
+    siblings_count: pick("siblings_count"),
+    sibling_position: pick("sibling_position"),
+    siblings_notes: pick("siblings_notes"),
+    household_size: pick("household_size"),
+    household_income_source: pick("household_income_source"),
+    monthly_household_income_bdt: pick("monthly_household_income_bdt"),
+    guardian_relationship: pick("guardian_relationship"),
+    guardian_employment_type: pick("guardian_employment_type"),
+    guardian_employment: pick("guardian_employment"),
+    guardian_phone: pick("guardian_phone"),
+    guardian_phone_alt: pick("guardian_phone_alt"),
+    guardian_summary_internal: pick("guardian_summary_internal"),
+    additional_family_notes: pick("additional_family_notes"),
+    last_visit_date: pick("last_visit_date"),
+    submission_date: pick("submission_date"),
+  };
+}
+
 function calcAge(dob: string): number | null {
   if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
   const birth = new Date(`${dob}T00:00:00Z`);
@@ -365,14 +463,38 @@ export function ChildForm({
   divisions,
   districts,
   existing,
+  draftId: initialDraftId = null,
+  existingDraft = null,
+  intakePhotos = [],
 }: ChildFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [form, setForm] = useState<FormState>(
-    existing ? stateFromExisting(existing) : blankState(),
-  );
+  // Session 48b — initial state honours the precedence:
+  //   1. existingDraft (if resuming a draft) overlaid on `existing`
+  //      for edit-mode drafts, or standalone for create-mode drafts
+  //   2. existing live child snapshot (vanilla edit mode)
+  //   3. blank (vanilla create mode)
+  const [form, setForm] = useState<FormState>(() => {
+    if (existingDraft) {
+      return stateFromExisting(
+        draftRowToExistingShape(existingDraft, existing),
+      );
+    }
+    return existing ? stateFromExisting(existing) : blankState();
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  // Session 48b — draftId becomes mutable component state. Starts
+  // from the URL param (initialDraftId); on first "Save as draft"
+  // from a fresh form it gets populated with the new id, so
+  // subsequent saves PATCH the same draft instead of creating
+  // duplicates.
+  const [draftId, setDraftId] = useState<string | null>(initialDraftId);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(
+    existingDraft ? new Date() : null,
+  );
+  const [draftSavedTick, setDraftSavedTick] = useState(0);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((s) => ({ ...s, [key]: value }));
@@ -600,6 +722,191 @@ export function ChildForm({
     };
   }
 
+  // Session 48b — build the loose draft body. Mirrors the structure
+  // of buildSubmitBody but keeps fields in their raw form state so
+  // the server's draft path can store anything the DI typed without
+  // tripping required-field rules.
+  function buildDraftBody() {
+    const num = (s: string): number | null =>
+      s.trim() === "" ? null : Number(s);
+    const fields: Record<string, unknown> = {
+      // Identity
+      ...(form.display_name.trim()
+        ? { display_name: form.display_name.trim() }
+        : {}),
+      ...(form.gender ? { gender: form.gender } : {}),
+      ...(form.date_of_birth ? { date_of_birth: form.date_of_birth } : {}),
+      photo_consent: form.photo_consent,
+      // Location
+      ...(form.bd_division ? { bd_division: form.bd_division } : {}),
+      ...(form.bd_district ? { bd_district: form.bd_district } : {}),
+      ...(form.district_internal.trim()
+        ? { district_internal: form.district_internal.trim() }
+        : {}),
+      ...(form.permanent_address.trim()
+        ? { permanent_address: form.permanent_address.trim() }
+        : {}),
+      // Education
+      ...(form.education_level
+        ? { education_level: form.education_level }
+        : {}),
+      ...(form.class_grade.trim()
+        ? { class_grade: form.class_grade.trim() }
+        : {}),
+      ...(form.educational_organization
+        ? { educational_organization: form.educational_organization }
+        : {}),
+      ...(form.school_name_raw.trim()
+        ? { school_name_raw: form.school_name_raw.trim() }
+        : {}),
+      ...(form.areas_of_interest.size > 0
+        ? { areas_of_interest: Array.from(form.areas_of_interest) }
+        : {}),
+      // Story
+      ...(form.story.trim() ? { story: form.story.trim() } : {}),
+      // Support
+      ...(form.support_type ? { support_type: form.support_type } : {}),
+      ...(form.monthly_cost.trim()
+        ? { monthly_cost: Number(form.monthly_cost) }
+        : {}),
+      ...(form.priority_support
+        ? { priority_support: form.priority_support }
+        : {}),
+      ...(form.priority_notes.trim()
+        ? { priority_notes: form.priority_notes.trim() }
+        : {}),
+      // Health
+      ...(form.blood_group ? { blood_group: form.blood_group } : {}),
+      ...(form.vaccination_status
+        ? { vaccination_status: form.vaccination_status }
+        : {}),
+      ...(form.last_medical_checkup
+        ? { last_medical_checkup: form.last_medical_checkup }
+        : {}),
+      ...(form.disability_status
+        ? { disability_status: form.disability_status }
+        : {}),
+      ...(form.disability_notes.trim()
+        ? { disability_notes: form.disability_notes.trim() }
+        : {}),
+      // Family
+      ...(form.parent_loss ? { parent_loss: form.parent_loss } : {}),
+      ...(form.siblings_count
+        ? { siblings_count: num(form.siblings_count) }
+        : {}),
+      ...(form.sibling_position
+        ? { sibling_position: num(form.sibling_position) }
+        : {}),
+      ...(form.siblings_notes.trim()
+        ? { siblings_notes: form.siblings_notes.trim() }
+        : {}),
+      ...(form.household_size
+        ? { household_size: num(form.household_size) }
+        : {}),
+      // Socioeconomic
+      ...(form.household_income_source
+        ? { household_income_source: form.household_income_source }
+        : {}),
+      ...(form.monthly_household_income_bdt
+        ? {
+            monthly_household_income_bdt: num(
+              form.monthly_household_income_bdt,
+            ),
+          }
+        : {}),
+      // Guardian
+      ...(form.guardian_relationship
+        ? { guardian_relationship: form.guardian_relationship }
+        : {}),
+      ...(form.guardian_employment_type
+        ? { guardian_employment_type: form.guardian_employment_type }
+        : {}),
+      ...(form.guardian_employment.trim()
+        ? { guardian_employment: form.guardian_employment.trim() }
+        : {}),
+      ...(form.guardian_phone.trim()
+        ? { guardian_phone: form.guardian_phone.trim() }
+        : {}),
+      ...(form.guardian_phone_alt.trim()
+        ? { guardian_phone_alt: form.guardian_phone_alt.trim() }
+        : {}),
+      ...(form.guardian_summary_internal.trim()
+        ? { guardian_summary_internal: form.guardian_summary_internal.trim() }
+        : {}),
+      ...(form.additional_family_notes.trim()
+        ? { additional_family_notes: form.additional_family_notes.trim() }
+        : {}),
+      // Submission date
+      ...(form.submission_date
+        ? { submission_date: form.submission_date }
+        : {}),
+    };
+
+    return {
+      mode: "draft" as const,
+      operation: mode,
+      ...(mode === "edit" && existing ? { childId: existing.id } : {}),
+      fields,
+      photoUuid: form.photo_uuid,
+    };
+  }
+
+  // Session 48b — Save as draft handler. Either creates a fresh
+  // draft (POST mode=draft) or updates an existing one (PATCH
+  // /[draftId]). Stays on the page; sets a "saved" toast via
+  // draftSavedAt + draftSavedTick.
+  async function onSaveDraft() {
+    setServerError(null);
+    setSavingDraft(true);
+    try {
+      if (draftId) {
+        // Update existing draft via PATCH.
+        const draftBody = buildDraftBody();
+        const res = await fetch(`/api/di/proposals/${draftId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fields: draftBody.fields,
+            photoUuid: draftBody.photoUuid,
+          }),
+        });
+        if (!res.ok) {
+          setServerError("Couldn't save your draft. Try again in a moment.");
+          return;
+        }
+      } else {
+        // Fresh draft via POST mode=draft.
+        const res = await fetch("/api/di/proposals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildDraftBody()),
+        });
+        if (!res.ok) {
+          setServerError("Couldn't save your draft. Try again in a moment.");
+          return;
+        }
+        const ok = (await res.json()) as { proposalId?: string };
+        if (ok.proposalId) {
+          setDraftId(ok.proposalId);
+          // Update URL so a page refresh resumes the draft cleanly
+          // (no router.push — that would unmount the form and lose
+          // local state). history.replaceState is the right tool.
+          if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.set("draftId", ok.proposalId);
+            window.history.replaceState(null, "", url.toString());
+          }
+        }
+      }
+      setDraftSavedAt(new Date());
+      setDraftSavedTick((t) => t + 1);
+    } catch {
+      setServerError("Network issue. Please try again.");
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
   function onSubmit(ev: React.FormEvent) {
     ev.preventDefault();
     setServerError(null);
@@ -611,12 +918,21 @@ export function ChildForm({
 
     startTransition(async () => {
       try {
-        const body = buildSubmitBody();
-        const res = await fetch("/api/di/proposals", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+        // Session 48b — submit-from-draft routes through the
+        // /[draftId]/submit endpoint which re-runs strict validation
+        // and discards the draft on success. Vanilla submit posts
+        // straight to the existing /api/di/proposals endpoint.
+        const url = draftId
+          ? `/api/di/proposals/${draftId}/submit`
+          : "/api/di/proposals";
+        const init: RequestInit = draftId
+          ? { method: "POST" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(buildSubmitBody()),
+            };
+        const res = await fetch(url, init);
 
         if (!res.ok) {
           const errBody = (await res.json().catch(() => ({}))) as {
@@ -692,6 +1008,36 @@ export function ChildForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-5">
+      {/* Session 48b — draft-mode banner. Only renders when the form
+          is bound to a draft (initial ?draftId= or after first
+          Save-as-draft creates one). Uses native amber styling per
+          the visual brief; relative-time string updates whenever
+          draftSavedTick bumps (tick used as a force-refresh handle). */}
+      {draftId ? (
+        <div
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3"
+          role="status"
+        >
+          <Save
+            className="w-4 h-4 text-amber-700 stroke-[1.75] mt-0.5 shrink-0"
+            aria-hidden="true"
+          />
+          <div className="flex-1 min-w-0 text-[13.5px] text-amber-900 leading-snug">
+            <span className="font-medium">Editing draft</span>
+            {draftSavedAt ? (
+              <span className="text-amber-800/80">
+                {" — last saved "}
+                <DraftSavedAt at={draftSavedAt} tick={draftSavedTick} />
+              </span>
+            ) : (
+              <span className="text-amber-800/80">
+                {" — not yet saved this session"}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {/* Section 1 — Identity */}
       <Section title="Identity">
         <Field>
@@ -1021,6 +1367,25 @@ export function ChildForm({
           </p>
           {errors.story ? <p className={errorClass}>{errors.story}</p> : null}
         </Field>
+      </Section>
+
+      {/* Section 4b — Intake photos (Session 48b).
+          Onboarding evidence photos. Lives between Story and
+          Support needed because reviewers want the visual context
+          right after the donor-facing narrative. In create mode the
+          grid renders a hint card explaining intake photos open up
+          after admin approval (the child_intake_photo.child column
+          is NOT NULL — no child UUID to attach to until then). */}
+      <Section title="Intake photos">
+        <p className="text-[13px] text-ink-soft mb-3 leading-relaxed">
+          Add 3–5 photos from your initial visit so admin can verify
+          the profile. These are kept internal — donors never see
+          them.
+        </p>
+        <IntakePhotoGrid
+          childId={existing?.id ?? null}
+          initial={intakePhotos}
+        />
       </Section>
 
       {/* Section 5 — Support needed (Session 48a renamed from
@@ -1580,7 +1945,12 @@ export function ChildForm({
         </div>
       ) : null}
 
-      {/* Submit */}
+      {/* Submit + Save as draft (Session 48b).
+          Layout: on mobile, the buttons stack column-reverse so Submit
+          is at the bottom (closest to the user's thumb on tap), Save
+          as draft sits above it, Cancel above that. On desktop the
+          row reads Cancel · Save draft · Submit left-to-right with
+          Submit as the rightmost primary action. */}
       <div className="flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-3 pt-2">
         <a
           href={mode === "edit" ? `/di/children/${existing!.id}` : "/di/children"}
@@ -1589,8 +1959,25 @@ export function ChildForm({
           Cancel
         </a>
         <button
+          type="button"
+          onClick={() => void onSaveDraft()}
+          disabled={savingDraft || pending}
+          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full border border-stone-300 text-stone-700 bg-white font-medium text-[14.5px] hover:bg-stone-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+        >
+          {savingDraft ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Save className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+          )}
+          {savingDraft
+            ? "Saving…"
+            : draftId
+              ? "Save draft"
+              : "Save as draft"}
+        </button>
+        <button
           type="submit"
-          disabled={pending}
+          disabled={pending || savingDraft}
           className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-tangerine text-white font-medium text-[14.5px] hover:bg-tangerine-deep disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
         >
           {pending ? (
@@ -1633,6 +2020,40 @@ function FieldRow({ children }: { children: React.ReactNode }) {
 
 function Field({ children }: { children: React.ReactNode }) {
   return <div>{children}</div>;
+}
+
+// Session 48b — relative time for the "Editing draft — last saved Xm
+// ago" banner. Re-renders every 30s (and whenever `tick` bumps from
+// a fresh save) so the relative string stays roughly fresh. Tiny
+// component so the banner doesn't have to know about the timer.
+function DraftSavedAt({ at, tick }: { at: Date; tick: number }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    // Re-render every 30s while the banner is mounted.
+    const id = setInterval(() => force((v) => v + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // tick is intentionally consumed in the render path (referenced
+  // below) so a parent-driven save also forces a re-render.
+  void tick;
+  return <>{relativeTimeAgo(at)}</>;
+}
+
+function relativeTimeAgo(d: Date): string {
+  const ms = Date.now() - d.getTime();
+  const sec = Math.round(ms / 1000);
+  if (sec < 30) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
 }
 
 // Session 48a — Tier 3 visual treatment. Wraps a field so DI sees an
