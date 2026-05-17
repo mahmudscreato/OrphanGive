@@ -19,6 +19,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getDirectusSession } from "@/lib/di-auth";
 import {
+  createDraftProposal,
   createProposal,
   DivisionNotAllowedError,
   InvalidValueError,
@@ -32,16 +33,23 @@ import {
 import { recordAuditEvent } from "@/lib/di-audit";
 import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 // Session 48a — single source of truth for the new + extended enums.
-// The other inline enums (SUPPORT_TYPES, BLOOD_GROUPS, etc.) stay
-// inline below; consolidating them here is purely refactoring,
-// flagged for follow-up.
+// Session 48b — completed the consolidation: the 6 enums that
+// previously lived inline below (SUPPORT_TYPES, GENDERS, BLOOD_GROUPS,
+// VACCINATION_STATUSES, DISABILITY_STATUSES, HOUSEHOLD_INCOME_SOURCES)
+// are now imported from form-constants too. One place to edit.
 import {
   AREAS_OF_INTEREST,
+  BLOOD_GROUPS,
+  DISABILITY_STATUSES,
   EDUCATION_LEVELS,
+  GENDERS,
   GUARDIAN_EMPLOYMENT_TYPES,
   GUARDIAN_RELATIONSHIPS as GUARDIAN_RELATIONSHIPS_EXTENDED,
+  HOUSEHOLD_INCOME_SOURCES,
   PARENT_LOSS,
   PRIORITY_SUPPORT,
+  SUPPORT_TYPES,
+  VACCINATION_STATUSES,
 } from "@/lib/form-constants";
 
 export const dynamic = "force-dynamic";
@@ -89,50 +97,11 @@ export async function GET(req: NextRequest) {
 // Number fields cap at 1M (BDT income / cost) or 30 (siblings) per
 // human-realistic ranges.
 
-const SUPPORT_TYPES = [
-  "education",
-  "food",
-  "healthcare",
-  "clothing",
-  "general_care",
-  "other",
-] as const;
-const GENDERS = ["male", "female"] as const;
-const BLOOD_GROUPS = [
-  "A+",
-  "A-",
-  "B+",
-  "B-",
-  "AB+",
-  "AB-",
-  "O+",
-  "O-",
-  "unknown",
-] as const;
-const VACCINATION_STATUSES = [
-  "up_to_date",
-  "partial",
-  "unknown",
-  "not_started",
-] as const;
-const DISABILITY_STATUSES = [
-  "none",
-  "physical",
-  "visual",
-  "hearing",
-  "cognitive",
-  "multiple",
-  "other",
-] as const;
-const HOUSEHOLD_INCOME_SOURCES = [
-  "none",
-  "day_labor",
-  "agriculture",
-  "small_business",
-  "remittance",
-  "mixed",
-  "unknown",
-] as const;
+// Session 48b — all six tier-1 enums (SUPPORT_TYPES, GENDERS,
+// BLOOD_GROUPS, VACCINATION_STATUSES, DISABILITY_STATUSES,
+// HOUSEHOLD_INCOME_SOURCES) now live in @/lib/form-constants.
+// Imports above; nothing inline here anymore.
+//
 // Session 48a — replaces the inline enum with the shared constant
 // (which now includes father + mother). Aliased to keep the local
 // name unchanged across the rest of this file.
@@ -287,6 +256,26 @@ const createProposalBodySchema = z.discriminatedUnion("operation", [
   createBodySchema,
 ]);
 
+// Session 48b — draft body schema. EVERYTHING optional except the
+// operation discriminator + (for update) childId. Drafts are partial
+// scratch — DI shouldn't have to fill any specific subset to save
+// progress.
+const draftBodySchema = z
+  .object({
+    operation: z.enum(["create", "update"]),
+    childId: z.string().uuid().optional(),
+    // Use a loose record so any subset of editable/creatable fields
+    // is accepted. The data layer's createDraftProposal handles
+    // shape coercion + the text[] / submission_date mirror.
+    fields: z.record(z.string(), z.unknown()).default({}),
+    photoUuid: z.string().min(8).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (v) => v.operation !== "update" || !!v.childId,
+    { message: "childId required for update drafts", path: ["childId"] },
+  );
+
 export async function POST(req: NextRequest) {
   const session = await getDirectusSession();
   if (!session) {
@@ -298,6 +287,49 @@ export async function POST(req: NextRequest) {
     json = await req.json();
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  }
+
+  // Session 48b — `mode=draft` routes to the loose-validation
+  // draft path; default / `mode=submit` keeps the strict-validation
+  // submit path that audits + notifies admin.
+  const mode =
+    typeof (json as { mode?: unknown })?.mode === "string"
+      ? (json as { mode: string }).mode
+      : "submit";
+
+  if (mode === "draft") {
+    const parsedDraft = draftBodySchema.safeParse(json);
+    if (!parsedDraft.success) {
+      return NextResponse.json(
+        {
+          error: "bad_request",
+          issues: parsedDraft.error.issues.map((i) => ({
+            path: i.path.join("."),
+            message: i.message,
+          })),
+        },
+        { status: 400 },
+      );
+    }
+    try {
+      const { proposalId } = await createDraftProposal(session.userId, {
+        operation: parsedDraft.data.operation,
+        childId: parsedDraft.data.childId,
+        fields: parsedDraft.data.fields,
+        photoUuid: parsedDraft.data.photoUuid ?? null,
+      });
+      // No audit, no notify — drafts are personal scratch.
+      return NextResponse.json({ proposalId, mode: "draft" });
+    } catch (err) {
+      if (err instanceof OutOfScopeError) {
+        return NextResponse.json({ error: "not_found" }, { status: 404 });
+      }
+      console.error(
+        "[/api/di/proposals POST mode=draft] server_error",
+        err instanceof Error ? err.message : err,
+      );
+      return NextResponse.json({ error: "server_error" }, { status: 500 });
+    }
   }
 
   const parsed = createProposalBodySchema.safeParse(json);

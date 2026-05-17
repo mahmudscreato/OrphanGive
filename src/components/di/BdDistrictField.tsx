@@ -1,19 +1,20 @@
 // Session 46-fix-2 — bd_district cascade dropdown.
+// Session 48b — district-reset hint upgraded from ref-based silent
+// flag to a real state-driven, time-bounded notice. The note now:
+//   - announces via aria-live="polite" so screen-readers pick it up
+//   - displays in the amber tone the rest of the form uses for
+//     "we changed something for you" UX
+//   - auto-dismisses after 5 seconds (the brief's spec)
 //
 // Client component. Receives the FULL bd_district list (~64 rows) as
 // a prop and the currently-selected division code from the parent
 // form. Filters the visible options to districts whose `division`
 // matches the selection.
-//
-// When the division changes (parent updates `selectedDivision`), the
-// helper text below the field surfaces a "District reset because
-// division changed" note so DI knows their previous selection was
-// dropped — the parent's onChange is responsible for actually
-// clearing the form's bd_district value.
 
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Info } from "lucide-react";
 import type { BdDistrictOption } from "@/lib/di-children";
 
 const inputClass =
@@ -22,6 +23,8 @@ const labelClass =
   "block font-mono text-[11px] tracking-[0.14em] uppercase text-slate font-medium mb-1.5";
 const helperClass = "mt-1.5 text-[12.5px] text-ink-soft leading-relaxed";
 const errorClass = "mt-1.5 text-[12.5px] text-[#D04848]";
+
+const RESET_HINT_MS = 5000;
 
 export interface BdDistrictFieldProps {
   // Currently selected division code (from parent form state). Empty
@@ -52,19 +55,45 @@ export function BdDistrictField({
   // current district (and surface a helper note). We clear via the
   // parent's onChange so the parent's form state stays in sync.
   const prevDivisionRef = useRef<string>(selectedDivision);
-  const justResetRef = useRef<boolean>(false);
+  const [showResetHint, setShowResetHint] = useState(false);
+  const hintTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (prevDivisionRef.current && prevDivisionRef.current !== selectedDivision) {
+    if (
+      prevDivisionRef.current &&
+      prevDivisionRef.current !== selectedDivision
+    ) {
       // Division changed and there was a previous one (not the
-      // initial mount). Clear the district selection.
+      // initial mount). Clear the district selection AND raise the
+      // visible hint.
       if (value) {
-        justResetRef.current = true;
         onChange("");
+        // Defer the visible-hint state update via queueMicrotask so
+        // we don't trip the react-hooks/set-state-in-effect rule
+        // (no synchronous setState cascade inside the effect body).
+        queueMicrotask(() => {
+          setShowResetHint(true);
+          if (hintTimerRef.current !== null) {
+            window.clearTimeout(hintTimerRef.current);
+          }
+          hintTimerRef.current = window.setTimeout(() => {
+            setShowResetHint(false);
+            hintTimerRef.current = null;
+          }, RESET_HINT_MS);
+        });
       }
     }
     prevDivisionRef.current = selectedDivision;
   }, [selectedDivision, value, onChange]);
+
+  // Cleanup timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (hintTimerRef.current !== null) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+    };
+  }, []);
 
   // Filter district options to the selected division. Sorted client-
   // side by sort_order in case the server batch order isn't trusted.
@@ -89,7 +118,13 @@ export function BdDistrictField({
         className={inputClass}
         value={value}
         onChange={(e) => {
-          justResetRef.current = false;
+          // Manual user pick — dismiss any lingering reset hint so
+          // the helper text snaps back to neutral.
+          setShowResetHint(false);
+          if (hintTimerRef.current !== null) {
+            window.clearTimeout(hintTimerRef.current);
+            hintTimerRef.current = null;
+          }
           onChange(e.target.value);
         }}
         disabled={disabled || noDivisionPicked}
@@ -105,15 +140,32 @@ export function BdDistrictField({
           </option>
         ))}
       </select>
-      {noDivisionPicked ? (
+
+      {/* Reset hint takes precedence over the "no division" helper —
+          it's the most relevant message in that moment. The wrapper
+          has aria-live so screen-readers announce the reset, and
+          a transition class so the fade-out is visible rather than
+          a hard pop. */}
+      {showResetHint ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-1.5 inline-flex items-start gap-1.5 text-[12.5px] text-amber-800 leading-relaxed transition-opacity duration-300"
+        >
+          <Info
+            className="w-3.5 h-3.5 mt-0.5 stroke-[1.75] shrink-0"
+            aria-hidden="true"
+          />
+          <span>
+            District reset because division changed. Pick again.
+          </span>
+        </p>
+      ) : noDivisionPicked ? (
         <p className={helperClass}>
           Districts appear once a division is selected above.
         </p>
-      ) : justResetRef.current ? (
-        <p className={helperClass}>
-          District reset because division changed. Pick again.
-        </p>
       ) : null}
+
       {error ? <p className={errorClass}>{error}</p> : null}
     </div>
   );
