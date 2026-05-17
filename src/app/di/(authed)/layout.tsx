@@ -12,6 +12,7 @@
 // read from the incoming request.
 
 import { requireDiUser } from "@/lib/di-auth";
+import { getDraftCountForUser } from "@/lib/di-proposals";
 import { DiBottomNav } from "@/components/di/DiBottomNav";
 import { DiHeader } from "@/components/di/DiHeader";
 import { DiSidebar } from "@/components/di/DiSidebar";
@@ -23,7 +24,12 @@ export default async function DiAuthedLayout({
   children: React.ReactNode;
 }) {
   // Redirects to /di/login if not authenticated as a Data Inputter.
-  await requireDiUser();
+  const session = await requireDiUser();
+  // Session 52d — draft count for the Drafts nav badge. Fetched
+  // once per layout render. getDraftCountForUser returns 0 on
+  // error (defensive), so any read failure just hides the badge
+  // without breaking the nav.
+  const draftCount = await getDraftCountForUser(session.userId);
 
   return (
     <div className="bg-cream min-h-screen text-ink">
@@ -32,7 +38,7 @@ export default async function DiAuthedLayout({
       <DiHeader />
       {/* Desktop-only sidebar (240px wide, fixed left). On desktop
           we offset main by 240px to avoid the sidebar's column. */}
-      <DiSidebar />
+      <DiSidebar draftCount={draftCount} />
       {/* Main content area. pb-24 on mobile leaves room for the fixed
           bottom nav (56px min per tab + iOS Home-Indicator safe-area
           ~34px on PWA install). */}
@@ -44,7 +50,7 @@ export default async function DiAuthedLayout({
         {children}
       </main>
       {/* Mobile-only bottom nav */}
-      <DiBottomNav />
+      <DiBottomNav draftCount={draftCount} />
     </div>
   );
 }

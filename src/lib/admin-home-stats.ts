@@ -21,7 +21,7 @@ import "server-only";
 
 import { readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
-import { DOCUMENT_PENDING_STATUS_VALUES } from "./admin-documents";
+import { countPendingDocuments } from "./admin-documents";
 
 async function safeCount(
   collection: string,
@@ -65,14 +65,13 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     safeCount("child_moment", { status: { _eq: "pending" } }),
     safeCount("child_intake_photo", { status: { _eq: "pending" } }),
     safeCount("aid_delivery", { status: { _eq: "pending" } }),
-    // Documents: imports DOCUMENT_PENDING_STATUS_VALUES from
-    // admin-documents (Session 52c — single source of truth for
-    // legacy + new vocabulary mapping; eliminates the "tile says 1
-    // pending, queue shows empty" divergence that bit Mahmud in
-    // 52b smoke testing).
-    safeCount("child_document", {
-      status: { _in: [...DOCUMENT_PENDING_STATUS_VALUES] },
-    }),
+    // Documents: Session 52d — delegate to countPendingDocuments
+    // (the single read path also used by the queue list page
+    // header) so divergence is impossible. 52c had separate
+    // identical-looking queries that still produced a smoke-test
+    // mismatch (home=9, queue=0); reusing the function eliminates
+    // any drift.
+    countPendingDocuments(),
   ]);
 
   return {

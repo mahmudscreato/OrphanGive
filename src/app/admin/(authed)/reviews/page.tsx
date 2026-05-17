@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ChevronRight, Camera, FileText, ImagePlus } from "lucide-react";
 import { directusServer } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
-import { DOCUMENT_PENDING_STATUS_VALUES } from "@/lib/admin-documents";
+import { countPendingDocuments } from "@/lib/admin-documents";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +36,10 @@ async function safeCount(
 
 export default async function AdminReviewsIndexPage() {
   const [pendingDocs, pendingIntake, pendingMoments] = await Promise.all([
-    // Documents — Session 52c imports the shared pending values
-    // from admin-documents so this counter, the home tile counter
-    // (admin-home-stats), and the queue list filter all agree.
-    safeCount("child_document", {
-      status: { _in: [...DOCUMENT_PENDING_STATUS_VALUES] },
-    }),
+    // Documents — Session 52d delegates to the single
+    // countPendingDocuments function in admin-documents so home
+    // tile + queue list + this index page all return the same N.
+    countPendingDocuments(),
     safeCount("child_intake_photo", { status: { _eq: "pending" } }),
     safeCount("child_moment", { status: { _eq: "pending" } }),
   ]);

@@ -186,7 +186,21 @@ function ThumbnailTile({
   // grabs the blurred variant (downscaled to 240×240, blur radius
   // 25, JPEG quality 60). Saving the locked variant is intentional
   // — it has no identifying detail to leak.
-  const lockedUrl = `${photo.photoUrl}?key=intake-locked`;
+  //
+  // Session 52d defensive belt-and-suspenders: we pass explicit
+  // size + format params ALONGSIDE the preset key. If the preset
+  // didn't register (which happened in 52c — see migrations/
+  // session-52d/001-register-fields.sh header for the script
+  // robustness story), Directus falls back to applying the
+  // explicit query params and still serves a small downscaled
+  // JPEG. The image won't be blurred without the preset, but it
+  // will at least be small (240px) so the right-click save grabs
+  // less identifiable data while the preset gets fixed. With the
+  // preset registered (the normal case post-52d), Directus's
+  // preset definitions take precedence over individual query
+  // params and the blur is applied.
+  const lockedUrl =
+    `${photo.photoUrl}?key=intake-locked&width=240&height=240&fit=contain&quality=60&format=jpg`;
   return (
     <BlurredPhotoModalTrigger
       photoUrl={lockedUrl}

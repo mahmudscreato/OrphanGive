@@ -114,6 +114,10 @@ function getAdminToken(): string {
 export async function uploadPhotoToDirectus(
   file: File,
   uploadedByUserId: string,
+  // Session 52d — admin direct uploads land via the same Directus
+  // endpoint; the title prefix changes so file titles read
+  // "Admin upload by …" rather than the DI default.
+  opts?: { titlePrefix?: string },
 ): Promise<{ fileUuid: string }> {
   // Type / size gates.
   if (!ALLOWED_TYPES.has(file.type)) {
@@ -129,9 +133,10 @@ export async function uploadPhotoToDirectus(
   // Optional metadata fields go BEFORE the file so Directus's
   // multipart parser pulls them into the file row's attributes.
   if (folderId) form.append("folder", folderId);
+  const titlePrefix = opts?.titlePrefix?.trim() || "DI upload by";
   form.append(
     "title",
-    `DI upload by ${uploadedByUserId} on ${new Date().toISOString()}`,
+    `${titlePrefix} ${uploadedByUserId} on ${new Date().toISOString()}`,
   );
   // The file field MUST be named "file" — Directus's REST contract.
   form.append("file", file);
@@ -275,6 +280,8 @@ export async function uploadVideoToDirectus(
 export async function uploadDocumentToDirectus(
   file: File,
   uploadedByUserId: string,
+  // Session 52d — see uploadPhotoToDirectus for rationale.
+  opts?: { titlePrefix?: string },
 ): Promise<{ fileUuid: string }> {
   if (!ALLOWED_DOCUMENT_TYPES.has(file.type)) {
     throw new InvalidFileTypeError(file.type);
@@ -287,9 +294,10 @@ export async function uploadDocumentToDirectus(
 
   const form = new FormData();
   if (folderId) form.append("folder", folderId);
+  const titlePrefix = opts?.titlePrefix?.trim() || "DI document upload by";
   form.append(
     "title",
-    `DI document upload by ${uploadedByUserId} on ${new Date().toISOString()}`,
+    `${titlePrefix} ${uploadedByUserId} on ${new Date().toISOString()}`,
   );
   form.append("file", file);
 

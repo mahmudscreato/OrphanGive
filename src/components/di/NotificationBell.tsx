@@ -42,6 +42,9 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_rejected_intake_photo: XCircle,
   admin_approved_moment: CheckCircle2,
   admin_rejected_moment: XCircle,
+  // Session 52d — post-approval removes.
+  admin_removed_approved_document: XCircle,
+  admin_removed_approved_intake_photo: XCircle,
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
   admin_verified_delivery: Truck,

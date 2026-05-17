@@ -425,31 +425,151 @@ export async function rejectIntakePhoto(
  * (FK ON DELETE RESTRICT prevents stranding); orphan-file sweep
  * handles cleanup separately.
  */
-export async function removeIntakePhoto(
-  photoId: string,
-  adminUserId: string,
-): Promise<{ photoId: string; childId: string | null; uploaderId: string | null }> {
-  const row = await readPhotoRow(photoId);
-  if (row.status !== "pending") {
-    throw new InvalidStatusError(
-      `Can only remove pending intake photos (current: ${row.status}).`,
-    );
+/**
+ * Session 52d — admin direct upload of an intake photo. Lands as
+ * `status='approved'` immediately (no review queue self-loop —
+ * admin doesn't need to review themselves) with `uploaded_by` set
+ * to the admin user. Used on `/admin/reviews/intake-photos/[childId]`
+ * when admin needs to add photos a DI never uploaded (e.g., site
+ * visit photos taken by admin staff directly).
+ *
+ * Pre-conditions: the `photoUuid` must be a `directus_files` row
+ * already uploaded via the existing `uploadPhotoToDirectus` helper
+ * (we don't re-upload here; this just registers the row).
+ *
+ * `displayOrder` defaults to (max existing display_order + 1) so
+ * the new photo appears at the end of the grid.
+ */
+export async function uploadDirectIntakePhoto(input: {
+  adminUserId: string;
+  childId: string;
+  photoUuid: string;
+  caption?: string | null;
+  displayOrder?: number | null;
+}): Promise<{ photoId: string; childId: string }> {
+  const { adminUserId, childId, photoUuid } = input;
+  if (!adminUserId || !childId || !photoUuid) {
+    throw new InvalidStatusError("missing required fields");
   }
 
-  await directusServer().request(
-    deleteItem("child_intake_photo" as never, photoId as never),
-  );
+  // Compute default displayOrder if omitted: max existing + 1.
+  let resolvedOrder = input.displayOrder ?? null;
+  if (resolvedOrder === null || !Number.isFinite(resolvedOrder)) {
+    try {
+      const rows = (await directusServer().request(
+        readItems("child_intake_photo" as never, {
+          filter: { child: { _eq: childId } },
+          fields: ["display_order"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{ display_order: number | null }> | undefined;
+      const maxOrder =
+        Array.isArray(rows) && rows.length > 0
+          ? Math.max(
+              ...rows.map((r) =>
+                typeof r.display_order === "number" ? r.display_order : 0,
+              ),
+            )
+          : -1;
+      resolvedOrder = maxOrder + 1;
+    } catch {
+      resolvedOrder = 0;
+    }
+  }
 
+  const created = (await directusServer().request(
+    createItem("child_intake_photo" as never, {
+      child: childId,
+      photo: photoUuid,
+      caption: input.caption?.trim() || null,
+      display_order: Math.max(0, Math.round(resolvedOrder)),
+      // Admin uploads land approved immediately — they're authoritative.
+      status: "approved",
+      uploaded_by: adminUserId,
+      reviewed_by: adminUserId,
+      reviewed_at: new Date().toISOString(),
+    } as never),
+  )) as unknown as { id?: string } | undefined;
+
+  const id = created?.id;
+  if (!id) {
+    throw new Error("[admin-intake-photos] uploadDirectIntakePhoto: no id returned");
+  }
+
+  // Best-effort audit. Failure swallowed.
   try {
     await directusServer().request(
       createItem("audit_log" as never, {
         timestamp: new Date().toISOString(),
         actor: adminUserId,
         actor_role: "admin",
-        action: "admin_removed_intake_photo",
+        action: "admin_uploaded_intake_photo",
+        collection: "child_intake_photo",
+        record_id: id,
+        metadata: { childId, photoUuid },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-intake-photos] upload audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return { photoId: String(id), childId };
+}
+
+export async function removeIntakePhoto(
+  photoId: string,
+  adminUserId: string,
+  // Session 52d — optional reason, REQUIRED at the route layer
+  // when removing an already-approved row. Surfaces in DI
+  // notification + audit metadata.
+  reason?: string | null,
+): Promise<{
+  photoId: string;
+  childId: string | null;
+  uploaderId: string | null;
+  wasStatus: IntakePhotoStatus;
+}> {
+  const row = await readPhotoRow(photoId);
+  const previousStatus = (
+    row.status === "pending" ||
+    row.status === "approved" ||
+    row.status === "rejected" ||
+    row.status === "archived"
+      ? row.status
+      : "pending"
+  ) as IntakePhotoStatus;
+
+  // Session 52d — admin can remove at any status. The pending vs
+  // post-approval distinction lives in the audit action + (caller's)
+  // notification choice.
+
+  await directusServer().request(
+    deleteItem("child_intake_photo" as never, photoId as never),
+  );
+
+  const auditAction =
+    previousStatus === "approved"
+      ? "admin_removed_approved_intake_photo"
+      : "admin_removed_intake_photo";
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: auditAction,
         collection: "child_intake_photo",
         record_id: photoId,
-        metadata: { ...(row.child ? { childId: row.child } : {}) },
+        metadata: {
+          ...(row.child ? { childId: row.child } : {}),
+          previousStatus,
+          ...(reason && reason.trim().length > 0
+            ? { reason: reason.trim() }
+            : {}),
+        },
       } as never),
     );
   } catch (err) {
@@ -463,5 +583,6 @@ export async function removeIntakePhoto(
     photoId,
     childId: row.child ?? null,
     uploaderId: row.uploaded_by ?? null,
+    wasStatus: previousStatus,
   };
 }

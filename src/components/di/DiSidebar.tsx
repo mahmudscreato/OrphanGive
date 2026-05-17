@@ -16,16 +16,41 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Home, Users, ListTodo, Inbox, User, LogOut } from "lucide-react";
+import {
+  Home,
+  Users,
+  ListTodo,
+  Inbox,
+  User,
+  LogOut,
+  FileEdit,
+} from "lucide-react";
 // Session 48a — bell moved to DiTopBar in the main content area;
 // no longer rendered in the sidebar.
 
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
-const NAV_ITEMS = [
+// Session 52d — Drafts nav entry inserted between Children and
+// Tasks. The (authed) layout passes `draftCount` so the badge
+// reflects current state without a client roundtrip.
+const NAV_ITEMS: ReadonlyArray<{
+  href: string;
+  label: string;
+  icon: typeof Home;
+  exact: boolean;
+  // When true, the badge value is read from `draftCount` prop.
+  badgeKey?: "drafts";
+}> = [
   { href: "/di", label: "Home", icon: Home, exact: true },
   { href: "/di/children", label: "Children", icon: Users, exact: false },
+  {
+    href: "/di/drafts",
+    label: "Drafts",
+    icon: FileEdit,
+    exact: false,
+    badgeKey: "drafts",
+  },
   { href: "/di/tasks", label: "Tasks", icon: ListTodo, exact: false },
   { href: "/di/submissions", label: "Submissions", icon: Inbox, exact: false },
   { href: "/di/profile", label: "Profile", icon: User, exact: false },
@@ -36,7 +61,14 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function DiSidebar() {
+export interface DiSidebarProps {
+  // Session 52d — current draft count for the Drafts nav badge.
+  // Server-fetched in the (authed) layout, propagated down once
+  // per route render. Hidden if 0.
+  draftCount?: number;
+}
+
+export function DiSidebar({ draftCount = 0 }: DiSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -88,6 +120,12 @@ export function DiSidebar() {
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
+            // Session 52d — badge count is only the Drafts entry
+            // for now. Resolves to 0 (hidden) for everything else.
+            const badge =
+              item.badgeKey === "drafts" && draftCount > 0
+                ? draftCount
+                : 0;
             return (
               <li key={item.href}>
                 <Link
@@ -100,7 +138,15 @@ export function DiSidebar() {
                   }`}
                 >
                   <Icon className={`w-4 h-4 ${active ? "stroke-[2.25]" : "stroke-[1.75]"}`} />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {badge > 0 ? (
+                    <span
+                      aria-label={`${badge} draft${badge === 1 ? "" : "s"}`}
+                      className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-tangerine text-white text-[11px] font-semibold leading-none"
+                    >
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );

@@ -157,6 +157,33 @@ export const DOCUMENT_REJECTED_STATUS_VALUES: ReadonlyArray<string> = [
   "rejected",
 ];
 
+/**
+ * Session 52d — single function called by BOTH the home tile and
+ * the queue list page header. Pre-52d the two surfaces issued
+ * logically-identical but separately-written queries; any drift
+ * (or perceived drift from a stale cache — Mahmud's smoke test
+ * showed home=9, queue=0) is now impossible because there's just
+ * one read path. Returns null on error; caller renders "—".
+ */
+export async function countPendingDocuments(): Promise<number | null> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("child_document" as never, {
+        filter: { status: { _in: [...DOCUMENT_PENDING_STATUS_VALUES] } },
+        fields: ["id"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ id: string }> | undefined;
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch (err) {
+    console.warn(
+      "[admin-documents] countPendingDocuments failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
 function classifyMime(meta: FileMeta | undefined): "image" | "pdf" | "other" {
   const t = meta?.type?.toLowerCase() ?? "";
   if (t.startsWith("image/")) return "image";
@@ -489,6 +516,70 @@ export async function rejectDocument(
 }
 
 /**
+ * Session 52d — admin direct upload of a document. Lands as
+ * `status='approved'` immediately (no review queue self-loop) with
+ * `uploaded_by` set to the admin user. Used on the per-child
+ * documents tab when admin needs to add documents that the DI never
+ * uploaded (e.g., admin received a scan via email).
+ *
+ * Pre-conditions: `fileUuid` must be an existing `directus_files`
+ * row uploaded via the existing `uploadDocumentToDirectus` helper.
+ */
+export async function uploadDirectDocument(input: {
+  adminUserId: string;
+  childId: string;
+  documentType: DocumentType;
+  fileUuid: string;
+  notes?: string | null;
+}): Promise<{ documentId: string; childId: string }> {
+  const { adminUserId, childId, documentType, fileUuid } = input;
+  if (!adminUserId || !childId || !documentType || !fileUuid) {
+    throw new InvalidStatusError("missing required fields");
+  }
+
+  const created = (await directusServer().request(
+    createItem("child_document" as never, {
+      child: childId,
+      document_type: documentType,
+      file: fileUuid,
+      notes: input.notes?.trim() || null,
+      // Admin uploads land approved immediately.
+      status: "approved",
+      uploaded_by: adminUserId,
+      reviewed_by: adminUserId,
+      reviewed_at: new Date().toISOString(),
+    } as never),
+  )) as unknown as { id?: string } | undefined;
+
+  const id = created?.id;
+  if (!id) {
+    throw new Error("[admin-documents] uploadDirectDocument: no id returned");
+  }
+
+  // Best-effort audit.
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: "admin_uploaded_document",
+        collection: "child_document",
+        record_id: id,
+        metadata: { childId, documentType, fileUuid },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-documents] upload audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return { documentId: String(id), childId };
+}
+
+/**
  * Session 52c — admin cleanup remove for documents.
  *
  * Distinct from rejectDocument:
@@ -510,32 +601,51 @@ export async function rejectDocument(
 export async function removeDocument(
   documentId: string,
   adminUserId: string,
-): Promise<{ documentId: string; childId: string | null; uploaderId: string | null }> {
+  // Session 52d — optional reason. REQUIRED when the row was
+  // previously approved (the route enforces; the lib just trusts).
+  // Surfaces in the DI notification body and in the audit metadata.
+  reason?: string | null,
+): Promise<{
+  documentId: string;
+  childId: string | null;
+  uploaderId: string | null;
+  // The status the row had BEFORE removal — caller uses this to
+  // decide whether to fire a DI notification (only for approved
+  // post-removes; pending mistake-cleanups stay silent).
+  wasStatus: "pending" | "approved" | "rejected" | "archived";
+}> {
   const doc = await readDocOrThrow(documentId);
   const normalizedStatus = normalizeDocumentStatus(doc);
-  if (normalizedStatus !== "pending") {
-    throw new InvalidStatusError(
-      `Can only remove pending documents (current: ${normalizedStatus}).`,
-    );
-  }
+  // Session 52d — admin can remove at any status. The pending vs
+  // post-approval distinction is reflected in the audit action
+  // name + (caller's) notification choice; the actual delete is
+  // unconditional.
 
   await directusServer().request(
     deleteItem("child_document" as never, documentId as never),
   );
 
   // Best-effort audit. Failure swallowed.
+  const auditAction =
+    normalizedStatus === "approved"
+      ? "admin_removed_approved_document"
+      : "admin_removed_document";
   try {
     await directusServer().request(
       createItem("audit_log" as never, {
         timestamp: new Date().toISOString(),
         actor: adminUserId,
         actor_role: "admin",
-        action: "admin_removed_document",
+        action: auditAction,
         collection: "child_document",
         record_id: documentId,
         metadata: {
           ...(doc.child ? { childId: doc.child } : {}),
           documentType: normalizeDocumentType(doc),
+          previousStatus: normalizedStatus,
+          ...(reason && reason.trim().length > 0
+            ? { reason: reason.trim() }
+            : {}),
         },
       } as never),
     );
@@ -550,6 +660,7 @@ export async function removeDocument(
     documentId,
     childId: doc.child ?? null,
     uploaderId: doc.uploaded_by ?? null,
+    wasStatus: normalizedStatus,
   };
 }
 

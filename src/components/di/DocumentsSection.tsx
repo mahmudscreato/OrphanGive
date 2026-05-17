@@ -44,6 +44,7 @@ import { DOCUMENT_LIMITS } from "@/lib/di-photo-limits";
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
+  documentTypesForParentLoss,
   type DocumentStatus,
   type DocumentType,
 } from "@/lib/form-constants";
@@ -55,7 +56,15 @@ export interface DocumentsSectionProps {
   // Reports the current set of "missing" types up to the parent (a
   // type counts as missing when it has no pending or approved row).
   // The parent uses this to render the soft warning at submit time.
+  // Session 52d — `missing` is now the visibility-filtered subset
+  // based on `parentLoss`. If the DI hasn't recorded a parent loss
+  // yet, no death-certificate slot is required.
   onMissingChange?: (missing: DocumentType[]) => void;
+  // Session 52d — drives which death-certificate row(s) render.
+  // `father` → only father slot; `mother` → only mother; `both` →
+  // both; `unknown` → one combined slot. Anything else → no
+  // death-cert slot at all (the DI hasn't decided yet).
+  parentLoss: string | null | undefined;
 }
 
 interface SlotState {
@@ -120,9 +129,19 @@ export function DocumentsSection({
   childId,
   initial,
   onMissingChange,
+  parentLoss,
 }: DocumentsSectionProps) {
-  // One slot per document type, pre-filled from the initial server
-  // payload.
+  // Session 52d — the visible row set is conditional on parentLoss.
+  // We KEEP slots in state for every DOCUMENT_TYPES value (so an
+  // existing father_death_certificate upload doesn't lose track if
+  // the DI flips parentLoss to mother), but only render + count-
+  // as-missing the types in this list.
+  const visibleTypes = documentTypesForParentLoss(parentLoss);
+
+  // One slot per document type (ALL types, not just visible) so
+  // already-uploaded rows of currently-hidden types persist if the
+  // DI flips parentLoss back. Initial state is pre-filled from the
+  // server payload.
   const [slots, setSlots] = useState<Record<DocumentType, SlotState>>(() => {
     const out = {} as Record<DocumentType, SlotState>;
     for (const t of DOCUMENT_TYPES) {
@@ -140,9 +159,13 @@ export function DocumentsSection({
   // Wrapped in queueMicrotask to satisfy the
   // react-hooks/set-state-in-effect lint rule (no synchronous
   // setState/onChange inside an effect body).
+  // Session 52d — missing is computed over the CURRENTLY VISIBLE
+  // types (not all DOCUMENT_TYPES) so the soft warning adapts to
+  // the form's parentLoss state instead of nagging about types
+  // that don't apply.
   useEffect(() => {
     if (!onMissingChange) return;
-    const missing = DOCUMENT_TYPES.filter((t) => {
+    const missing = visibleTypes.filter((t) => {
       const v = slots[t].visible;
       if (!v) return true;
       // pending or approved counts as "present"; rejected/archived
@@ -150,7 +173,13 @@ export function DocumentsSection({
       return v.status === "rejected" || v.status === "archived";
     });
     queueMicrotask(() => onMissingChange(missing));
-  }, [slots, onMissingChange]);
+    // visibleTypes is a derived array — re-runs when parentLoss
+    // changes because the parent passes a different prop, which
+    // re-computes visibleTypes inside this render. Including it in
+    // deps would create a stable-reference issue (new array each
+    // render); a JSON snapshot keeps the dep stable for the same
+    // logical set. Cheap because the set is at most 6 short strings.
+  }, [slots, onMissingChange, JSON.stringify(visibleTypes)]);
 
   // Per-type file input refs.
   const fileRefs = useRef<Record<DocumentType, HTMLInputElement | null>>(
@@ -418,7 +447,11 @@ export function DocumentsSection({
   // ─── Render ──
   return (
     <div className="space-y-3">
-      {DOCUMENT_TYPES.map((type) => {
+      {/* Session 52d — render only the types relevant to the
+          current parentLoss value. Uploads of now-hidden types
+          stay in the database (admin handles cleanup if needed)
+          and reappear if the DI flips parentLoss back. */}
+      {visibleTypes.map((type) => {
         const slot = slots[type];
         const visible = slot.visible;
         const editable =

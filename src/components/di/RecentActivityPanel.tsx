@@ -62,6 +62,11 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Session 52c — admin cleanup removes (distinct from rejection).
   admin_removed_document: Trash2,
   admin_removed_intake_photo: Trash2,
+  // Session 52d — post-approval removes + admin direct uploads.
+  admin_removed_approved_document: Trash2,
+  admin_removed_approved_intake_photo: Trash2,
+  admin_uploaded_document: FileText,
+  admin_uploaded_intake_photo: ImagePlus,
 };
 
 function relativeTime(iso: string | null): string {

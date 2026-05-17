@@ -880,10 +880,20 @@ export function ChildForm({
         : {}),
     };
 
+    // Session 52d Bug 2 fix — translate the form's `mode` prop
+    // (`"edit"` / `"create"`, the URL-driven vocabulary) to the
+    // proposal `operation` enum the server expects (`"update"` /
+    // `"create"`). Pre-52d this sent `operation: "edit"` which the
+    // draftBodySchema rejected (Invalid enum value) and the form
+    // surfaced as the generic "Couldn't save your draft" toast on
+    // every edit-existing-child save attempt. buildSubmitBody
+    // already does this translation correctly (line ~756), which is
+    // why Submit-for-approval worked while Save-as-draft didn't.
+    const operation = mode === "edit" ? "update" : "create";
     return {
       mode: "draft" as const,
-      operation: mode,
-      ...(mode === "edit" && existing ? { childId: existing.id } : {}),
+      operation,
+      ...(operation === "update" && existing ? { childId: existing.id } : {}),
       fields,
       photoUuid: form.photo_uuid,
     };
@@ -2024,6 +2034,11 @@ export function ChildForm({
           childId={effectiveChildId}
           initial={documents}
           onMissingChange={setMissingDocTypes}
+          // Session 52d — drives which death-certificate row(s)
+          // render. As the DI flips parent_loss, the visible
+          // slots update conditionally (existing uploads to
+          // now-hidden types persist in the DB).
+          parentLoss={form.parent_loss}
         />
       </Section>
 

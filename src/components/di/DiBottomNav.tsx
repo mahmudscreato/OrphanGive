@@ -13,11 +13,35 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, ListTodo, Inbox, User } from "lucide-react";
+import {
+  FileEdit,
+  Home,
+  Inbox,
+  ListTodo,
+  User,
+  Users,
+} from "lucide-react";
 
-const TABS = [
+// Session 52d — Drafts added as 4th tab (between Children and
+// Tasks) to mirror the desktop sidebar. 6 tabs on mobile is
+// tighter but workable; the badge gives Drafts visual priority
+// when there's work waiting.
+const TABS: ReadonlyArray<{
+  href: string;
+  label: string;
+  icon: typeof Home;
+  exact: boolean;
+  badgeKey?: "drafts";
+}> = [
   { href: "/di", label: "Home", icon: Home, exact: true },
   { href: "/di/children", label: "Children", icon: Users, exact: false },
+  {
+    href: "/di/drafts",
+    label: "Drafts",
+    icon: FileEdit,
+    exact: false,
+    badgeKey: "drafts",
+  },
   { href: "/di/tasks", label: "Tasks", icon: ListTodo, exact: false },
   { href: "/di/submissions", label: "Submissions", icon: Inbox, exact: false },
   { href: "/di/profile", label: "Profile", icon: User, exact: false },
@@ -28,7 +52,11 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function DiBottomNav() {
+export interface DiBottomNavProps {
+  draftCount?: number;
+}
+
+export function DiBottomNav({ draftCount = 0 }: DiBottomNavProps) {
   const pathname = usePathname();
 
   return (
@@ -40,18 +68,30 @@ export function DiBottomNav() {
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const active = isActive(pathname, tab.href, tab.exact);
+          const badge =
+            tab.badgeKey === "drafts" && draftCount > 0 ? draftCount : 0;
           return (
             <li key={tab.href} className="flex-1">
               <Link
                 href={tab.href}
-                className={`flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg transition-colors min-h-[56px] ${
+                className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg transition-colors min-h-[56px] ${
                   active
                     ? "text-tangerine-deeper"
                     : "text-ink-soft hover:text-tangerine-deeper"
                 }`}
                 aria-current={active ? "page" : undefined}
               >
-                <Icon className={`w-5 h-5 ${active ? "stroke-[2.25]" : "stroke-[1.75]"}`} />
+                <div className="relative">
+                  <Icon className={`w-5 h-5 ${active ? "stroke-[2.25]" : "stroke-[1.75]"}`} />
+                  {badge > 0 ? (
+                    <span
+                      aria-label={`${badge} draft${badge === 1 ? "" : "s"}`}
+                      className="absolute -top-1.5 -right-2.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-tangerine text-white text-[9px] font-bold leading-none"
+                    >
+                      {badge > 9 ? "9+" : badge}
+                    </span>
+                  ) : null}
+                </div>
                 <span className="text-[10px] font-medium tracking-wide">
                   {tab.label}
                 </span>
