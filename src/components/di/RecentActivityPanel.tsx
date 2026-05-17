@@ -42,6 +42,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_deleted_document: Trash2,
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
+  // Session 51 — never rendered on DI's recent activity feed (the
+  // upstream filter excludes admin_viewed_*); icon present for
+  // type-safety only.
+  admin_viewed_proposal: Home,
 };
 
 function relativeTime(iso: string | null): string {

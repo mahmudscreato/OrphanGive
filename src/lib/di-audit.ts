@@ -67,7 +67,14 @@ export type AuditAction =
   // The DI sees these in their Recent Activity feed when the action
   // touched a child in the DI's scope.
   | "admin_approved_proposal"
-  | "admin_rejected_proposal";
+  | "admin_rejected_proposal"
+  // Session 51 — admin opened a proposal detail page (read-only).
+  // Logged for traceability: we want to know who looked at sensitive
+  // Tier 3 fields even when no mutation followed. Doesn't surface
+  // on DI-facing feeds (action_role != 'data_inputter' AND no
+  // childId in metadata; the per-child History tab reads di_*
+  // events only).
+  | "admin_viewed_proposal";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -268,6 +275,10 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   // the Recent Activity feed reads as personal news.
   admin_approved_proposal: () => `Admin approved your edit`,
   admin_rejected_proposal: () => `Admin rejected your edit`,
+  // admin_viewed_proposal isn't user-facing in any DI-side feed (see
+  // type definition above) — the description here is for completeness
+  // / future admin-side audit log views.
+  admin_viewed_proposal: (a) => `${a} opened a proposal`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));
