@@ -55,6 +55,14 @@ export type AuditAction =
   | "di_uploaded_intake_photo"
   | "di_edited_intake_photo"
   | "di_deleted_intake_photo"
+  // Session 49 — child_document lifecycle (Tier 3 evidence
+  // documents: parent death cert, child birth cert, guardian NID,
+  // school recommendation). DI-side mutations all happen while the
+  // row is in pending status; admin's review actions audit
+  // separately under admin_* in a future session.
+  | "di_uploaded_document"
+  | "di_updated_document_notes"
+  | "di_deleted_document"
   // Admin-side actions (Session 46-fix-2 + Session 47).
   // The DI sees these in their Recent Activity feed when the action
   // touched a child in the DI's scope.
@@ -252,6 +260,9 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   di_uploaded_intake_photo: (a) => `${a} added an intake photo`,
   di_edited_intake_photo: (a) => `${a} edited an intake photo`,
   di_deleted_intake_photo: (a) => `${a} removed an intake photo`,
+  di_uploaded_document: (a) => `${a} uploaded a document`,
+  di_updated_document_notes: (a) => `${a} edited a document's notes`,
+  di_deleted_document: (a) => `${a} removed a document`,
   // Admin actions are described from the DI's POV — "Admin approved
   // your edit" rather than literal "Admin approved a proposal" so
   // the Recent Activity feed reads as personal news.
@@ -296,6 +307,8 @@ const HISTORY_AUDIT_COLLECTIONS = [
   "task",
   // Session 48b — intake photos surface in the History tab too.
   "child_intake_photo",
+  // Session 49 — documents surface in the History tab too.
+  "child_document",
 ];
 
 export async function listAuditEventsForChild(

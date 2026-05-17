@@ -21,6 +21,7 @@ import {
 } from "@/lib/di-children";
 import { getDraftForUser } from "@/lib/di-proposals";
 import { listIntakePhotosForChild } from "@/lib/di-intake-photos";
+import { listDocumentsForChild } from "@/lib/di-documents";
 import { ChildForm } from "@/components/di/ChildForm";
 
 export const dynamic = "force-dynamic";
@@ -38,14 +39,18 @@ export default async function DiEditChildPage({
   // Session 46-fix-2 — also fetch districts for the cascade dropdown.
   // Session 48b — also fetch intake photos so the grid hydrates with
   // existing rows on first paint (no client roundtrip needed).
-  // Four parallel reads; districts is a tiny static-ish list (~64 rows),
-  // intake photos are at most 5 rows.
-  const [child, divisions, districts, intakePhotos] = await Promise.all([
-    getChildEditSnapshot(id, session.userId),
-    getBdDivisions(),
-    getBdDistricts(),
-    listIntakePhotosForChild(session.userId, id),
-  ]);
+  // Session 49 — also fetch verification documents for the new
+  // Documents section. Five parallel reads; districts is a tiny
+  // static-ish list (~64 rows), intake photos are at most 5 rows,
+  // documents are at most 4 rows (one per DOCUMENT_TYPES).
+  const [child, divisions, districts, intakePhotos, documents] =
+    await Promise.all([
+      getChildEditSnapshot(id, session.userId),
+      getBdDivisions(),
+      getBdDistricts(),
+      listIntakePhotosForChild(session.userId, id),
+      listDocumentsForChild(session.userId, id),
+    ]);
   if (!child) notFound();
 
   // Session 48b — draft pre-fill via ?draftId=. Same redirect-on-
@@ -99,6 +104,7 @@ export default async function DiEditChildPage({
         draftId={existingDraft ? draftIdParam : null}
         existingDraft={existingDraft}
         intakePhotos={intakePhotos}
+        documents={documents}
       />
     </div>
   );

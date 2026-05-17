@@ -397,3 +397,48 @@ export const HOUSEHOLD_INCOME_SOURCE_OPTIONS: ReadonlyArray<{
   { value: "mixed", label: "Mixed" },
   { value: "unknown", label: "Unknown" },
 ];
+
+// ─── 13. Document types (Session 49) ────────────────────────────────
+//
+// The four documents collected during a DI's initial visit to verify
+// a child profile. Tier 3 admin-only — never rendered on any donor
+// surface. Stored on `child_document.document_type`.
+//
+// Status enum mirrors child_intake_photo + (Session 49 brief shape):
+// pending / approved / rejected / archived. Note this differs from
+// the legacy `child_document.status` enum (`pending_review`,
+// `verified`, etc.) — see migrations/session-49/001-documents.sql
+// for the full reconciliation story.
+
+export const DOCUMENT_TYPES = [
+  "parent_death_certificate",
+  "child_birth_certificate",
+  "guardian_nid",
+  "school_recommendation",
+] as const;
+
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  parent_death_certificate: "Parent death certificate",
+  child_birth_certificate: "Child birth certificate",
+  guardian_nid: "Guardian National ID",
+  school_recommendation: "School recommendation letter",
+};
+
+export const DOCUMENT_TYPE_OPTIONS: ReadonlyArray<{
+  value: DocumentType;
+  label: string;
+}> = DOCUMENT_TYPES.map((value) => ({
+  value,
+  label: DOCUMENT_TYPE_LABELS[value],
+}));
+
+export const DOCUMENT_STATUSES = [
+  "pending",
+  "approved",
+  "rejected",
+  "archived",
+] as const;
+
+export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];

@@ -31,8 +31,14 @@ import { PhotoUploadField } from "./PhotoUploadField";
 import { BdDistrictField } from "./BdDistrictField";
 import { SchoolPicker } from "./SchoolPicker";
 import { IntakePhotoGrid } from "./IntakePhotoGrid";
+import { DocumentsSection } from "./DocumentsSection";
 import type { BdDistrictOption } from "@/lib/di-children";
 import type { IntakePhotoSummary } from "@/lib/di-intake-photos";
+import type { DocumentSummary } from "@/lib/di-documents";
+import {
+  DOCUMENT_TYPE_LABELS,
+  type DocumentType,
+} from "@/lib/form-constants";
 // Session 48a — single source of truth for the new + extended enums.
 import {
   AREA_OF_INTEREST_OPTIONS,
@@ -198,6 +204,11 @@ export interface ChildFormProps {
   // (because child_intake_photo.child is NOT NULL — there's no
   // child UUID to attach to until then).
   intakePhotos?: IntakePhotoSummary[];
+  // Session 49 — initial verification documents set. Same edit-only
+  // hydration pattern: edit page fetches via listDocumentsForChild,
+  // create mode passes [] and the section renders the "open up
+  // after approval" hint card.
+  documents?: DocumentSummary[];
 }
 
 // ─── Internal form state ────────────────────────────────────────────
@@ -466,6 +477,7 @@ export function ChildForm({
   draftId: initialDraftId = null,
   existingDraft = null,
   intakePhotos = [],
+  documents = [],
 }: ChildFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -495,6 +507,11 @@ export function ChildForm({
     existingDraft ? new Date() : null,
   );
   const [draftSavedTick, setDraftSavedTick] = useState(0);
+  // Session 49 — current set of missing document types reported up
+  // by DocumentsSection. Used to render the soft warning above the
+  // submit button. Documents are optional for both draft + submit;
+  // this is information, not a blocker.
+  const [missingDocTypes, setMissingDocTypes] = useState<DocumentType[]>([]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((s) => ({ ...s, [key]: value }));
@@ -1913,6 +1930,26 @@ export function ChildForm({
         </Field>
       </Section>
 
+      {/* Section 9a — Documents (Session 49).
+          Tier 3 evidence collection for parent death cert, child
+          birth cert, guardian NID, school recommendation. Optional
+          for both draft + submit; missing documents surface a soft
+          warning above Submit, never block. The component handles
+          its own upload, notes, delete, and replace flows; the
+          parent only tracks missing-types for the warning render. */}
+      <Section title="Documents (internal)">
+        <p className="text-[13px] text-ink-soft mb-3 leading-relaxed">
+          Four verification documents we collect during the initial
+          visit. Optional — submit without them if you don&apos;t
+          have everything yet, and admin will follow up.
+        </p>
+        <DocumentsSection
+          childId={existing?.id ?? null}
+          initial={documents}
+          onMissingChange={setMissingDocTypes}
+        />
+      </Section>
+
       {/* Section 10 — Submission date (Session 48a renamed from
           "Field visit"; binds to the new `submission_date` column.
           Server mirrors to last_visit_date for backward compat). */}
@@ -1942,6 +1979,22 @@ export function ChildForm({
       {serverError ? (
         <div className="rounded-xl border border-[#D04848]/30 bg-[#D04848]/[0.06] px-4 py-3 text-[13.5px] text-[#9A2424]">
           {serverError}
+        </div>
+      ) : null}
+
+      {/* Session 49 — soft warning when verification documents are
+          missing. Information only; doesn't block submission. Hidden
+          in create mode (where the section itself is locked behind
+          a hint card) — only render when there's an existing child. */}
+      {existing && missingDocTypes.length > 0 ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3">
+          <p className="text-[13.5px] text-amber-900 leading-relaxed">
+            <span className="font-semibold">Submitting without {missingDocTypes.length} {missingDocTypes.length === 1 ? "document" : "documents"}:</span>{" "}
+            {missingDocTypes
+              .map((t) => DOCUMENT_TYPE_LABELS[t].toLowerCase())
+              .join(", ")}
+            . Admin will follow up — this won&apos;t block approval.
+          </p>
         </div>
       ) : null}
 
