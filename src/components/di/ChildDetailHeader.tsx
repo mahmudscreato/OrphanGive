@@ -7,6 +7,12 @@
 import Image from "next/image";
 import { MapPin, UserCircle2 } from "lucide-react";
 import type { DiChildDetail } from "@/lib/di-children";
+// Session 50 — replaced the local prettifySupportType (an
+// underscore-split title-cased helper that happened to produce nice
+// output for the existing 6 SUPPORT_TYPES values) with the shared
+// form-constants label helper, so any future enum extension lands
+// here automatically.
+import { getSupportTypeLabel } from "@/lib/form-constants";
 
 const STATUS_BADGE: Record<
   string,
@@ -34,14 +40,6 @@ const STATUS_BADGE: Record<
   },
 };
 
-function prettifySupportType(s: string | null | undefined): string | null {
-  if (!s) return null;
-  return s
-    .split("_")
-    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(" ");
-}
-
 function formatCost(cost: number | null): string {
   if (cost === null || !Number.isFinite(cost)) return "Cost: to be set";
   return `BDT ${cost}/mo`;
@@ -49,7 +47,7 @@ function formatCost(cost: number | null): string {
 
 export function ChildDetailHeader({ child }: { child: DiChildDetail }) {
   const badge = STATUS_BADGE[child.category] ?? STATUS_BADGE.awaiting!;
-  const support = prettifySupportType(child.support_type);
+  const support = getSupportTypeLabel(child.support_type) || null;
   const costAndSupport = [formatCost(child.monthly_cost), support]
     .filter(Boolean)
     .join(" · ");

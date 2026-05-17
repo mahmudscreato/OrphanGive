@@ -2,6 +2,10 @@ import { Button } from "@/components/ui/Button";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import type { ChildProfile, ViewerTier } from "@/lib/child-profile-data";
+// Session 50 — use the shared form-constants label helper instead of
+// rendering the raw enum value (which after Session 48a's enum
+// expansion would surface slugs like `primary_1_5` to donors).
+import { getEducationLevelLabel } from "@/lib/form-constants";
 
 function MetaPillIcon({ kind }: { kind: "location" | "age" | "school" }) {
   if (kind === "location") {
@@ -42,10 +46,15 @@ export function ProfileHero({
 }) {
   const photoSrc = directusAssetUrl(child.photo);
   const subhead = pickFirstSentence(child.story);
+  // Session 50 — friendly labels via the shared helper. Falls back
+  // to "school" only when education_level is null AND class_grade
+  // is set (preserves the prior phrasing); otherwise the helper
+  // returns "" for null and we omit the line entirely.
+  const eduLabel = getEducationLevelLabel(child.education_level);
   const educationLine = child.class_grade
-    ? `Class ${child.class_grade}, ${child.education_level ?? "school"}`
-    : child.education_level
-      ? `${child.education_level} education`
+    ? `Class ${child.class_grade}, ${eduLabel || "school"}`
+    : eduLabel
+      ? `${eduLabel} education`
       : null;
 
   return (

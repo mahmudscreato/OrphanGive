@@ -9,6 +9,11 @@
 import Link from "next/link";
 import { Edit3 } from "lucide-react";
 import type { DiChildDetail } from "@/lib/di-children";
+// Session 50 — replaced the local prettifyEducation (which just
+// capitalized the first letter and would surface "Primary_1_5" to
+// the DI for Session 48a's new enum values) with the shared
+// form-constants helper.
+import { getEducationLevelLabel } from "@/lib/form-constants";
 
 function formatLongDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -19,11 +24,6 @@ function formatLongDate(iso: string | null | undefined): string | null {
     month: "long",
     year: "numeric",
   }).format(d);
-}
-
-function prettifyEducation(s: string | null): string | null {
-  if (!s) return null;
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function Section({
@@ -53,7 +53,7 @@ export function ProfilePanel({ child }: { child: DiChildDetail }) {
   const enteredAt = formatLongDate(child.approved_at);
   const lastVisit = formatLongDate(child.last_visit_date);
   const story = child.story?.trim() || "—";
-  const education = prettifyEducation(child.education_level) || "—";
+  const education = getEducationLevelLabel(child.education_level) || "—";
 
   return (
     <section

@@ -42,19 +42,18 @@ export const dynamic = "force-dynamic";
 // Current implementations of this rule (audited in
 // docs/session-49-donor-surface-audit.md):
 //
-//   ┌─────────────────────┬────────────────────────┬───────────────────┐
-//   │ Surface             │ Status filter           │ Where             │
-//   ├─────────────────────┼────────────────────────┼───────────────────┤
-//   │ child_moment        │ status='published'      │ getChildMoments   │
-//   │ child_update        │ status='published'      │ getChildUpdates   │
-//   │ child_document      │ status='verified' (LEGACY)│ DocumentsBanner │
-//   │                     │ — Session 49 added a    │                   │
-//   │                     │ new 'approved' status   │                   │
-//   │                     │ that isn't yet read     │                   │
-//   │                     │ here. See audit doc.    │                   │
-//   │ child_intake_photo  │ NOT YET RENDERED        │ —                 │
-//   │ child (status)      │ status='active'         │ getChildById      │
-//   └─────────────────────┴────────────────────────┴───────────────────┘
+//   ┌─────────────────────┬─────────────────────────┬──────────────────────┐
+//   │ Surface             │ Status filter            │ Where                │
+//   ├─────────────────────┼─────────────────────────┼──────────────────────┤
+//   │ child_moment        │ status='published'       │ getChildMoments      │
+//   │ child_update        │ status='published'       │ getChildUpdates      │
+//   │ child_document      │ status='approved' (NEW)  │ getChildDocumentsStatus
+//   │                     │ OR 'verified' (LEGACY).  │ → DocumentsBanner    │
+//   │                     │ Session 50 reconciled    │                      │
+//   │                     │ via document-normalize.ts│                      │
+//   │ child_intake_photo  │ NOT YET RENDERED         │ —                    │
+//   │ child (status)      │ status='active'          │ getChildById         │
+//   └─────────────────────┴─────────────────────────┴──────────────────────┘
 //
 // Reference URLs Mahmud flagged for "what currently renders":
 //   - /children/f6c4c677-46d0-4fd7-b08e-3ba6216245b6

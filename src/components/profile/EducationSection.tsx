@@ -1,18 +1,24 @@
-import type { ChildProfile } from "@/lib/child-profile-data";
+// Donor-facing Education + Interests section.
+//
+// Session 50 — replaced the local 4-value EDUCATION_LABELS map (which
+// pre-dated Session 48a's 10-value enum and was rendering new values
+// like `primary_1_5` as raw slugs to donors) with the shared
+// `getEducationLevelLabel` + `getAreasOfInterestLabels` helpers from
+// form-constants. Now both DI dropdowns and donor pills draw from the
+// same source of truth.
 
-const EDUCATION_LABELS: Record<string, string> = {
-  primary: "Primary school",
-  secondary: "Secondary school",
-  madrasa: "Madrasa",
-  vocational: "Vocational training",
-};
+import type { ChildProfile } from "@/lib/child-profile-data";
+import {
+  getAreasOfInterestLabels,
+  getEducationLevelLabel,
+} from "@/lib/form-constants";
 
 export function EducationSection({ child }: { child: ChildProfile }) {
-  const eduLabel = child.education_level
-    ? EDUCATION_LABELS[child.education_level.toLowerCase()] ?? child.education_level
-    : null;
+  const eduLabel = getEducationLevelLabel(child.education_level);
+  const interestLabels = getAreasOfInterestLabels(child.areas_of_interest);
+
   const hasContent =
-    eduLabel || child.class_grade || child.areas_of_interest.length > 0;
+    eduLabel || child.class_grade || interestLabels.length > 0;
   if (!hasContent) return null;
 
   return (
@@ -37,18 +43,18 @@ export function EducationSection({ child }: { child: ChildProfile }) {
             </div>
           ) : null}
 
-          {child.areas_of_interest.length > 0 ? (
+          {interestLabels.length > 0 ? (
             <div className="rounded-[20px] bg-white border border-ink/[0.05] px-6 py-5">
               <div className="font-mono text-[11px] tracking-[0.14em] uppercase text-slate-soft mb-3">
                 Interests
               </div>
               <div className="flex flex-wrap gap-2">
-                {child.areas_of_interest.map((interest) => (
+                {interestLabels.map((label, i) => (
                   <span
-                    key={interest}
+                    key={`${label}-${i}`}
                     className="inline-flex items-center bg-tangerine-mist text-tangerine-deeper rounded-full px-3.5 py-1.5 text-[13px] font-medium"
                   >
-                    {interest}
+                    {label}
                   </span>
                 ))}
               </div>
