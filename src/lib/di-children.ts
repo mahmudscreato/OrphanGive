@@ -589,26 +589,33 @@ export interface ChildEditSnapshot {
   date_of_birth: string | null;
   photo_consent: boolean | null;
   current_photo_uuid: string | null;
-  // Location
+  // Location (Session 48a — added permanent_address)
   bd_division_code: string | null;
   bd_district_code: string | null;
   district_internal: string | null;
-  // Education + interests
+  permanent_address: string | null;
+  // Education + interests (Session 48a — added educational_organization
+  // M2O id + school_name_raw fallback; areas_of_interest is now text[])
   education_level: string | null;
   class_grade: string | null;
-  areas_of_interest: string | null;
+  educational_organization: string | null;
+  school_name_raw: string | null;
+  areas_of_interest: string[] | null;
   // Donor-facing story
   story: string;
-  // Support plan
+  // Support plan (Session 48a — priority columns)
   support_type: string | null;
   monthly_cost: number | null;
+  priority_support: string | null;
+  priority_notes: string | null;
   // Health (subset)
   blood_group: string | null;
   vaccination_status: string | null;
   last_medical_checkup: string | null;
   disability_status: string | null;
   disability_notes: string | null;
-  // Family
+  // Family (Session 48a — added parent_loss)
+  parent_loss: string | null;
   siblings_count: number | null;
   sibling_position: number | null;
   siblings_notes: string | null;
@@ -616,13 +623,18 @@ export interface ChildEditSnapshot {
   // Socioeconomic
   household_income_source: string | null;
   monthly_household_income_bdt: number | null;
-  // Guardian context
+  // Guardian context (Session 48a — added employment_type, phones)
   guardian_relationship: string | null;
+  guardian_employment_type: string | null;
   guardian_employment: string | null;
+  guardian_phone: string | null;
+  guardian_phone_alt: string | null;
   guardian_summary_internal: string | null;
   additional_family_notes: string | null;
-  // Field visit
+  // Field visit / submission (Session 48a — submission_date is the
+  // new canonical column; last_visit_date is mirrored alongside it)
   last_visit_date: string | null;
+  submission_date: string | null;
 }
 
 // Session 46-fix-2 — full editable surface (28 mirror fields). Order
@@ -640,17 +652,23 @@ const CHILD_EDIT_FIELDS = [
   "bd_division.code",
   "bd_district.code",
   "district_internal",
+  "permanent_address",
   "education_level",
   "class_grade",
+  "educational_organization",
+  "school_name_raw",
   "areas_of_interest",
   "story",
   "support_type",
   "monthly_cost",
+  "priority_support",
+  "priority_notes",
   "blood_group",
   "vaccination_status",
   "last_medical_checkup",
   "disability_status",
   "disability_notes",
+  "parent_loss",
   "siblings_count",
   "sibling_position",
   "siblings_notes",
@@ -658,10 +676,14 @@ const CHILD_EDIT_FIELDS = [
   "household_income_source",
   "monthly_household_income_bdt",
   "guardian_relationship",
+  "guardian_employment_type",
   "guardian_employment",
+  "guardian_phone",
+  "guardian_phone_alt",
   "guardian_summary_internal",
   "additional_family_notes",
   "last_visit_date",
+  "submission_date",
 ] as const;
 
 /**
@@ -685,17 +707,25 @@ export async function getChildEditSnapshot(
         bd_division: { code?: string | null } | null;
         bd_district: { code?: string | null } | null;
         district_internal: string | null;
+        permanent_address: string | null;
         education_level: string | null;
         class_grade: string | null;
-        areas_of_interest: string | null;
+        educational_organization: string | null;
+        school_name_raw: string | null;
+        // Session 48a — areas_of_interest is now text[]; the SDK
+        // surfaces it as a JS string array.
+        areas_of_interest: string[] | null;
         story: string | null;
         support_type: string | null;
         monthly_cost: number | null;
+        priority_support: string | null;
+        priority_notes: string | null;
         blood_group: string | null;
         vaccination_status: string | null;
         last_medical_checkup: string | null;
         disability_status: string | null;
         disability_notes: string | null;
+        parent_loss: string | null;
         siblings_count: number | null;
         sibling_position: number | null;
         siblings_notes: string | null;
@@ -703,10 +733,14 @@ export async function getChildEditSnapshot(
         household_income_source: string | null;
         monthly_household_income_bdt: number | null;
         guardian_relationship: string | null;
+        guardian_employment_type: string | null;
         guardian_employment: string | null;
+        guardian_phone: string | null;
+        guardian_phone_alt: string | null;
         guardian_summary_internal: string | null;
         additional_family_notes: string | null;
         last_visit_date: string | null;
+        submission_date: string | null;
       }
     | undefined;
   try {
@@ -740,15 +774,20 @@ export async function getChildEditSnapshot(
     bd_division_code: row.bd_division?.code ?? null,
     bd_district_code: row.bd_district?.code ?? null,
     district_internal: row.district_internal ?? null,
+    permanent_address: row.permanent_address ?? null,
     // Education + interests
     education_level: row.education_level ?? null,
     class_grade: row.class_grade ?? null,
+    educational_organization: row.educational_organization ?? null,
+    school_name_raw: row.school_name_raw ?? null,
     areas_of_interest: row.areas_of_interest ?? null,
     // Donor-facing story
     story: row.story ?? "",
     // Support plan
     support_type: row.support_type ?? null,
     monthly_cost: row.monthly_cost ?? null,
+    priority_support: row.priority_support ?? null,
+    priority_notes: row.priority_notes ?? null,
     // Health
     blood_group: row.blood_group ?? null,
     vaccination_status: row.vaccination_status ?? null,
@@ -756,6 +795,7 @@ export async function getChildEditSnapshot(
     disability_status: row.disability_status ?? null,
     disability_notes: row.disability_notes ?? null,
     // Family
+    parent_loss: row.parent_loss ?? null,
     siblings_count: row.siblings_count ?? null,
     sibling_position: row.sibling_position ?? null,
     siblings_notes: row.siblings_notes ?? null,
@@ -765,11 +805,15 @@ export async function getChildEditSnapshot(
     monthly_household_income_bdt: row.monthly_household_income_bdt ?? null,
     // Guardian context
     guardian_relationship: row.guardian_relationship ?? null,
+    guardian_employment_type: row.guardian_employment_type ?? null,
     guardian_employment: row.guardian_employment ?? null,
+    guardian_phone: row.guardian_phone ?? null,
+    guardian_phone_alt: row.guardian_phone_alt ?? null,
     guardian_summary_internal: row.guardian_summary_internal ?? null,
     additional_family_notes: row.additional_family_notes ?? null,
-    // Field visit
+    // Field visit / submission
     last_visit_date: row.last_visit_date ?? null,
+    submission_date: row.submission_date ?? null,
   };
 }
 

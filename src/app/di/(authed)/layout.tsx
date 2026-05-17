@@ -15,6 +15,7 @@ import { requireDiUser } from "@/lib/di-auth";
 import { DiBottomNav } from "@/components/di/DiBottomNav";
 import { DiHeader } from "@/components/di/DiHeader";
 import { DiSidebar } from "@/components/di/DiSidebar";
+import { DiTopBar } from "@/components/di/DiTopBar";
 
 export default async function DiAuthedLayout({
   children,
@@ -26,15 +27,20 @@ export default async function DiAuthedLayout({
 
   return (
     <div className="bg-cream min-h-screen text-ink">
-      {/* Mobile-only header */}
+      {/* Mobile-only header (carries the brand + notification bell on
+          mobile; desktop bell lives in the DiTopBar below). */}
       <DiHeader />
       {/* Desktop-only sidebar (240px wide, fixed left). On desktop
           we offset main by 240px to avoid the sidebar's column. */}
       <DiSidebar />
       {/* Main content area. pb-24 on mobile leaves room for the fixed
           bottom nav (56px min per tab + iOS Home-Indicator safe-area
-          ~34px on PWA install — pb-20 was tight there). Session 46 polish. */}
+          ~34px on PWA install). */}
       <main className="md:pl-[240px] pb-24 md:pb-12 min-h-screen">
+        {/* Session 48a — desktop-only top bar with the notification
+            bell on the right. Replaces the bell-next-to-logo
+            placement that crowded the sidebar brand row. */}
+        <DiTopBar />
         {children}
       </main>
       {/* Mobile-only bottom nav */}

@@ -31,6 +31,10 @@ import "server-only";
 
 // Session 47 — in-app DI notification on approve/reject.
 import { notify } from "./di-notifications";
+// Session 48a — Directus can't natively serialise JS arrays into
+// Postgres text[] columns; reuse the helper from di-proposals.ts
+// to format areas_of_interest as a PG array literal.
+import { toPgTextArrayLiteral } from "./di-proposals";
 
 import {
   createItem,
@@ -107,26 +111,33 @@ const MIRROR_FIELDS = [
   // Photo (M2O directus_files; capital P on child, lowercase 'photo'
   // not a thing here — the column is `Photo`)
   "Photo",
-  // Location
+  // Location (Session 48a — added permanent_address)
   "bd_division",
   "bd_district",
   "district_internal",
-  // Education + interests
+  "permanent_address",
+  // Education + interests (Session 48a — added educational_organization
+  // M2O + school_name_raw fallback; areas_of_interest is now text[])
   "education_level",
   "class_grade",
+  "educational_organization",
+  "school_name_raw",
   "areas_of_interest",
   // Donor-facing story
   "story",
-  // Support plan
+  // Support plan (Session 48a — priority columns)
   "support_type",
   "monthly_cost",
+  "priority_support",
+  "priority_notes",
   // Health (excludes medical_conditions, allergies, mental_health_notes)
   "blood_group",
   "vaccination_status",
   "last_medical_checkup",
   "disability_status",
   "disability_notes",
-  // Family
+  // Family (Session 48a — added parent_loss)
+  "parent_loss",
   "siblings_count",
   "sibling_position",
   "siblings_notes",
@@ -134,13 +145,17 @@ const MIRROR_FIELDS = [
   // Socioeconomic
   "household_income_source",
   "monthly_household_income_bdt",
-  // Guardian
+  // Guardian (Session 48a — added employment_type + phones)
   "guardian_relationship",
+  "guardian_employment_type",
   "guardian_employment",
+  "guardian_phone",
+  "guardian_phone_alt",
   "guardian_summary_internal",
   "additional_family_notes",
-  // Field visit
+  // Field visit / submission (Session 48a — both columns mirror)
   "last_visit_date",
+  "submission_date",
 ] as const;
 
 type ProposalRowFlat = {
@@ -217,7 +232,18 @@ function pickMirrorPayload(
     // Treat empty strings as not-set so UPDATE doesn't blank a field
     // when the DI form passed a stripped-empty submission.
     if (typeof value === "string" && value.trim().length === 0) continue;
-    payload[field] = value;
+    // Empty arrays are also "not-set" for the same reason.
+    if (Array.isArray(value) && value.length === 0) continue;
+    // Session 48a — text[] columns need the Postgres array literal
+    // form when written via Directus; the SDK can't serialise JS
+    // arrays into text[]. Currently only areas_of_interest hits
+    // this path; the helper is generic so future text[] columns
+    // are covered automatically.
+    if (Array.isArray(value)) {
+      payload[field] = toPgTextArrayLiteral(value as string[]);
+    } else {
+      payload[field] = value;
+    }
     appliedFields.push(field);
   }
   return { payload, appliedFields };

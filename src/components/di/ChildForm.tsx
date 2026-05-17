@@ -29,7 +29,17 @@ import type { Route } from "next";
 import { Loader2 } from "lucide-react";
 import { PhotoUploadField } from "./PhotoUploadField";
 import { BdDistrictField } from "./BdDistrictField";
+import { SchoolPicker } from "./SchoolPicker";
 import type { BdDistrictOption } from "@/lib/di-children";
+// Session 48a — single source of truth for the new + extended enums.
+import {
+  AREA_OF_INTEREST_OPTIONS,
+  EDUCATION_LEVEL_OPTIONS,
+  GUARDIAN_EMPLOYMENT_TYPE_OPTIONS,
+  GUARDIAN_RELATIONSHIP_OPTIONS,
+  PARENT_LOSS_OPTIONS,
+  PRIORITY_SUPPORT_OPTIONS,
+} from "@/lib/form-constants";
 
 // ─── Static option lists (mirror server zod schemas) ────────────────
 
@@ -86,19 +96,9 @@ const HOUSEHOLD_INCOME_OPTIONS = [
   { value: "unknown", label: "Unknown" },
 ] as const;
 
-const GUARDIAN_RELATIONSHIP_OPTIONS = [
-  { value: "paternal_uncle", label: "Paternal uncle" },
-  { value: "maternal_uncle", label: "Maternal uncle" },
-  { value: "paternal_aunt", label: "Paternal aunt" },
-  { value: "maternal_aunt", label: "Maternal aunt" },
-  { value: "paternal_grandparent", label: "Paternal grandparent" },
-  { value: "maternal_grandparent", label: "Maternal grandparent" },
-  { value: "older_sibling", label: "Older sibling" },
-  { value: "extended_family", label: "Extended family" },
-  { value: "community_member", label: "Community member" },
-  { value: "orphanage_only", label: "Orphanage only" },
-  { value: "other", label: "Other" },
-] as const;
+// Session 48a — local GUARDIAN_RELATIONSHIP_OPTIONS removed; the
+// shared one from form-constants.ts (now extended with father +
+// mother as the first two entries) is imported above.
 
 // ─── Shared style tokens ────────────────────────────────────────────
 
@@ -120,6 +120,10 @@ export interface ChildFormDivisionOption {
 
 // Mirrors ChildEditSnapshot from di-children.ts but kept here as the
 // component's contract so the form module is self-describing.
+//
+// Session 48a — added 13 new fields plus the `educational_organization`
+// linked-school M2O. `areas_of_interest` is now string[] (text[] at
+// the DB layer); the form binds to a Set<string> internally.
 export interface ChildFormExistingChild {
   id: string;
   display_name: string;
@@ -130,17 +134,23 @@ export interface ChildFormExistingChild {
   bd_division_code: string | null;
   bd_district_code: string | null;
   district_internal: string | null;
+  permanent_address: string | null;
   education_level: string | null;
   class_grade: string | null;
-  areas_of_interest: string | null;
+  educational_organization: string | null;
+  school_name_raw: string | null;
+  areas_of_interest: string[] | null;
   story: string;
   support_type: string | null;
   monthly_cost: number | null;
+  priority_support: string | null;
+  priority_notes: string | null;
   blood_group: string | null;
   vaccination_status: string | null;
   last_medical_checkup: string | null;
   disability_status: string | null;
   disability_notes: string | null;
+  parent_loss: string | null;
   siblings_count: number | null;
   sibling_position: number | null;
   siblings_notes: string | null;
@@ -148,10 +158,14 @@ export interface ChildFormExistingChild {
   household_income_source: string | null;
   monthly_household_income_bdt: number | null;
   guardian_relationship: string | null;
+  guardian_employment_type: string | null;
   guardian_employment: string | null;
+  guardian_phone: string | null;
+  guardian_phone_alt: string | null;
   guardian_summary_internal: string | null;
   additional_family_notes: string | null;
   last_visit_date: string | null;
+  submission_date: string | null;
 }
 
 export type ChildFormMode = "create" | "edit";
@@ -172,26 +186,34 @@ interface FormState {
   date_of_birth: string;
   photo_uuid: string | null;
   photo_consent: boolean;
-  // Location
+  // Current location (Session 48a — added permanent_address)
   bd_division: string;
   bd_district: string;
   district_internal: string;
-  // Education
+  permanent_address: string;
+  // Education (Session 48a — education_level is now an enum value;
+  // educational_organization is a school UUID; school_name_raw is
+  // the free-text fallback; areas_of_interest is a Set of slugs)
   education_level: string;
   class_grade: string;
-  areas_of_interest: string;
+  educational_organization: string;
+  school_name_raw: string;
+  areas_of_interest: Set<string>;
   // Story
   story: string;
-  // Support
+  // Support needed (Session 48a — priority columns)
   support_type: string;
   monthly_cost: string; // text in form, parsed on submit
+  priority_support: string;
+  priority_notes: string;
   // Health
   blood_group: string;
   vaccination_status: string;
   last_medical_checkup: string;
   disability_status: string;
   disability_notes: string;
-  // Family
+  // Family (Session 48a — added parent_loss)
+  parent_loss: string;
   siblings_count: string;
   sibling_position: string;
   siblings_notes: string;
@@ -199,13 +221,18 @@ interface FormState {
   // Socioeconomic
   household_income_source: string;
   monthly_household_income_bdt: string;
-  // Guardian
+  // Guardian (Session 48a — added employment_type, phones)
   guardian_relationship: string;
+  guardian_employment_type: string;
   guardian_employment: string;
+  guardian_phone: string;
+  guardian_phone_alt: string;
   guardian_summary_internal: string;
   additional_family_notes: string;
-  // Field visit
-  last_visit_date: string;
+  // Submission date (was "Field visit"). Form binds to submission_date
+  // exclusively; the server mirrors to last_visit_date for backward
+  // compat.
+  submission_date: string;
 }
 
 function blankState(): FormState {
@@ -218,17 +245,23 @@ function blankState(): FormState {
     bd_division: "",
     bd_district: "",
     district_internal: "",
+    permanent_address: "",
     education_level: "",
     class_grade: "",
-    areas_of_interest: "",
+    educational_organization: "",
+    school_name_raw: "",
+    areas_of_interest: new Set<string>(),
     story: "",
     support_type: "",
     monthly_cost: "",
+    priority_support: "none", // Default "none" so priority_notes stays hidden initially.
+    priority_notes: "",
     blood_group: "",
     vaccination_status: "",
     last_medical_checkup: "",
     disability_status: "",
     disability_notes: "",
+    parent_loss: "",
     siblings_count: "",
     sibling_position: "",
     siblings_notes: "",
@@ -236,10 +269,13 @@ function blankState(): FormState {
     household_income_source: "",
     monthly_household_income_bdt: "",
     guardian_relationship: "",
+    guardian_employment_type: "",
     guardian_employment: "",
+    guardian_phone: "",
+    guardian_phone_alt: "",
     guardian_summary_internal: "",
     additional_family_notes: "",
-    last_visit_date: "",
+    submission_date: "",
   };
 }
 
@@ -257,17 +293,25 @@ function stateFromExisting(c: ChildFormExistingChild): FormState {
     bd_division: c.bd_division_code ?? "",
     bd_district: c.bd_district_code ?? "",
     district_internal: c.district_internal ?? "",
+    permanent_address: c.permanent_address ?? "",
     education_level: c.education_level ?? "",
     class_grade: c.class_grade ?? "",
-    areas_of_interest: c.areas_of_interest ?? "",
+    educational_organization: c.educational_organization ?? "",
+    school_name_raw: c.school_name_raw ?? "",
+    areas_of_interest: new Set<string>(
+      Array.isArray(c.areas_of_interest) ? c.areas_of_interest : [],
+    ),
     story: c.story ?? "",
     support_type: c.support_type ?? "",
     monthly_cost: c.monthly_cost === null ? "" : String(c.monthly_cost),
+    priority_support: c.priority_support ?? "none",
+    priority_notes: c.priority_notes ?? "",
     blood_group: c.blood_group ?? "",
     vaccination_status: c.vaccination_status ?? "",
     last_medical_checkup: c.last_medical_checkup ?? "",
     disability_status: c.disability_status ?? "",
     disability_notes: c.disability_notes ?? "",
+    parent_loss: c.parent_loss ?? "",
     siblings_count:
       c.siblings_count === null ? "" : String(c.siblings_count),
     sibling_position:
@@ -281,11 +325,26 @@ function stateFromExisting(c: ChildFormExistingChild): FormState {
         ? ""
         : String(c.monthly_household_income_bdt),
     guardian_relationship: c.guardian_relationship ?? "",
+    guardian_employment_type: c.guardian_employment_type ?? "",
     guardian_employment: c.guardian_employment ?? "",
+    guardian_phone: c.guardian_phone ?? "",
+    guardian_phone_alt: c.guardian_phone_alt ?? "",
     guardian_summary_internal: c.guardian_summary_internal ?? "",
     additional_family_notes: c.additional_family_notes ?? "",
-    last_visit_date: c.last_visit_date ?? "",
+    // Session 48a — pre-fill submission_date from the new column,
+    // falling back to last_visit_date for children that pre-date the
+    // submission_date column.
+    submission_date: c.submission_date ?? c.last_visit_date ?? "",
   };
+}
+
+// Session 48a — small immutable Set toggle for the areas_of_interest
+// checkbox grid. Returns a new Set so React re-renders on flip.
+function toggleSetMember(set: Set<string>, value: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
 }
 
 function calcAge(dob: string): number | null {
@@ -330,7 +389,8 @@ export function ChildForm({
     const e: Record<string, string> = {};
 
     if (mode === "create") {
-      // Required-on-create per Mahmud's V1 decision.
+      // Required-on-create per Mahmud's V1 decision (Session 48a
+      // added parent_loss + guardian_phone to the required set).
       if (!form.display_name.trim()) e.display_name = "Required.";
       if (!form.date_of_birth) e.date_of_birth = "Required.";
       if (!form.bd_division) e.bd_division = "Required.";
@@ -345,6 +405,8 @@ export function ChildForm({
         e.guardian_summary_internal = "Required.";
       }
       if (!form.guardian_relationship) e.guardian_relationship = "Required.";
+      if (!form.parent_loss) e.parent_loss = "Required.";
+      if (!form.guardian_phone.trim()) e.guardian_phone = "Required.";
       if (!form.photo_uuid) e.Photo = "A photo is required for new children.";
     } else {
       // Edit: shape-only checks on non-empty values.
@@ -360,20 +422,25 @@ export function ChildForm({
       }
     }
 
-    if (form.date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(form.date_of_birth)) {
-      e.date_of_birth = "Use the date picker.";
-    }
+    // Cross-field rule (both modes): if priority_support is non-none,
+    // priority_notes is required. Same rule the server enforces.
     if (
-      form.last_visit_date &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(form.last_visit_date)
+      form.priority_support &&
+      form.priority_support !== "none" &&
+      !form.priority_notes.trim()
     ) {
-      e.last_visit_date = "Use the date picker.";
+      e.priority_notes = "Required when priority is standard or urgent.";
     }
-    if (
-      form.last_medical_checkup &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(form.last_medical_checkup)
-    ) {
-      e.last_medical_checkup = "Use the date picker.";
+
+    // Date format checks across all date fields.
+    for (const k of [
+      "date_of_birth",
+      "last_medical_checkup",
+      "submission_date",
+    ] as const) {
+      if (form[k] && !/^\d{4}-\d{2}-\d{2}$/.test(form[k])) {
+        e[k] = "Use the date picker.";
+      }
     }
     if (form.monthly_cost) {
       const n = Number(form.monthly_cost);
@@ -391,6 +458,16 @@ export function ChildForm({
         const n = Number(form[k]);
         if (!Number.isInteger(n) || n < 0) {
           e[k] = "Whole number ≥ 0.";
+        }
+      }
+    }
+
+    // Phone shape — extremely permissive (just guard against obvious
+    // typos). Server doesn't gate this further.
+    for (const k of ["guardian_phone", "guardian_phone_alt"] as const) {
+      if (form[k] && form[k].trim().length > 0) {
+        if (!/^[+\d\s()-]{7,32}$/.test(form[k].trim())) {
+          e[k] = "Use digits, +, spaces, hyphens, or parentheses (7–32 chars).";
         }
       }
     }
@@ -414,7 +491,7 @@ export function ChildForm({
       return {
         operation: "create" as const,
         fields: {
-          // Required
+          // Required (Session 48a — added parent_loss + guardian_phone)
           display_name: form.display_name.trim(),
           date_of_birth: form.date_of_birth,
           bd_division: form.bd_division,
@@ -425,17 +502,34 @@ export function ChildForm({
           story: form.story.trim(),
           guardian_summary_internal: form.guardian_summary_internal.trim(),
           guardian_relationship: form.guardian_relationship,
+          parent_loss: form.parent_loss,
+          guardian_phone: form.guardian_phone.trim(),
           // Optional — included only when non-empty
           ...(form.gender ? { gender: form.gender } : {}),
           photo_consent: form.photo_consent,
-          ...(form.education_level.trim()
-            ? { education_level: form.education_level.trim() }
+          ...(form.permanent_address.trim()
+            ? { permanent_address: form.permanent_address.trim() }
+            : {}),
+          ...(form.education_level
+            ? { education_level: form.education_level }
             : {}),
           ...(form.class_grade.trim()
             ? { class_grade: form.class_grade.trim() }
             : {}),
-          ...(form.areas_of_interest.trim()
-            ? { areas_of_interest: form.areas_of_interest.trim() }
+          ...(form.educational_organization
+            ? { educational_organization: form.educational_organization }
+            : {}),
+          ...(form.school_name_raw.trim()
+            ? { school_name_raw: form.school_name_raw.trim() }
+            : {}),
+          ...(form.areas_of_interest.size > 0
+            ? { areas_of_interest: Array.from(form.areas_of_interest) }
+            : {}),
+          ...(form.priority_support
+            ? { priority_support: form.priority_support }
+            : {}),
+          ...(form.priority_notes.trim()
+            ? { priority_notes: form.priority_notes.trim() }
             : {}),
           ...(form.blood_group ? { blood_group: form.blood_group } : {}),
           ...(form.vaccination_status
@@ -472,14 +566,23 @@ export function ChildForm({
                 ),
               }
             : {}),
+          ...(form.guardian_employment_type
+            ? { guardian_employment_type: form.guardian_employment_type }
+            : {}),
           ...(form.guardian_employment.trim()
             ? { guardian_employment: form.guardian_employment.trim() }
+            : {}),
+          ...(form.guardian_phone_alt.trim()
+            ? { guardian_phone_alt: form.guardian_phone_alt.trim() }
             : {}),
           ...(form.additional_family_notes.trim()
             ? { additional_family_notes: form.additional_family_notes.trim() }
             : {}),
-          ...(form.last_visit_date
-            ? { last_visit_date: form.last_visit_date }
+          // Session 48a — submission_date is the canonical column;
+          // server mirrors to last_visit_date so we don't send both
+          // explicitly here.
+          ...(form.submission_date
+            ? { submission_date: form.submission_date }
             : {}),
         },
         photoUuid: form.photo_uuid!,
@@ -696,8 +799,9 @@ export function ChildForm({
         </Field>
       </Section>
 
-      {/* Section 2 — Location */}
-      <Section title="Location">
+      {/* Section 2 — Current location (Session 48a renamed; added
+          permanent_address Tier 3 textarea below the existing fields) */}
+      <Section title="Current location">
         <Field>
           <label className={labelClass} htmlFor="bd_division">
             Division *
@@ -740,7 +844,7 @@ export function ChildForm({
 
         <Field>
           <label className={labelClass} htmlFor="district_internal">
-            District (internal) {mode === "create" ? "*" : null}
+            Full address {mode === "create" ? "*" : null}
           </label>
           <input
             id="district_internal"
@@ -748,7 +852,7 @@ export function ChildForm({
             className={inputClass}
             value={form.district_internal}
             onChange={(e) => set("district_internal", e.target.value)}
-            placeholder="Optional internal label, e.g. neighbourhood"
+            placeholder="House / road / village / area"
             disabled={pending}
           />
           <p className={helperClass}>Not shown to donors.</p>
@@ -756,29 +860,59 @@ export function ChildForm({
             <p className={errorClass}>{errors.district_internal}</p>
           ) : null}
         </Field>
+
+        {/* Tier 3 — permanent_address. Internal-only, never shown to
+            donors. Optional. */}
+        <Tier3Field>
+          <label className={labelClass} htmlFor="permanent_address">
+            Permanent address — internal
+          </label>
+          <textarea
+            id="permanent_address"
+            className={textareaClass}
+            value={form.permanent_address}
+            onChange={(e) => set("permanent_address", e.target.value)}
+            placeholder="Family's permanent address (village, district, etc.)"
+            disabled={pending}
+            rows={2}
+          />
+          <p className={helperClass}>
+            Optional. Captured for admin records — never displayed to
+            donors.
+          </p>
+        </Tier3Field>
       </Section>
 
-      {/* Section 3 — Education */}
+      {/* Section 3 — Education (Session 48a — education_level is now
+          a dropdown; new educational_organization SchoolPicker M2O
+          + school_name_raw fallback; areas_of_interest is now a
+          checkbox grid backed by the AREA_OF_INTEREST_OPTIONS list
+          from form-constants.ts). */}
       <Section title="Education">
         <FieldRow>
           <Field>
             <label className={labelClass} htmlFor="education_level">
               Education level
             </label>
-            <input
+            <select
               id="education_level"
-              type="text"
-              className={inputClass}
+              className={selectClass}
               value={form.education_level}
               onChange={(e) => set("education_level", e.target.value)}
-              placeholder="e.g. Primary / Madrasa / Vocational"
               disabled={pending}
-            />
+            >
+              <option value="">Select…</option>
+              {EDUCATION_LEVEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </Field>
 
           <Field>
             <label className={labelClass} htmlFor="class_grade">
-              Class / grade
+              Class / grade (optional)
             </label>
             <input
               id="class_grade"
@@ -793,18 +927,76 @@ export function ChildForm({
         </FieldRow>
 
         <Field>
-          <label className={labelClass} htmlFor="areas_of_interest">
-            Areas of interest
-          </label>
-          <textarea
-            id="areas_of_interest"
-            className={textareaClass}
-            value={form.areas_of_interest}
-            onChange={(e) => set("areas_of_interest", e.target.value)}
-            placeholder="What they enjoy or want to learn. Shown to donors."
+          <label className={labelClass}>School / institution</label>
+          <SchoolPicker
+            value={form.educational_organization}
+            onChange={(id) => set("educational_organization", id)}
             disabled={pending}
-            rows={3}
+            defaultDivision={form.bd_division}
+            defaultDistrict={form.bd_district}
           />
+          <p className={helperClass}>
+            Pick from the list, or add a new one if not yet recorded.
+            Optional.
+          </p>
+        </Field>
+
+        <Field>
+          <label className={labelClass} htmlFor="school_name_raw">
+            School name (free-text fallback)
+          </label>
+          <input
+            id="school_name_raw"
+            type="text"
+            className={inputClass}
+            value={form.school_name_raw}
+            onChange={(e) => set("school_name_raw", e.target.value)}
+            placeholder="Type school name if you couldn't find it above"
+            disabled={pending}
+          />
+          <p className={helperClass}>
+            Use this only when the school dropdown doesn&apos;t yet have a
+            matching row. Admin will link it later.
+          </p>
+        </Field>
+
+        <Field>
+          <label className={labelClass}>Areas of interest</label>
+          <p className={helperClass + " mb-3 mt-0"}>
+            Tick anything that fits — donors love seeing these. Tier 1
+            public.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {AREA_OF_INTEREST_OPTIONS.map((opt) => {
+              const checked = form.areas_of_interest.has(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                    checked
+                      ? "bg-tangerine-mist/40 border-tangerine-soft"
+                      : "bg-white border-stone-200 hover:bg-stone-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 w-4 h-4 accent-tangerine"
+                    checked={checked}
+                    onChange={() =>
+                      set(
+                        "areas_of_interest",
+                        toggleSetMember(form.areas_of_interest, opt.value),
+                      )
+                    }
+                    disabled={pending}
+                  />
+                  <span className="text-[13.5px] text-ink leading-snug">
+                    {opt.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </Field>
       </Section>
 
@@ -831,8 +1023,12 @@ export function ChildForm({
         </Field>
       </Section>
 
-      {/* Section 5 — Support plan */}
-      <Section title="Support plan">
+      {/* Section 5 — Support needed (Session 48a renamed from
+          "Support plan"; "Monthly cost" relabel → "Cost"; new
+          priority_support dropdown + conditional priority_notes
+          textarea — matches the disability_notes hide-when-none
+          pattern Session 46-fix-2 already established). */}
+      <Section title="Support needed">
         <FieldRow>
           <Field>
             <label className={labelClass} htmlFor="support_type">
@@ -859,7 +1055,7 @@ export function ChildForm({
 
           <Field>
             <label className={labelClass} htmlFor="monthly_cost">
-              Monthly cost (BDT) *
+              Cost (BDT/month) *
             </label>
             <input
               id="monthly_cost"
@@ -879,6 +1075,55 @@ export function ChildForm({
             ) : null}
           </Field>
         </FieldRow>
+
+        <Field>
+          <label className={labelClass} htmlFor="priority_support">
+            Priority
+          </label>
+          <select
+            id="priority_support"
+            className={selectClass}
+            value={form.priority_support}
+            onChange={(e) => set("priority_support", e.target.value)}
+            disabled={pending}
+          >
+            {PRIORITY_SUPPORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p className={helperClass}>
+            {PRIORITY_SUPPORT_OPTIONS.find(
+              (o) => o.value === form.priority_support,
+            )?.helper ?? ""}
+          </p>
+        </Field>
+
+        {/* Conditional — only renders when priority is non-none.
+            Server enforces the same rule. */}
+        {form.priority_support && form.priority_support !== "none" ? (
+          <Tier3Field>
+            <label className={labelClass} htmlFor="priority_notes">
+              Priority notes *
+            </label>
+            <textarea
+              id="priority_notes"
+              className={textareaClass}
+              value={form.priority_notes}
+              onChange={(e) => set("priority_notes", e.target.value)}
+              placeholder="Why is this child a priority? Brief context for admin."
+              disabled={pending}
+              rows={3}
+            />
+            <p className={helperClass}>
+              Required when priority is standard or urgent. Internal-only.
+            </p>
+            {errors.priority_notes ? (
+              <p className={errorClass}>{errors.priority_notes}</p>
+            ) : null}
+          </Tier3Field>
+        ) : null}
       </Section>
 
       {/* Section 6 — Health */}
@@ -981,8 +1226,32 @@ export function ChildForm({
         ) : null}
       </Section>
 
-      {/* Section 7 — Family */}
+      {/* Section 7 — Family (Session 48a — added parent_loss above
+          the existing siblings/household fields). */}
       <Section title="Family">
+        <Field>
+          <label className={labelClass} htmlFor="parent_loss">
+            Who has the child lost? {mode === "create" ? "*" : null}
+          </label>
+          <select
+            id="parent_loss"
+            className={selectClass}
+            value={form.parent_loss}
+            onChange={(e) => set("parent_loss", e.target.value)}
+            disabled={pending}
+          >
+            <option value="">Select…</option>
+            {PARENT_LOSS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          {errors.parent_loss ? (
+            <p className={errorClass}>{errors.parent_loss}</p>
+          ) : null}
+        </Field>
+
         <FieldRow>
           <Field>
             <label className={labelClass} htmlFor="siblings_count">
@@ -1119,45 +1388,124 @@ export function ChildForm({
 
       {/* Section 9 — Guardian */}
       <Section title="Guardian">
-        <FieldRow>
-          <Field>
-            <label className={labelClass} htmlFor="guardian_relationship">
-              Relationship to child {mode === "create" ? "*" : null}
-            </label>
-            <select
-              id="guardian_relationship"
-              className={selectClass}
-              value={form.guardian_relationship}
-              onChange={(e) => set("guardian_relationship", e.target.value)}
-              disabled={pending}
-            >
-              <option value="">Select…</option>
-              {GUARDIAN_RELATIONSHIP_OPTIONS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-            {errors.guardian_relationship ? (
-              <p className={errorClass}>{errors.guardian_relationship}</p>
-            ) : null}
-          </Field>
+        <Field>
+          <label className={labelClass} htmlFor="guardian_relationship">
+            Relationship to child {mode === "create" ? "*" : null}
+          </label>
+          <select
+            id="guardian_relationship"
+            className={selectClass}
+            value={form.guardian_relationship}
+            onChange={(e) => set("guardian_relationship", e.target.value)}
+            disabled={pending}
+          >
+            <option value="">Select…</option>
+            {GUARDIAN_RELATIONSHIP_OPTIONS.map((g) => (
+              <option key={g.value} value={g.value}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+          {errors.guardian_relationship ? (
+            <p className={errorClass}>{errors.guardian_relationship}</p>
+          ) : null}
+        </Field>
 
-          <Field>
-            <label className={labelClass} htmlFor="guardian_employment">
-              Guardian&apos;s work
-            </label>
-            <input
-              id="guardian_employment"
-              type="text"
-              className={inputClass}
-              value={form.guardian_employment}
-              onChange={(e) => set("guardian_employment", e.target.value)}
-              placeholder="e.g. Day labor / Garment factory / Homemaker"
-              disabled={pending}
-            />
-          </Field>
-        </FieldRow>
+        {/* Session 48a — guardian_employment_type (structured) +
+            guardian_employment (free-text qualifier) — both Tier 3.
+            Type is the dropdown DI picks from; the free-text adds
+            specifics ("small_business" + "tea stall"). */}
+        <Tier3Field>
+          <FieldRow>
+            <Field>
+              <label
+                className={labelClass}
+                htmlFor="guardian_employment_type"
+              >
+                Guardian&apos;s work type
+              </label>
+              <select
+                id="guardian_employment_type"
+                className={selectClass}
+                value={form.guardian_employment_type}
+                onChange={(e) =>
+                  set("guardian_employment_type", e.target.value)
+                }
+                disabled={pending}
+              >
+                <option value="">Select…</option>
+                {GUARDIAN_EMPLOYMENT_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field>
+              <label className={labelClass} htmlFor="guardian_employment">
+                Detail (optional)
+              </label>
+              <input
+                id="guardian_employment"
+                type="text"
+                className={inputClass}
+                value={form.guardian_employment}
+                onChange={(e) => set("guardian_employment", e.target.value)}
+                placeholder="e.g. tea stall / nightshift"
+                disabled={pending}
+              />
+              <p className={helperClass}>
+                Free-text qualifier alongside the type above.
+              </p>
+            </Field>
+          </FieldRow>
+        </Tier3Field>
+
+        {/* Session 48a — guardian phone numbers, both Tier 3.
+            Primary is mandatory at submit; alt is always optional. */}
+        <Tier3Field>
+          <FieldRow>
+            <Field>
+              <label className={labelClass} htmlFor="guardian_phone">
+                <span className="text-[#9A2424]">*</span> Guardian phone
+              </label>
+              <input
+                id="guardian_phone"
+                type="tel"
+                className={inputClass}
+                value={form.guardian_phone}
+                onChange={(e) => set("guardian_phone", e.target.value)}
+                placeholder="+8801XXXXXXXXX"
+                disabled={pending}
+              />
+              <p className={helperClass}>
+                Internal only — never shown to donors.
+              </p>
+              {errors.guardian_phone ? (
+                <p className={errorClass}>{errors.guardian_phone}</p>
+              ) : null}
+            </Field>
+
+            <Field>
+              <label className={labelClass} htmlFor="guardian_phone_alt">
+                Secondary phone (optional)
+              </label>
+              <input
+                id="guardian_phone_alt"
+                type="tel"
+                className={inputClass}
+                value={form.guardian_phone_alt}
+                onChange={(e) => set("guardian_phone_alt", e.target.value)}
+                placeholder="Optional secondary contact"
+                disabled={pending}
+              />
+              {errors.guardian_phone_alt ? (
+                <p className={errorClass}>{errors.guardian_phone_alt}</p>
+              ) : null}
+            </Field>
+          </FieldRow>
+        </Tier3Field>
 
         <Field>
           <label
@@ -1200,23 +1548,27 @@ export function ChildForm({
         </Field>
       </Section>
 
-      {/* Section 10 — Field visit */}
-      <Section title="Field visit">
+      {/* Section 10 — Submission date (Session 48a renamed from
+          "Field visit"; binds to the new `submission_date` column.
+          Server mirrors to last_visit_date for backward compat). */}
+      <Section title="Submission date">
         <Field>
-          <label className={labelClass} htmlFor="last_visit_date">
-            Last visit date
+          <label className={labelClass} htmlFor="submission_date">
+            Submission date
           </label>
           <input
-            id="last_visit_date"
+            id="submission_date"
             type="date"
             className={inputClass}
-            value={form.last_visit_date}
-            onChange={(e) => set("last_visit_date", e.target.value)}
+            value={form.submission_date}
+            onChange={(e) => set("submission_date", e.target.value)}
             disabled={pending}
           />
-          <p className={helperClass}>Optional. When you last met this child.</p>
-          {errors.last_visit_date ? (
-            <p className={errorClass}>{errors.last_visit_date}</p>
+          <p className={helperClass}>
+            Optional. The date this profile was prepared.
+          </p>
+          {errors.submission_date ? (
+            <p className={errorClass}>{errors.submission_date}</p>
           ) : null}
         </Field>
       </Section>
@@ -1283,6 +1635,27 @@ function Field({ children }: { children: React.ReactNode }) {
   return <div>{children}</div>;
 }
 
+// Session 48a — Tier 3 visual treatment. Wraps a field so DI sees an
+// amber left-border accent + a small "Internal only" badge near the
+// label. Use sparingly; only fields that contain Tier 3 PII (admin-
+// only data per the privacy spec) get this treatment.
+//
+// The brief calls these out:
+//   permanent_address, priority_notes, guardian_phone,
+//   guardian_phone_alt, guardian_employment_type, guardian_employment.
+function Tier3Field({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative pl-3 border-l-[3px] border-amber-300/70">
+      <div className="mb-1.5">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+          Internal only
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ─── UPDATE-mode dirty-fields builder ───────────────────────────────
 //
 // The server recomputes the diff anyway and rejects empty submissions
@@ -1319,7 +1692,7 @@ function dirtyFieldsForUpdate(
     out.photo_consent = form.photo_consent;
   }
 
-  // Location
+  // Current location (Session 48a — added permanent_address)
   if (form.bd_division !== (existing.bd_division_code ?? "")) {
     out.bd_division = form.bd_division;
   }
@@ -1329,16 +1702,33 @@ function dirtyFieldsForUpdate(
   if (!sameStr(form.district_internal, existing.district_internal)) {
     out.district_internal = form.district_internal.trim();
   }
+  if (!sameStr(form.permanent_address, existing.permanent_address)) {
+    out.permanent_address = form.permanent_address.trim();
+  }
 
-  // Education + interests
-  if (!sameStr(form.education_level, existing.education_level)) {
-    out.education_level = form.education_level.trim() || null;
+  // Education + interests (Session 48a — education_level is now an
+  // enum slug; areas_of_interest is text[] compared by sorted-join)
+  if (form.education_level !== (existing.education_level ?? "")) {
+    out.education_level = form.education_level || null;
   }
   if (!sameStr(form.class_grade, existing.class_grade)) {
     out.class_grade = form.class_grade.trim();
   }
-  if (!sameStr(form.areas_of_interest, existing.areas_of_interest)) {
-    out.areas_of_interest = form.areas_of_interest.trim();
+  if (
+    form.educational_organization !==
+    (existing.educational_organization ?? "")
+  ) {
+    out.educational_organization = form.educational_organization || null;
+  }
+  if (!sameStr(form.school_name_raw, existing.school_name_raw)) {
+    out.school_name_raw = form.school_name_raw.trim();
+  }
+  // Compare interests as sorted lists (order doesn't matter at the
+  // database layer either).
+  const submittedInterests = Array.from(form.areas_of_interest).sort();
+  const existingInterests = (existing.areas_of_interest ?? []).slice().sort();
+  if (submittedInterests.join("|") !== existingInterests.join("|")) {
+    out.areas_of_interest = submittedInterests;
   }
 
   // Story
@@ -1346,7 +1736,7 @@ function dirtyFieldsForUpdate(
     out.story = form.story.trim();
   }
 
-  // Support plan
+  // Support needed (Session 48a — priority columns)
   if (form.support_type !== (existing.support_type ?? "")) {
     out.support_type = form.support_type;
   }
@@ -1355,6 +1745,12 @@ function dirtyFieldsForUpdate(
     : null;
   if (submittedCost !== existing.monthly_cost) {
     out.monthly_cost = submittedCost;
+  }
+  if (form.priority_support !== (existing.priority_support ?? "none")) {
+    out.priority_support = form.priority_support;
+  }
+  if (!sameStr(form.priority_notes, existing.priority_notes)) {
+    out.priority_notes = form.priority_notes.trim();
   }
 
   // Health
@@ -1374,7 +1770,10 @@ function dirtyFieldsForUpdate(
     out.disability_notes = form.disability_notes.trim();
   }
 
-  // Family
+  // Family (Session 48a — added parent_loss)
+  if (form.parent_loss !== (existing.parent_loss ?? "")) {
+    out.parent_loss = form.parent_loss || undefined;
+  }
   const submittedSiblings = numFor(form.siblings_count);
   if (submittedSiblings !== existing.siblings_count) {
     out.siblings_count = submittedSiblings;
@@ -1402,12 +1801,24 @@ function dirtyFieldsForUpdate(
     out.monthly_household_income_bdt = submittedIncome;
   }
 
-  // Guardian
+  // Guardian (Session 48a — added employment_type, phones)
   if (form.guardian_relationship !== (existing.guardian_relationship ?? "")) {
     out.guardian_relationship = form.guardian_relationship || undefined;
   }
+  if (
+    form.guardian_employment_type !==
+    (existing.guardian_employment_type ?? "")
+  ) {
+    out.guardian_employment_type = form.guardian_employment_type || undefined;
+  }
   if (!sameStr(form.guardian_employment, existing.guardian_employment)) {
     out.guardian_employment = form.guardian_employment.trim();
+  }
+  if (!sameStr(form.guardian_phone, existing.guardian_phone)) {
+    out.guardian_phone = form.guardian_phone.trim();
+  }
+  if (!sameStr(form.guardian_phone_alt, existing.guardian_phone_alt)) {
+    out.guardian_phone_alt = form.guardian_phone_alt.trim();
   }
   if (
     !sameStr(form.guardian_summary_internal, existing.guardian_summary_internal)
@@ -1420,9 +1831,11 @@ function dirtyFieldsForUpdate(
     out.additional_family_notes = form.additional_family_notes.trim();
   }
 
-  // Field visit
-  if (form.last_visit_date !== (existing.last_visit_date ?? "")) {
-    out.last_visit_date = form.last_visit_date || null;
+  // Submission date (Session 48a — was "Field visit" / last_visit_date;
+  // form binds to submission_date now, server mirrors to last_visit_date)
+  const existingSubmission = existing.submission_date ?? existing.last_visit_date ?? "";
+  if (form.submission_date !== existingSubmission) {
+    out.submission_date = form.submission_date || null;
   }
 
   return out;
