@@ -33,7 +33,14 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { PHOTO_LIMITS } from "@/lib/di-photo-limits";
+// Session 51.5 — documents accept PDFs in addition to images. The
+// previous wiring reused PHOTO_LIMITS (images only), which caused
+// every PDF upload to fail with a generic "Couldn't save that
+// document" toast — both because the client allow-list rejected it
+// and because the server /api/di/uploads/photo route gated on the
+// photo allow-list too. Documents now uses DOCUMENT_LIMITS (+ PDF)
+// and the sibling /api/di/uploads/document endpoint.
+import { DOCUMENT_LIMITS } from "@/lib/di-photo-limits";
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_LABELS,
@@ -178,23 +185,23 @@ export function DocumentsSection({
   // ─── Upload helper ──
   async function handleUpload(type: DocumentType, file: File) {
     if (!childId) return;
-    if (!(PHOTO_LIMITS.allowedTypes as readonly string[]).includes(file.type)) {
+    if (!(DOCUMENT_LIMITS.allowedTypes as readonly string[]).includes(file.type)) {
       setSlots((prev) => ({
         ...prev,
         [type]: {
           ...prev[type],
           uploadError:
-            "That file type isn't supported. Please use JPEG, PNG, or WebP.",
+            "That file type isn't supported. Please use PDF, JPEG, PNG, or WebP.",
         },
       }));
       return;
     }
-    if (file.size > PHOTO_LIMITS.maxBytes) {
+    if (file.size > DOCUMENT_LIMITS.maxBytes) {
       setSlots((prev) => ({
         ...prev,
         [type]: {
           ...prev[type],
-          uploadError: `That file is ${formatBytes(file.size)} — too large. Please use one under ${formatBytes(PHOTO_LIMITS.maxBytes)}.`,
+          uploadError: `That file is ${formatBytes(file.size)} — too large. Please use one under ${formatBytes(DOCUMENT_LIMITS.maxBytes)}.`,
         },
       }));
       return;
@@ -206,10 +213,13 @@ export function DocumentsSection({
     }));
 
     try {
-      // Step 1: push file bytes to directus_files.
+      // Step 1: push file bytes to directus_files via the document
+      // upload route (accepts images + PDFs). The form field is
+      // `file` here (not `photo`) — matches /api/di/uploads/document
+      // semantics.
       const fileForm = new FormData();
-      fileForm.append("photo", file);
-      const fileRes = await fetch("/api/di/uploads/photo", {
+      fileForm.append("file", file);
+      const fileRes = await fetch("/api/di/uploads/document", {
         method: "POST",
         body: fileForm,
       });
@@ -466,7 +476,7 @@ export function DocumentsSection({
                           : visible.status === "archived"
                             ? "Archived by admin."
                             : "Awaiting admin review."
-                      : "JPEG, PNG, or WebP. Up to 5 MB."}
+                      : "PDF, JPEG, PNG, or WebP. Up to 5 MB."}
                   </p>
 
                   {/* Upload / replace button */}
@@ -565,7 +575,12 @@ export function DocumentsSection({
                 fileRefs.current[type] = el;
               }}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              // Session 51.5 — added application/pdf so the OS file
+              // picker actually shows PDFs as selectable. Previously
+              // the only options were the three image MIMEs, forcing
+              // users to flip the picker to "All files" and discover
+              // PDFs after a failed upload.
+              accept="image/jpeg,image/png,image/webp,application/pdf"
               className="hidden"
               aria-hidden="true"
               onChange={(e) => {

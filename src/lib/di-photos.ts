@@ -22,7 +22,7 @@
 //     the client gates first.
 
 import "server-only";
-import { PHOTO_LIMITS } from "./di-photo-limits";
+import { DOCUMENT_LIMITS, PHOTO_LIMITS } from "./di-photo-limits";
 import { VIDEO_LIMITS } from "./di-video-limits";
 
 // Widen to ReadonlySet<string> so File.type (which is a generic
@@ -36,6 +36,11 @@ const ALLOWED_VIDEO_TYPES: ReadonlySet<string> = new Set<string>(
 );
 const MAX_VIDEO_BYTES = VIDEO_LIMITS.maxBytes;
 const MAX_VIDEO_DURATION = VIDEO_LIMITS.maxDurationSeconds;
+// Session 51.5 — Documents accept the photo allow-list PLUS PDF.
+const ALLOWED_DOCUMENT_TYPES: ReadonlySet<string> = new Set<string>(
+  DOCUMENT_LIMITS.allowedTypes,
+);
+const MAX_DOCUMENT_BYTES = DOCUMENT_LIMITS.maxBytes;
 
 export class InvalidFileTypeError extends Error {
   readonly code = "invalid_file_type" as const;
@@ -213,6 +218,78 @@ export async function uploadVideoToDirectus(
     `DI video upload by ${uploadedByUserId} on ${new Date().toISOString()} (${Math.round(
       durationSeconds,
     )}s)`,
+  );
+  form.append("file", file);
+
+  let res: Response;
+  try {
+    res = await fetch(`${getDirectusUrl()}/files`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${getAdminToken()}`,
+      },
+      body: form,
+    });
+  } catch (err) {
+    throw new UploadFailedError(err);
+  }
+
+  if (!res.ok) {
+    let errBody = "";
+    try {
+      errBody = (await res.text()).slice(0, 500);
+    } catch {
+      // ignore
+    }
+    throw new UploadFailedError(
+      new Error(`HTTP ${res.status}: ${errBody || res.statusText}`),
+    );
+  }
+
+  let body: { data?: { id?: string } } = {};
+  try {
+    body = (await res.json()) as { data?: { id?: string } };
+  } catch (err) {
+    throw new UploadFailedError(err);
+  }
+
+  const fileUuid = body.data?.id;
+  if (!fileUuid) {
+    throw new UploadFailedError(new Error("No file id returned"));
+  }
+  return { fileUuid };
+}
+
+/**
+ * Session 51.5 — uploads a single document file (image OR PDF) to
+ * Directus. Mirror of uploadPhotoToDirectus with a wider MIME
+ * allow-list (DOCUMENT_LIMITS.allowedTypes). Same folder routing,
+ * same admin-token auth, same FormData shape.
+ *
+ * Why a separate function instead of a `mime allowlist` param on
+ * uploadPhotoToDirectus: keeping the photo path strictly image-only
+ * surfaces in error messaging ("not a photo" reads as a hard
+ * intent) and means the intake-photos / moments / child-photo paths
+ * can't accidentally accept a PDF via a forgotten parameter.
+ */
+export async function uploadDocumentToDirectus(
+  file: File,
+  uploadedByUserId: string,
+): Promise<{ fileUuid: string }> {
+  if (!ALLOWED_DOCUMENT_TYPES.has(file.type)) {
+    throw new InvalidFileTypeError(file.type);
+  }
+  if (file.size > MAX_DOCUMENT_BYTES) {
+    throw new FileTooLargeError(file.size, MAX_DOCUMENT_BYTES);
+  }
+
+  const folderId = process.env.DIRECTUS_DI_PENDING_FOLDER_ID?.trim() || null;
+
+  const form = new FormData();
+  if (folderId) form.append("folder", folderId);
+  form.append(
+    "title",
+    `DI document upload by ${uploadedByUserId} on ${new Date().toISOString()}`,
   );
   form.append("file", file);
 

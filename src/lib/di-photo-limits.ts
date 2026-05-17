@@ -15,3 +15,23 @@ export const PHOTO_LIMITS = {
 } as const;
 
 export type AllowedPhotoMime = (typeof PHOTO_LIMITS.allowedTypes)[number];
+
+// Session 51.5 — Documents upload extends the photo allow-list with
+// `application/pdf` for scanned legal/identity documents (birth
+// certificates, NIDs, school recommendations). Same 5 MB ceiling —
+// raising it is out of scope for the hotfix; if real documents
+// exceed 5 MB regularly we can bump it in a follow-up. The
+// distinction lives in this separate const (rather than as a flag
+// on PHOTO_LIMITS) so intake photos / moments / child photo upload
+// stay strictly image-only.
+export const DOCUMENT_LIMITS = {
+  maxBytes: 5 * 1024 * 1024,
+  allowedTypes: [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf",
+  ] as const,
+} as const;
+
+export type AllowedDocumentMime = (typeof DOCUMENT_LIMITS.allowedTypes)[number];

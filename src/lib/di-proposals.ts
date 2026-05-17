@@ -249,8 +249,21 @@ export class NoChangesError extends Error {
 
 export class DivisionNotAllowedError extends Error {
   readonly code = "division_not_allowed" as const;
-  constructor(public readonly divisionCode: string) {
-    super(`Division "${divisionCode}" is not in your assigned_divisions`);
+  // Session 51.5 — added `allowedCodes` so the API can echo the DI's
+  // assigned_divisions back to the client. The form uses this to
+  // render a concrete error like "You can only create children in
+  // your assigned divisions: dhaka, chittagong" instead of the
+  // generic "ask your admin" copy the prior session shipped.
+  constructor(
+    public readonly divisionCode: string,
+    public readonly allowedCodes: string[] = [],
+  ) {
+    super(
+      `Division "${divisionCode}" is not in your assigned_divisions` +
+        (allowedCodes.length > 0
+          ? ` (allowed: ${allowedCodes.join(", ")})`
+          : ""),
+    );
     this.name = "DivisionNotAllowedError";
   }
 }
@@ -674,10 +687,14 @@ async function createCreateProposal(
   }
 
   // Division guard — DI may only propose new children in their
-  // assigned divisions.
-  const allowed = await isDivisionAllowedForUser(userId, f.bd_division);
-  if (!allowed) {
-    throw new DivisionNotAllowedError(f.bd_division);
+  // assigned divisions. Fetch the assigned set once so we can pass
+  // it back inside DivisionNotAllowedError for a helpful UI message
+  // (Session 51.5 — the dropdown now shows all 8 divisions, so the
+  // DI may legitimately pick an unassigned one and the error needs
+  // to be self-explanatory).
+  const assignedCodes = await getAssignedDivisionsForUser(userId);
+  if (!assignedCodes.includes(f.bd_division)) {
+    throw new DivisionNotAllowedError(f.bd_division, assignedCodes);
   }
 
   // Session 46-fix-2 — assemble the full payload including the 17

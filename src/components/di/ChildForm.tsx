@@ -957,6 +957,10 @@ export function ChildForm({
             message?: string;
             field?: string;
             divisionCode?: string;
+            // Session 51.5 — server now echoes the DI's allowed
+            // divisions so we can render a concrete "you can only
+            // create children in X, Y" message inline on the field.
+            allowedCodes?: string[];
             issues?: Array<{ path?: string; message?: string }>;
           };
           if (errBody.error === "no_changes") {
@@ -964,10 +968,19 @@ export function ChildForm({
               "No fields have actually changed. Edit something before submitting.",
             );
           } else if (errBody.error === "division_not_allowed") {
+            const allowed = errBody.allowedCodes ?? [];
+            const allowedFriendly = allowed.length > 0
+              ? allowed
+                  .map((c) =>
+                    divisions.find((d) => d.code === c)?.name ?? c,
+                  )
+                  .join(", ")
+              : null;
             setErrors((e) => ({
               ...e,
-              bd_division:
-                "You're not assigned to this division. Ask your admin to enable it.",
+              bd_division: allowedFriendly
+                ? `You can only create children in your assigned divisions: ${allowedFriendly}.`
+                : "You don't have any assigned divisions yet. Ask your admin to set them up before creating a new child.",
             }));
           } else if (
             errBody.error === "missing_required_field" &&

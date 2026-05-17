@@ -262,6 +262,14 @@ const createProposalBodySchema = z.discriminatedUnion("operation", [
 // progress.
 const draftBodySchema = z
   .object({
+    // Session 51.5 — `mode` is the client's path discriminator
+    // (form posts the same body shape for draft + submit and the
+    // server routes off this). Accepted-and-ignored here so the
+    // .strict() guard doesn't reject the legitimate client shape.
+    // Without this the entire draft-save flow returns 400 silently,
+    // and the form surfaces "Couldn't save your draft" with no
+    // actionable info.
+    mode: z.literal("draft").optional(),
     operation: z.enum(["create", "update"]),
     childId: z.string().uuid().optional(),
     // Use a loose record so any subset of editable/creatable fields
@@ -393,6 +401,10 @@ export async function POST(req: NextRequest) {
         {
           error: "division_not_allowed",
           divisionCode: err.divisionCode,
+          // Session 51.5 — echo the DI's assigned divisions so the
+          // form can render a concrete "you can only create in: X, Y"
+          // message rather than the generic copy.
+          allowedCodes: err.allowedCodes,
           message: err.message,
         },
         { status: 403 },
