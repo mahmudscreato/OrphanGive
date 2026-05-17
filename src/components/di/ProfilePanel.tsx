@@ -1,14 +1,13 @@
 // Session 43 — Profile tab content for Child Detail.
+// Session 44 — Edit button wired up to /di/children/[id]/edit.
 //
 // Server component. Read-only DI-visible fields per spec §3.
 // The `district_internal` and `guardian_summary_internal` fields
 // get a tangerine-tinted "Internal notes (not shown to donors)"
 // section so the DI is reminded what's staff-only data.
-//
-// Edit functionality is deferred to Session 44 — we render a
-// disabled-looking button at the bottom as a forward-tell.
 
-import { Lock } from "lucide-react";
+import Link from "next/link";
+import { Edit3 } from "lucide-react";
 import type { DiChildDetail } from "@/lib/di-children";
 
 function formatLongDate(iso: string | null | undefined): string | null {
@@ -97,17 +96,17 @@ export function ProfilePanel({ child }: { child: DiChildDetail }) {
         </Section>
       </div>
 
-      {/* Edit button — disabled placeholder for Session 44 */}
+      {/* Edit button — links to the proposal-creating edit form
+          (Session 44). Submissions go through child_proposal — admin
+          must approve before changes go live. */}
       <div className="pt-4 border-t border-stone-200 mt-2">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full border border-tangerine text-tangerine-deeper bg-white text-[14px] font-medium opacity-70 cursor-not-allowed"
+        <Link
+          href={`/di/children/${child.id}/edit`}
+          className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full border border-tangerine text-tangerine-deeper bg-white text-[14px] font-medium hover:bg-tangerine-mist/40 transition-colors"
         >
-          <Lock className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
-          Editing coming in next update
-        </button>
+          <Edit3 className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+          Edit profile
+        </Link>
       </div>
     </section>
   );
