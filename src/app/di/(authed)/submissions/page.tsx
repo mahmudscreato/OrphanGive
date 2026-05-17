@@ -13,7 +13,7 @@
 // JustSubmittedBanner client component.
 
 import Link from "next/link";
-import { Inbox } from "lucide-react";
+import { Inbox, Info } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import {
   listProposalsForUser,
@@ -80,6 +80,24 @@ export default async function DiSubmissionsPage({
       {justSubmittedId ? (
         <JustSubmittedBanner proposalId={justSubmittedId} />
       ) : null}
+
+      {/* Session 46 — scope note. The Pending tile on the home page
+          aggregates across 4 collections, but THIS page shows only
+          child_proposal rows (edits + new-child proposals). Moments,
+          reports, and deliveries each surface on their respective
+          Child Detail tab — that's where DI manages those flows from.
+          A unified Submissions screen is a polish for a future session. */}
+      <div className="mb-5 rounded-xl border border-stone-200 bg-white px-4 py-3 flex items-start gap-3">
+        <Info
+          className="w-4 h-4 text-tangerine-deeper stroke-[1.75] shrink-0 mt-0.5"
+          aria-hidden="true"
+        />
+        <p className="text-[13px] text-ink-soft leading-relaxed">
+          Showing profile-change proposals. Moments, reports, and
+          deliveries appear on each child&apos;s detail page — open a child
+          and pick the relevant tab.
+        </p>
+      </div>
 
       {/* Filter pills */}
       <nav

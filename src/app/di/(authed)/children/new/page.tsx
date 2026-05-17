@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
-import { getBdDivisions } from "@/lib/di-children";
+import { getBdDistricts, getBdDivisions } from "@/lib/di-children";
 import { getAssignedDivisionsForUser } from "@/lib/di-proposals";
 import { ChildForm } from "@/components/di/ChildForm";
 import { AssignedDivisionsEmptyState } from "@/components/di/AssignedDivisionsEmptyState";
@@ -28,7 +28,13 @@ export default async function DiNewChildPage() {
     return <AssignedDivisionsEmptyState />;
   }
 
-  const divisions = await getBdDivisions(assignedCodes);
+  // Session 46-fix-2 — also fetch districts for the cascade dropdown.
+  // Pass the FULL district list; the BdDistrictField filters
+  // client-side based on the currently-selected division.
+  const [divisions, districts] = await Promise.all([
+    getBdDivisions(assignedCodes),
+    getBdDistricts(),
+  ]);
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-3xl mx-auto">
@@ -55,7 +61,11 @@ export default async function DiNewChildPage() {
         </p>
       </header>
 
-      <ChildForm mode="create" divisions={divisions} />
+      <ChildForm
+        mode="create"
+        divisions={divisions}
+        districts={districts}
+      />
     </div>
   );
 }

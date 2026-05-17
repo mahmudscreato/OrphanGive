@@ -24,6 +24,9 @@ import {
   uploadVideoToDirectus,
   VideoTooLongError,
 } from "@/lib/di-photos";
+// Session 46 — audit on every successful video upload (same shape
+// rationale as the photo route: collection-level, no childId).
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +74,18 @@ export async function POST(req: NextRequest) {
       session.userId,
       durationSeconds,
     );
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_uploaded_video",
+      collection: "directus_files",
+      recordId: fileUuid,
+      metadata: {
+        sizeBytes: file.size,
+        mime: file.type,
+        durationSeconds,
+      },
+      request: req,
+    });
     return NextResponse.json({ fileUuid, durationSeconds });
   } catch (err) {
     if (err instanceof InvalidFileTypeError) {

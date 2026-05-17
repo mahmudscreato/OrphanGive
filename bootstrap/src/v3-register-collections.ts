@@ -119,16 +119,59 @@ const NEW_COLLECTIONS: Record<string, CollectionDef> = {
       f.str('display_name'),
       f.str('first_name'),
       f.date('date_of_birth'),
-      f.str('gender'),
+      f.enum('gender', ['male', 'female']),
       bdDivisionFkField({ required: false }),
+      // Session 46-fix-2 — bd_district FK + cascade off bd_division.
+      // Mirrors the FK on child.bd_district. Registered as a string
+      // field; the actual FK relation is declared in the relations
+      // block below so Directus's auto-discovery wires it cleanly.
+      f.str('bd_district'),
       f.str('district_internal'),
       photoFkField({ required: false }),
+      // Session 46-fix-2 — donor-facing photo consent. Defaults FALSE
+      // at the column level; the form re-defaults each load so DI
+      // ticks consent explicitly per submission.
+      f.bool('photo_consent', false),
       f.text('story'),
       f.str('education_level'),
       f.str('class_grade'),
+      // Session 46-fix-2 — donor-facing free-text "what they enjoy".
+      f.text('areas_of_interest'),
       f.enum('support_type', ['education', 'food', 'healthcare', 'clothing', 'general_care', 'other']),
       f.int('monthly_cost', true),
+      // Session 46-fix-2 — health block (medical_conditions, allergies,
+      // and mental_health_notes are intentionally NOT mirrored — they
+      // stay admin-only per spec privacy posture).
+      f.enum('blood_group', ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'unknown']),
+      f.enum('vaccination_status', ['up_to_date', 'partial', 'unknown', 'not_started']),
+      f.date('last_medical_checkup'),
+      f.enum('disability_status', ['none', 'physical', 'visual', 'hearing', 'cognitive', 'multiple', 'other']),
+      f.text('disability_notes'),
+      // Session 46-fix-2 — siblings block.
+      f.int('siblings_count', true),
+      f.int('sibling_position', true),
+      f.text('siblings_notes'),
+      // Session 46-fix-2 — socioeconomic block.
+      f.enum('household_income_source', ['none', 'day_labor', 'agriculture', 'small_business', 'remittance', 'mixed', 'unknown']),
+      f.int('monthly_household_income_bdt', true),
+      f.int('household_size', true),
+      // Session 46-fix-2 — guardian context block.
+      f.enum('guardian_relationship', [
+        'paternal_uncle',
+        'maternal_uncle',
+        'paternal_aunt',
+        'maternal_aunt',
+        'paternal_grandparent',
+        'maternal_grandparent',
+        'older_sibling',
+        'extended_family',
+        'community_member',
+        'orphanage_only',
+        'other',
+      ]),
+      f.str('guardian_employment'),
       f.text('guardian_summary_internal'),
+      f.text('additional_family_notes'),
       f.date('last_visit_date'),
       f.enum('status', ['draft', 'pending', 'approved', 'rejected'], { required: true, def: 'draft' }),
       f.text('rejection_reason'),
@@ -234,6 +277,9 @@ const NEW_RELATIONS: RelationDef[] = [
   // child_proposal
   { collection: 'child_proposal', field: 'target_child',  related_collection: 'child' },
   { collection: 'child_proposal', field: 'bd_division',   related_collection: 'bd_division' },
+  // Session 46-fix-2 — bd_district FK + cascade off bd_division.
+  // Same shape as child.bd_district (varchar code → bd_district.code).
+  { collection: 'child_proposal', field: 'bd_district',   related_collection: 'bd_district' },
   { collection: 'child_proposal', field: 'Photo',         related_collection: 'directus_files' },
   { collection: 'child_proposal', field: 'created_by',    related_collection: 'directus_users' },
   { collection: 'child_proposal', field: 'approved_by',   related_collection: 'directus_users' },
@@ -300,7 +346,7 @@ const EXISTING_COLLECTION_FIELDS: { collection: string; fields: FieldDef[] }[] =
 
 async function login() {
   log(`Logging in to ${URL} as ${EMAIL}...`);
-  await client.login(EMAIL, PASSWORD);
+  await client.login(EMAIL!, PASSWORD!);
   log('Logged in.', 'ok');
 }
 

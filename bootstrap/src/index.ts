@@ -466,7 +466,7 @@ const seedFAQ = [
 
 async function login() {
   log(`Logging in to ${URL} as ${EMAIL}...`);
-  await client.login(EMAIL, PASSWORD);
+  await client.login(EMAIL!, PASSWORD!);
   log('Logged in.', 'ok');
 }
 

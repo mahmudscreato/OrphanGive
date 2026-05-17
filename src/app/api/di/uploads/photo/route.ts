@@ -22,6 +22,12 @@ import {
   InvalidFileTypeError,
   uploadPhotoToDirectus,
 } from "@/lib/di-photos";
+// Session 46 — audit on every successful file upload. The audit row
+// is collection-level (no childId in metadata) — file uploads happen
+// before any submission flow knows the target child. Per-child
+// History tab won't surface raw uploads, only the child-row mutation
+// they later become part of.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +56,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const { fileUuid } = await uploadPhotoToDirectus(file, session.userId);
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_uploaded_photo",
+      collection: "directus_files",
+      recordId: fileUuid,
+      metadata: {
+        sizeBytes: file.size,
+        mime: file.type,
+      },
+      request: req,
+    });
     return NextResponse.json({ fileUuid });
   } catch (err) {
     if (err instanceof InvalidFileTypeError) {

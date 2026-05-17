@@ -492,11 +492,51 @@ export async function getDiChildById(
   return rowToDetail(row, userId);
 }
 
-// ─── bd_division lookup (for form dropdowns) ────────────────────────
+// ─── bd_division + bd_district lookups (for form dropdowns) ──────────
 
 export interface BdDivisionOption {
   code: string;
   name: string;
+}
+
+export interface BdDistrictOption {
+  code: string;
+  name: string;
+  name_bn: string;
+  sort_order: number;
+  division: string; // FK back to bd_division.code (drives cascade)
+}
+
+/**
+ * Returns all bd_district rows for the cascade dropdown in ChildForm.
+ * Sorted by (division, sort_order) so the client component can group
+ * cleanly without re-sorting.
+ *
+ * No restriction filter — the form's client-side cascade decides
+ * which rows to show based on the currently-selected division. The
+ * full list is small enough (~64 rows for all of Bangladesh) that
+ * passing it down once is cheaper than re-fetching on every cascade
+ * change.
+ */
+export async function getBdDistricts(): Promise<BdDistrictOption[]> {
+  let rows: BdDistrictOption[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("bd_district" as never, {
+        fields: ["code", "name", "name_bn", "sort_order", "division"],
+        limit: -1,
+        sort: ["division", "sort_order"],
+      } as never),
+    )) as unknown as BdDistrictOption[] | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[di-children] getBdDistricts failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  return rows.filter((r) => r.code && r.name && r.division);
 }
 
 /**
@@ -543,32 +583,85 @@ export async function getBdDivisions(
 
 export interface ChildEditSnapshot {
   id: string;
+  // Identity
   display_name: string;
+  gender: string | null;
   date_of_birth: string | null;
+  photo_consent: boolean | null;
+  current_photo_uuid: string | null;
+  // Location
   bd_division_code: string | null;
+  bd_district_code: string | null;
   district_internal: string | null;
+  // Education + interests
+  education_level: string | null;
+  class_grade: string | null;
+  areas_of_interest: string | null;
+  // Donor-facing story
+  story: string;
+  // Support plan
   support_type: string | null;
   monthly_cost: number | null;
-  education_level: string | null;
-  story: string;
+  // Health (subset)
+  blood_group: string | null;
+  vaccination_status: string | null;
+  last_medical_checkup: string | null;
+  disability_status: string | null;
+  disability_notes: string | null;
+  // Family
+  siblings_count: number | null;
+  sibling_position: number | null;
+  siblings_notes: string | null;
+  household_size: number | null;
+  // Socioeconomic
+  household_income_source: string | null;
+  monthly_household_income_bdt: number | null;
+  // Guardian context
+  guardian_relationship: string | null;
+  guardian_employment: string | null;
   guardian_summary_internal: string | null;
+  additional_family_notes: string | null;
+  // Field visit
   last_visit_date: string | null;
-  current_photo_uuid: string | null;
 }
 
+// Session 46-fix-2 — full editable surface (28 mirror fields). Order
+// here is the SELECT order; `rowToEditSnapshot` pulls each into the
+// snapshot. Photo is requested as the raw UUID (`Photo`); bd_division
+// + bd_district are expanded to their `.code` so the form pre-fill
+// has the slug PKs the cascade dropdown needs.
 const CHILD_EDIT_FIELDS = [
   "id",
   "display_name",
+  "gender",
   "date_of_birth",
+  "photo_consent",
+  "Photo",
   "bd_division.code",
+  "bd_district.code",
   "district_internal",
+  "education_level",
+  "class_grade",
+  "areas_of_interest",
+  "story",
   "support_type",
   "monthly_cost",
-  "education_level",
-  "story",
+  "blood_group",
+  "vaccination_status",
+  "last_medical_checkup",
+  "disability_status",
+  "disability_notes",
+  "siblings_count",
+  "sibling_position",
+  "siblings_notes",
+  "household_size",
+  "household_income_source",
+  "monthly_household_income_bdt",
+  "guardian_relationship",
+  "guardian_employment",
   "guardian_summary_internal",
+  "additional_family_notes",
   "last_visit_date",
-  "Photo",
 ] as const;
 
 /**
@@ -585,16 +678,35 @@ export async function getChildEditSnapshot(
     | {
         id: string;
         display_name: string | null;
+        gender: string | null;
         date_of_birth: string | null;
+        photo_consent: boolean | null;
+        Photo: string | null;
         bd_division: { code?: string | null } | null;
+        bd_district: { code?: string | null } | null;
         district_internal: string | null;
+        education_level: string | null;
+        class_grade: string | null;
+        areas_of_interest: string | null;
+        story: string | null;
         support_type: string | null;
         monthly_cost: number | null;
-        education_level: string | null;
-        story: string | null;
+        blood_group: string | null;
+        vaccination_status: string | null;
+        last_medical_checkup: string | null;
+        disability_status: string | null;
+        disability_notes: string | null;
+        siblings_count: number | null;
+        sibling_position: number | null;
+        siblings_notes: string | null;
+        household_size: number | null;
+        household_income_source: string | null;
+        monthly_household_income_bdt: number | null;
+        guardian_relationship: string | null;
+        guardian_employment: string | null;
         guardian_summary_internal: string | null;
+        additional_family_notes: string | null;
         last_visit_date: string | null;
-        Photo: string | null;
       }
     | undefined;
   try {
@@ -618,17 +730,46 @@ export async function getChildEditSnapshot(
   if (!row) return null;
   return {
     id: row.id,
+    // Identity
     display_name: row.display_name?.trim() || "",
+    gender: row.gender ?? null,
     date_of_birth: row.date_of_birth ?? null,
+    photo_consent: row.photo_consent ?? null,
+    current_photo_uuid: row.Photo ?? null,
+    // Location
     bd_division_code: row.bd_division?.code ?? null,
+    bd_district_code: row.bd_district?.code ?? null,
     district_internal: row.district_internal ?? null,
+    // Education + interests
+    education_level: row.education_level ?? null,
+    class_grade: row.class_grade ?? null,
+    areas_of_interest: row.areas_of_interest ?? null,
+    // Donor-facing story
+    story: row.story ?? "",
+    // Support plan
     support_type: row.support_type ?? null,
     monthly_cost: row.monthly_cost ?? null,
-    education_level: row.education_level ?? null,
-    story: row.story ?? "",
+    // Health
+    blood_group: row.blood_group ?? null,
+    vaccination_status: row.vaccination_status ?? null,
+    last_medical_checkup: row.last_medical_checkup ?? null,
+    disability_status: row.disability_status ?? null,
+    disability_notes: row.disability_notes ?? null,
+    // Family
+    siblings_count: row.siblings_count ?? null,
+    sibling_position: row.sibling_position ?? null,
+    siblings_notes: row.siblings_notes ?? null,
+    household_size: row.household_size ?? null,
+    // Socioeconomic
+    household_income_source: row.household_income_source ?? null,
+    monthly_household_income_bdt: row.monthly_household_income_bdt ?? null,
+    // Guardian context
+    guardian_relationship: row.guardian_relationship ?? null,
+    guardian_employment: row.guardian_employment ?? null,
     guardian_summary_internal: row.guardian_summary_internal ?? null,
+    additional_family_notes: row.additional_family_notes ?? null,
+    // Field visit
     last_visit_date: row.last_visit_date ?? null,
-    current_photo_uuid: row.Photo ?? null,
   };
 }
 

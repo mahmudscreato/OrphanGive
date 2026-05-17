@@ -22,6 +22,9 @@ import {
   InvalidInputError,
   OutOfScopeError,
 } from "@/lib/di-reports";
+// Session 46 — audit + admin notify on every successful report.
+import { recordAuditEvent } from "@/lib/di-audit";
+import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +76,25 @@ export async function POST(req: NextRequest) {
 
   try {
     const { reportId } = await createReport(session.userId, parsed.data);
+    await recordAuditEvent({
+      actorUserId: session.userId,
+      action: "di_submitted_report",
+      collection: "child_update",
+      recordId: reportId,
+      metadata: {
+        childId: parsed.data.childId,
+        type: parsed.data.type,
+        visibility: parsed.data.visibility,
+      },
+      request: req,
+    });
+    await notifyAdminOfPendingSubmission({
+      collection: "child_update",
+      recordId: reportId,
+      submittedByUserId: session.userId,
+      childId: parsed.data.childId,
+      summary: `New ${parsed.data.type} report: "${parsed.data.title.slice(0, 60)}"`,
+    });
     return NextResponse.json({ reportId });
   } catch (err) {
     if (err instanceof OutOfScopeError) {

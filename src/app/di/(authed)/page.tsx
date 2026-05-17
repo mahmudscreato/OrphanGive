@@ -83,39 +83,94 @@ export default async function DiHomePage() {
       ? `Salaam, ${session.firstName.trim()}.`
       : "Salaam.";
 
-  // Run all four count queries in parallel.
-  const [childCount, taskCount, pendingProposalCount, reportsThisMonthCount] =
-    await Promise.all([
-      safeCount("child", {
-        _and: [
-          {
-            _or: [
-              { uploaded_by_di: { _eq: userId } },
-              { assigned_di: { _eq: userId } },
-            ],
-          },
-          { status: { _neq: "withdrawn" } },
-        ],
-      }),
-      safeCount("task", {
-        _and: [
-          { assignee: { _eq: userId } },
-          { di_status: { _neq: "completed_pending_verification" } },
-        ],
-      }),
-      safeCount("child_proposal", {
-        _and: [
-          { created_by: { _eq: userId } },
-          { status: { _eq: "pending" } },
-        ],
-      }),
-      safeCount("child_update", {
-        _and: [
-          { created_by: { _eq: userId } },
-          { date_created: { _gte: startOfThisMonthIso() } },
-        ],
-      }),
-    ]);
+  // Session 46 — pending submissions tile now aggregates across all
+  // four DI mutation surfaces (proposals + moments + reports +
+  // deliveries). The Reports-this-month tile is dropped to make
+  // room for "Tasks done this month" which gives DI a feel-good
+  // weekly metric. The destination /di/submissions still shows
+  // proposals only (with a note explaining where the others live).
+  const [
+    childCount,
+    taskCount,
+    pendingProposalCount,
+    pendingMomentCount,
+    pendingReportCount,
+    pendingDeliveryCount,
+    completedTasksThisMonthCount,
+  ] = await Promise.all([
+    safeCount("child", {
+      _and: [
+        {
+          _or: [
+            { uploaded_by_di: { _eq: userId } },
+            { assigned_di: { _eq: userId } },
+          ],
+        },
+        { status: { _neq: "withdrawn" } },
+      ],
+    }),
+    safeCount("task", {
+      _and: [
+        { assignee: { _eq: userId } },
+        { di_status: { _neq: "completed_pending_verification" } },
+      ],
+    }),
+    safeCount("child_proposal", {
+      _and: [
+        { created_by: { _eq: userId } },
+        { status: { _eq: "pending" } },
+      ],
+    }),
+    safeCount("child_moment", {
+      _and: [
+        { created_by: { _eq: userId } },
+        { status: { _eq: "pending" } },
+      ],
+    }),
+    safeCount("child_update", {
+      _and: [
+        { created_by: { _eq: userId } },
+        { status: { _eq: "pending" } },
+      ],
+    }),
+    safeCount("aid_delivery", {
+      _and: [
+        { delivered_by: { _eq: userId } },
+        { status: { _eq: "pending" } },
+      ],
+    }),
+    safeCount("task", {
+      _and: [
+        { assignee: { _eq: userId } },
+        { admin_status: { _eq: "verified_complete" } },
+        { verified_at: { _gte: startOfThisMonthIso() } },
+      ],
+    }),
+  ]);
+
+  // Sum the 4 pending queues. Any individual count failure (returns
+  // null from safeCount) just contributes 0 — the tile shows "—" only
+  // when ALL four fail (we treat partial failures as graceful
+  // degradation).
+  const pendingTotal =
+    (pendingProposalCount ?? 0) +
+    (pendingMomentCount ?? 0) +
+    (pendingReportCount ?? 0) +
+    (pendingDeliveryCount ?? 0);
+  const pendingTooltip = [
+    `${formatCount(pendingProposalCount)} profile change${(pendingProposalCount ?? 0) === 1 ? "" : "s"}`,
+    `${formatCount(pendingMomentCount)} moment${(pendingMomentCount ?? 0) === 1 ? "" : "s"}`,
+    `${formatCount(pendingReportCount)} report${(pendingReportCount ?? 0) === 1 ? "" : "s"}`,
+    `${formatCount(pendingDeliveryCount)} deliver${(pendingDeliveryCount ?? 0) === 1 ? "y" : "ies"}`,
+  ].join(" · ");
+  const allPendingFailed =
+    pendingProposalCount === null &&
+    pendingMomentCount === null &&
+    pendingReportCount === null &&
+    pendingDeliveryCount === null;
+  const pendingValue = allPendingFailed
+    ? "—"
+    : formatCount(pendingTotal);
 
   // The "subhead" lines under the greeting — Session 42-FIX3 splits
   // this into two visual elements:
@@ -183,16 +238,17 @@ export default async function DiHomePage() {
           />
           <StatTile
             label="Pending submissions"
-            value={formatCount(pendingProposalCount)}
+            value={pendingValue}
             href="/di/submissions"
             icon={Inbox}
+            tooltip={pendingTooltip}
           />
           <StatTile
-            label="Reports this month"
-            value={formatCount(reportsThisMonthCount)}
-            href="/di/reports"
+            label="Tasks done this month"
+            value={formatCount(completedTasksThisMonthCount)}
+            href="/di/tasks?status=completed_pending_verification"
             icon={FileBarChart}
-            hint="updates submitted"
+            hint="verified by admin"
           />
         </div>
       </section>
