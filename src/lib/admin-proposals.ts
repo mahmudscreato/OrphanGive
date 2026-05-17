@@ -29,6 +29,9 @@
 
 import "server-only";
 
+// Session 47 — in-app DI notification on approve/reject.
+import { notify } from "./di-notifications";
+
 import {
   createItem,
   readItem,
@@ -368,12 +371,52 @@ export async function approveProposal(
     );
   }
 
+  // Session 47 — in-app notification to the DI who submitted the
+  // proposal. Best-effort: notify() swallows internally so a
+  // notification miss can't roll back the approval.
+  if (proposal.created_by) {
+    const childLabel = await fetchChildDisplayName(targetChildId);
+    const opLabel =
+      proposal.proposal_type === "create" ? "new-child proposal" : "edit";
+    await notify({
+      recipientUserId: proposal.created_by,
+      type: "admin_approved_proposal",
+      title: `Approved: ${opLabel} for ${childLabel}`,
+      body:
+        proposal.proposal_type === "create"
+          ? `Your new-child proposal for ${childLabel} is live. Donors can now sponsor them.`
+          : `Your profile edit for ${childLabel} is live. ${appliedFields.length} field${appliedFields.length === 1 ? "" : "s"} updated.`,
+      relatedCollection: "child_proposal",
+      relatedId: proposalId,
+    });
+  }
+
   return {
     proposalId,
     targetChildId,
     appliedFields,
     operation: proposal.proposal_type,
   };
+}
+
+/**
+ * Fetch a child's display_name for notification body composition.
+ * Returns "this child" on miss so the notification still renders
+ * cleanly even if the lookup fails.
+ */
+async function fetchChildDisplayName(childId: string): Promise<string> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: { id: { _eq: childId } },
+        fields: ["display_name"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{ display_name: string | null }> | undefined;
+    return rows?.[0]?.display_name?.trim() || "this child";
+  } catch {
+    return "this child";
+  }
 }
 
 /**
@@ -446,6 +489,28 @@ export async function rejectProposal(
       "[admin-proposals] audit write failed (swallowed)",
       err instanceof Error ? err.message : err,
     );
+  }
+
+  // Session 47 — in-app notification to the DI. Same best-effort
+  // contract as audit. Body includes the rejection_reason verbatim
+  // (admin-to-DI communication channel — admins are trusted to keep
+  // it professional). Empty/missing reason yields a neutral copy.
+  if (proposal.created_by) {
+    const childLabel = proposal.target_child
+      ? await fetchChildDisplayName(proposal.target_child)
+      : "your new child proposal";
+    const opLabel =
+      proposal.proposal_type === "create" ? "new-child proposal" : "edit";
+    await notify({
+      recipientUserId: proposal.created_by,
+      type: "admin_rejected_proposal",
+      title: `Rejected: ${opLabel} for ${childLabel}`,
+      body: reasonTrimmed
+        ? `Admin's note: ${reasonTrimmed}`
+        : "Admin rejected this submission. Open the proposal to see context.",
+      relatedCollection: "child_proposal",
+      relatedId: proposalId,
+    });
   }
 
   return { proposalId };

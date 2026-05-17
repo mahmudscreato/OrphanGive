@@ -13,6 +13,7 @@
 
 import {
   Camera,
+  CheckCircle2,
   Edit3,
   FileBarChart,
   History as HistoryIcon,
@@ -20,6 +21,7 @@ import {
   Trash2,
   Truck,
   Video,
+  XCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { AuditAction, HistoryEvent } from "@/lib/di-audit";
@@ -34,6 +36,11 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_completed_task: ListChecks,
   di_uploaded_photo: Camera,
   di_uploaded_video: Video,
+  // Session 47 — admin actions surface on the per-child History tab
+  // when their audit metadata.childId matches a child in the DI's
+  // scope.
+  admin_approved_proposal: CheckCircle2,
+  admin_rejected_proposal: XCircle,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back

@@ -38,6 +38,7 @@ import { getDiChildById } from "./di-children";
 // ─── Public types ───────────────────────────────────────────────────
 
 export type AuditAction =
+  // DI-side actions (Sessions 44-45)
   | "di_submitted_proposal"
   | "di_withdrew_proposal"
   | "di_uploaded_moment"
@@ -46,7 +47,12 @@ export type AuditAction =
   | "di_started_task"
   | "di_completed_task"
   | "di_uploaded_photo"
-  | "di_uploaded_video";
+  | "di_uploaded_video"
+  // Admin-side actions (Session 46-fix-2 + Session 47).
+  // The DI sees these in their Recent Activity feed when the action
+  // touched a child in the DI's scope.
+  | "admin_approved_proposal"
+  | "admin_rejected_proposal";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -187,20 +193,17 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   di_completed_task: (a) => `${a} marked a task complete`,
   di_uploaded_photo: (a) => `${a} uploaded a photo`,
   di_uploaded_video: (a) => `${a} uploaded a video`,
+  // Admin actions are described from the DI's POV — "Admin approved
+  // your edit" rather than literal "Admin approved a proposal" so
+  // the Recent Activity feed reads as personal news.
+  admin_approved_proposal: () => `Admin approved your edit`,
+  admin_rejected_proposal: () => `Admin rejected your edit`,
 };
 
+const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));
+
 function isAuditAction(s: string | null | undefined): s is AuditAction {
-  return (
-    s === "di_submitted_proposal" ||
-    s === "di_withdrew_proposal" ||
-    s === "di_uploaded_moment" ||
-    s === "di_submitted_report" ||
-    s === "di_marked_delivery" ||
-    s === "di_started_task" ||
-    s === "di_completed_task" ||
-    s === "di_uploaded_photo" ||
-    s === "di_uploaded_video"
-  );
+  return s !== null && s !== undefined && VALID_ACTIONS.has(s);
 }
 
 /**
@@ -332,4 +335,167 @@ export async function listAuditEventsForChild(
         collection: r.collection,
       };
     });
+}
+
+// ─── Session 47 — Recent Activity feed for the home page ────────────
+//
+// Surface for the DI Recent Activity panel. Two streams merged:
+//   (a) Everything the DI did themselves (audit row.actor = userId).
+//   (b) Admin actions on children in the DI's scope (admin_*
+//       actions where metadata.childId is in the DI's children).
+//
+// Same window-pull-then-app-side-filter pattern as
+// listAuditEventsForChild — the audit_log.metadata JSON field can't
+// be filtered by sub-key directly, so we pull a recent window and
+// filter in JS. With < 100 events/day per DI, a 200-row window
+// covers several days easily.
+
+// (readItems + directusServer already imported at the top of the file.)
+
+export async function getRecentActivityForUser(
+  userId: string,
+  limit: number = 8,
+): Promise<HistoryEvent[]> {
+  // Fetch the DI's scope: the child IDs they're allowed to see admin
+  // actions for. Re-uses the same scope rule as getDiChildById.
+  let scopedChildIds: string[] = [];
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: {
+          _and: [
+            {
+              _or: [
+                { uploaded_by_di: { _eq: userId } },
+                { assigned_di: { _eq: userId } },
+              ],
+            },
+            { status: { _neq: "withdrawn" } },
+          ],
+        },
+        fields: ["id"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ id: string }> | undefined;
+    if (Array.isArray(rows)) scopedChildIds = rows.map((r) => r.id);
+  } catch (err) {
+    console.warn(
+      "[di-audit] getRecentActivityForUser scope read failed",
+      err instanceof Error ? err.message : err,
+    );
+    // Fall through with empty scope — DI's own actions still surface.
+  }
+
+  // Pull a recent window of relevant events. Two parallel
+  // window-fetches, then merged.
+  const windowSize = Math.max(200, limit * 8);
+  const [ownRows, adminRows]: [AuditRow[], AuditRow[]] = await Promise.all([
+    fetchAuditWindow({ actor: { _eq: userId } }, windowSize),
+    scopedChildIds.length > 0
+      ? fetchAuditWindow(
+          {
+            _and: [
+              { actor_role: { _eq: "admin" } },
+              { action: { _starts_with: "admin_" } },
+            ],
+          },
+          windowSize,
+        )
+      : Promise.resolve([] as AuditRow[]),
+  ]);
+
+  // App-side filter: admin rows must have metadata.childId in the
+  // DI's scope. Own rows always pass.
+  const filteredAdmin = adminRows.filter((r) => {
+    const md = r.metadata;
+    if (!md || typeof md !== "object") return false;
+    const cid = (md as Record<string, unknown>).childId;
+    return typeof cid === "string" && scopedChildIds.includes(cid);
+  });
+
+  // Merge + dedupe by id (a DI's own action shouldn't appear in
+  // both streams, but defensive against schema drift).
+  const merged = new Map<string, AuditRow>();
+  for (const r of ownRows) merged.set(r.id, r);
+  for (const r of filteredAdmin) merged.set(r.id, r);
+
+  // Sort newest-first by timestamp, slice to limit.
+  const sorted = Array.from(merged.values())
+    .filter((r) => isAuditAction(r.action))
+    .sort((a, b) => {
+      const ta = a.timestamp ?? "";
+      const tb = b.timestamp ?? "";
+      return tb.localeCompare(ta);
+    })
+    .slice(0, limit);
+  if (sorted.length === 0) return [];
+
+  // Resolve actor names in one batch.
+  const actorIds = Array.from(
+    new Set(sorted.map((r) => r.actor).filter((x): x is string => !!x)),
+  );
+  const nameById = new Map<string, string>();
+  if (actorIds.length > 0) {
+    try {
+      const users = (await directusServer().request(
+        readUsers({
+          filter: { id: { _in: actorIds } },
+          fields: ["id", "first_name"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{ id: string; first_name: string | null }> | undefined;
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          if (u.first_name?.trim()) nameById.set(u.id, u.first_name.trim());
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[di-audit] recent activity actor name resolution failed",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return sorted.map((r) => {
+    const action = r.action as AuditAction;
+    const isOwn = r.actor === userId;
+    const name = isOwn
+      ? "You"
+      : r.actor
+        ? nameById.get(r.actor) ?? "Admin"
+        : "Admin";
+    return {
+      id: r.id,
+      timestamp: r.timestamp,
+      actorName: name,
+      actorRole: r.actor_role ?? "unknown",
+      action,
+      description: ACTION_DESCRIPTIONS[action](name),
+      collection: r.collection,
+    };
+  });
+}
+
+async function fetchAuditWindow(
+  filter: Record<string, unknown>,
+  windowSize: number,
+): Promise<AuditRow[]> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("audit_log" as never, {
+        filter,
+        fields: [...AUDIT_FIELDS],
+        sort: ["-timestamp"],
+        limit: windowSize,
+      } as never),
+    )) as unknown as AuditRow[] | undefined;
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.warn(
+      "[di-audit] fetchAuditWindow failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
 }

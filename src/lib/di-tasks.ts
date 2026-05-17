@@ -293,6 +293,44 @@ export async function listTasksForUser(
 }
 
 /**
+ * Session 47 — preview list for the home page UrgentTasksPanel.
+ * Filter: assignee = self, di_status IN (open, in_progress),
+ * priority IN (high, urgent). Sort: due_date ASC NULLS LAST,
+ * date_created DESC. Returns at most `limit` rows (default 5).
+ */
+export async function getUrgentTasksForUser(
+  userId: string,
+  limit: number = 5,
+): Promise<TaskSummary[]> {
+  let rows: TaskRow[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("task" as never, {
+        filter: {
+          _and: [
+            { assignee: { _eq: userId } },
+            { di_status: { _in: ["open", "in_progress"] } },
+            { priority: { _in: ["high", "urgent"] } },
+          ],
+        },
+        fields: [...TASK_FIELDS],
+        // Pull a generous slice; we apply the multi-axis JS sort
+        // below and slice to `limit` afterwards.
+        limit: 50,
+      } as never),
+    )) as unknown as TaskRow[] | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[di-tasks] getUrgentTasksForUser failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  return rows.map(rowToSummary).sort(compareTasks).slice(0, limit);
+}
+
+/**
  * Single task with scope guard. Returns null if not owned (collapses
  * with not-exists for privacy).
  */
