@@ -39,35 +39,47 @@ export function BlurredPhotoModalTrigger({
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // Session 52c — casual-save deterrents. Suppress contextmenu
+  // (right-click → Save Image As), block text/image drag selection,
+  // and disable iOS long-press "Save Image". These are NOT a
+  // security boundary — a determined attacker disables JS, opens
+  // DevTools, or just hits the asset URL directly. The actual
+  // privacy protection is the server-blurred ?key=intake-locked
+  // variant — saving THAT is fine (it's downscaled + blurred and
+  // reveals no identifying detail). The deterrents reduce the
+  // surface for accidental scraping by casual visitors.
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
+        onContextMenu={(e) => e.preventDefault()}
         aria-label={`Locked — sign in or sponsor ${childFirstName} to see this photo`}
-        className="group relative rounded-2xl overflow-hidden bg-linen border border-ink/[0.05] block w-full"
+        className="group relative rounded-2xl overflow-hidden bg-linen border border-ink/[0.05] block w-full select-none"
+        style={{
+          WebkitTouchCallout: "none",
+          WebkitUserSelect: "none",
+          userSelect: "none",
+        }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={photoUrl}
           alt={alt}
-          // CSS blur — see IntakePhotoGallery's header comment for
-          // the V1 tradeoff note. The browser still downloads the
-          // file; a determined visitor could lift the URL out of
-          // DevTools. Acceptable because the photo is approved-for-
-          // public per Tier 1; future hardening uses server-side
-          // blurred variants.
-          className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.02]"
+          draggable={false}
+          // Session 52c — `photoUrl` is now the SERVER-BLURRED URL
+          // (`?key=intake-locked`) composed by IntakePhotoGallery.
+          // No client-side `filter: blur(...)` needed. The image
+          // arrives pre-blurred from Directus, so right-click → Save
+          // As writes the blurred variant to disk and DevTools can
+          // only see the locked URL.
+          className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.02] pointer-events-none"
           style={{
             aspectRatio: "1 / 1",
             objectFit: "cover",
-            filter: "blur(14px)",
-            // The blur creates a visible halo at the image edges;
-            // scaling up slightly clips it.
-            transform: "scale(1.1)",
           }}
         />
-        <div className="absolute inset-0 bg-ink/30 group-hover:bg-ink/40 transition-colors flex items-center justify-center">
+        <div className="absolute inset-0 bg-ink/20 group-hover:bg-ink/30 transition-colors flex items-center justify-center">
           <div className="bg-white/90 rounded-full p-2.5 shadow-md">
             <Lock
               className="w-4 h-4 text-tangerine-deeper stroke-[2]"
@@ -132,10 +144,14 @@ function Modal({
                 aria-hidden="true"
               />
             </div>
+            {/* Session 52c — privacy-framed copy. The full sentence
+                reads as a protection (their safety) rather than a
+                paywall (your access). */}
             <p className="text-[14px] text-ink leading-relaxed">
-              Sponsors see all the intake photos from our field team&apos;s
-              first visit with {childFirstName}, plus updates as their
-              story unfolds.
+              For {childFirstName}&apos;s safety, we only share these
+              photos with verified sponsors. Become one to see all of
+              the field team&apos;s first-visit photos, plus updates
+              as their story unfolds.
             </p>
           </div>
         </div>

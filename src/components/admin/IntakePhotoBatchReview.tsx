@@ -12,9 +12,9 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Trash2, XCircle } from "lucide-react";
 import type { AdminIntakePhotoSummary } from "@/lib/admin-intake-photos";
 
 type Decision =
@@ -59,6 +59,46 @@ export function IntakePhotoBatchReview({
 
   function setDecision(photoId: string, decision: Decision) {
     setState((prev) => ({ ...prev, [photoId]: { decision } }));
+  }
+
+  // Session 52c — per-photo remove (admin cleanup for accidental
+  // DI uploads, distinct from rejection). After a successful
+  // DELETE we router.refresh() so the server component re-fetches
+  // the photo set; client state for OTHER photos' in-progress
+  // decisions persists (the removed photo's state entry becomes an
+  // orphan key but is silently dropped by readyDecisions which
+  // iterates pendingPhotos derived from props).
+  async function handleRemove(photoId: string) {
+    setServerError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/admin/intake-photos/${photoId}`, {
+          method: "DELETE",
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          message?: string;
+        };
+        if (!res.ok || !body.ok) {
+          if (body.error === "invalid_status") {
+            setServerError(
+              "Someone else already decided that photo. Refresh to see the current state.",
+            );
+          } else if (body.error === "not_found") {
+            setServerError("That photo no longer exists.");
+          } else {
+            setServerError(body.message ?? "Couldn't remove. Try again.");
+          }
+          return;
+        }
+        // Soft refresh — preserves OTHER photos' in-progress
+        // toggle state, drops the removed one from the rendered set.
+        router.refresh();
+      } catch {
+        setServerError("Network error. Try again.");
+      }
+    });
   }
 
   // Decisions ready to submit: every "decision !== none" + every
@@ -181,6 +221,7 @@ export function IntakePhotoBatchReview({
                 photo={p}
                 decision={state[p.id]?.decision ?? { kind: "none" }}
                 onDecision={(d) => setDecision(p.id, d)}
+                onRemove={() => handleRemove(p.id)}
                 disabled={pending}
               />
             ))}
@@ -237,15 +278,28 @@ function PhotoReviewCard({
   photo,
   decision,
   onDecision,
+  onRemove,
   disabled,
 }: {
   photo: AdminIntakePhotoSummary;
   decision: Decision;
   onDecision: (d: Decision) => void;
+  // Session 52c — admin cleanup remove (distinct from reject). The
+  // two-tap confirm lives inline on the card to avoid an extra
+  // modal during batch flow.
+  onRemove: () => void;
   disabled: boolean;
 }) {
   const isApproved = decision.kind === "approve";
   const isRejected = decision.kind === "reject";
+  const [removeArmed, setRemoveArmed] = useState(false);
+  // Disarm after a short window so a stray earlier click doesn't
+  // sit ready forever.
+  useEffect(() => {
+    if (!removeArmed) return;
+    const t = window.setTimeout(() => setRemoveArmed(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [removeArmed]);
   return (
     <div className="rounded-xl border border-stone-200 bg-stone-50/40 overflow-hidden">
       <div className="relative aspect-[4/3] bg-stone-100">
@@ -332,6 +386,33 @@ function PhotoReviewCard({
             </p>
           </div>
         ) : null}
+        {/* Session 52c — Remove (cleanup, distinct from Reject).
+            Two-tap confirm sits inline; copy makes the semantic
+            difference explicit. */}
+        <div className="pt-1.5 border-t border-stone-200/60 mt-1">
+          <button
+            type="button"
+            onClick={() => {
+              if (removeArmed) {
+                onRemove();
+                setRemoveArmed(false);
+              } else {
+                setRemoveArmed(true);
+              }
+            }}
+            disabled={disabled}
+            className={`inline-flex items-center gap-1 text-[11px] font-medium transition-colors ${
+              removeArmed
+                ? "text-[#A02B2B]"
+                : "text-stone-500 hover:text-[#A02B2B]"
+            } disabled:opacity-60`}
+          >
+            <Trash2 className="w-3 h-3 stroke-[1.75]" aria-hidden="true" />
+            {removeArmed
+              ? "Tap again to remove (no DI notification)"
+              : "Remove (DI uploaded by mistake)"}
+          </button>
+        </div>
       </div>
     </div>
   );

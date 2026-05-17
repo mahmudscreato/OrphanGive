@@ -88,7 +88,13 @@ export type AuditAction =
   | "admin_rejected_intake_photo"
   | "admin_viewed_moment"
   | "admin_approved_moment"
-  | "admin_rejected_moment";
+  | "admin_rejected_moment"
+  // Session 52c — admin cleanup removes, distinct from approve /
+  // reject. Admin hits these when a DI uploaded by mistake — no
+  // judgement recorded, just gone. Only pending items; approved /
+  // rejected rows are immutable from the queue UI.
+  | "admin_removed_document"
+  | "admin_removed_intake_photo";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -305,6 +311,8 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_viewed_moment: (a) => `${a} opened a moment`,
   admin_approved_moment: () => `Admin approved a moment`,
   admin_rejected_moment: () => `Admin rejected a moment`,
+  admin_removed_document: () => `Admin removed a pending document`,
+  admin_removed_intake_photo: () => `Admin removed a pending intake photo`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

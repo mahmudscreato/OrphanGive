@@ -21,6 +21,7 @@ import "server-only";
 
 import { readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
+import { DOCUMENT_PENDING_STATUS_VALUES } from "./admin-documents";
 
 async function safeCount(
   collection: string,
@@ -64,13 +65,13 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     safeCount("child_moment", { status: { _eq: "pending" } }),
     safeCount("child_intake_photo", { status: { _eq: "pending" } }),
     safeCount("aid_delivery", { status: { _eq: "pending" } }),
-    // Documents: we count both new-vocab 'pending' AND legacy
-    // 'pending_review' so the tile reflects all DI-uploaded
-    // documents awaiting review during the Session 49/50 dual-vocab
-    // transition. Once Session 50+N backfills the legacy column,
-    // simplify to just status='pending'.
+    // Documents: imports DOCUMENT_PENDING_STATUS_VALUES from
+    // admin-documents (Session 52c — single source of truth for
+    // legacy + new vocabulary mapping; eliminates the "tile says 1
+    // pending, queue shows empty" divergence that bit Mahmud in
+    // 52b smoke testing).
     safeCount("child_document", {
-      status: { _in: ["pending", "pending_review"] },
+      status: { _in: [...DOCUMENT_PENDING_STATUS_VALUES] },
     }),
   ]);
 

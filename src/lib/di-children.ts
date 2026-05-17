@@ -459,6 +459,65 @@ export async function getDiChildrenForUser(
 }
 
 /**
+ * Session 52c — ownership-only scope check for attachment writes
+ * (documents, intake photos). Returns true when the DI is
+ * uploaded_by_di OR assigned_di on the child, regardless of child
+ * status. Distinct from `getDiChildById` which ALSO excludes
+ * `withdrawn` + `awaiting_intake` because those statuses don't
+ * surface in the "Children I manage" list.
+ *
+ * Why split: the attachment endpoints (di-documents +
+ * di-intake-photos) need to allow uploads against the DI's own
+ * `awaiting_intake` stub children (Session 52a unlock). They DON'T
+ * need the full liveness check that detail pages / reports /
+ * deliveries pages use — those rightfully 404 stubs because the
+ * profile isn't real yet, but attachments to the stub ARE the
+ * point of the Session 52a flow.
+ *
+ * Other DIs still can't access the stub (the ownership filter
+ * blocks them) — privacy preserved.
+ */
+export async function canDiAttachToChild(
+  childId: string,
+  userId: string,
+): Promise<boolean> {
+  if (!childId || typeof childId !== "string") return false;
+  try {
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
+        filter: {
+          _and: [
+            { id: { _eq: childId } },
+            {
+              _or: [
+                { uploaded_by_di: { _eq: userId } },
+                { assigned_di: { _eq: userId } },
+              ],
+            },
+            // Only `withdrawn` is hard-excluded — once a child is
+            // withdrawn, no DI should still be uploading anything
+            // against them. `awaiting_intake` IS allowed (stub
+            // unlock); `active` / `sponsored` allowed (post-approval
+            // edits); other statuses allowed conservatively (admin
+            // can tighten via the Directus permission layer if needed).
+            { status: { _neq: "withdrawn" } },
+          ],
+        },
+        fields: ["id"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{ id: string }> | undefined;
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (err) {
+    console.warn(
+      "[di-children] canDiAttachToChild failed",
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
+/**
  * Single child fetch with scope guard.
  * Returns null when the child is out of scope (or doesn't exist).
  * Caller renders 404 on null.

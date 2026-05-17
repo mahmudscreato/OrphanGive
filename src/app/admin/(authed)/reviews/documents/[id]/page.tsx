@@ -26,6 +26,7 @@ import { requireAdminUser } from "@/lib/admin-auth";
 import { getAdminDocumentDetail } from "@/lib/admin-documents";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { ReviewActionBar } from "@/components/admin/ReviewActionBar";
+import { AdminRemoveButton } from "@/components/admin/AdminRemoveButton";
 
 export const dynamic = "force-dynamic";
 
@@ -190,6 +191,17 @@ export default async function AdminDocumentDetailPage({
         entityNoun="document"
         disabled={doc.status !== "pending"}
         disabledStatusLabel={doc.status}
+      />
+
+      {/* Session 52c — Remove (cleanup, distinct from Reject). Only
+          appears when status='pending'; surfaces below the main
+          action bar so it doesn't compete visually with the primary
+          approve/reject decision. */}
+      <AdminRemoveButton
+        endpoint={`/api/admin/documents/${doc.id}`}
+        redirectTo="/admin/reviews/documents?filter=pending"
+        entityNoun="document"
+        disabled={doc.status !== "pending"}
       />
     </div>
   );
