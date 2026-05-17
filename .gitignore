@@ -32,6 +32,31 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Session 41-LOCAL — allow-list the example file so it can be committed
+# while the real .env.local-stack stays gitignored (caught by .env*).
+!.env.local-stack.example
+
+# Session 41-v3-FIX1 — bootstrap/ moved into public-site/.
+# `bootstrap/.env` stays gitignored via the .env* rule above; the
+# .env.example template is allow-listed here so it lands in the commit
+# while the real .env stays out. Other locally-generated artifacts
+# (node_modules, build outputs) excluded.
+!bootstrap/.env.example
+bootstrap/node_modules/
+bootstrap/.tsbuildinfo
+bootstrap/dist/
+# Bootstrap's mnt/ is a Claude Code user-data mount point full of
+# .DS_Store + nested .env.example files from C1-era artifact bundles.
+# Skip the whole directory — nothing useful to version.
+bootstrap/mnt/
+
+# Local DB backups — never commit (production data dumps stored here)
+backups/
+
+# Session 41-LOCAL — local Docker stack overrides (per-developer tweaks
+# layered on top of docker-compose.local.yml). The base compose file IS
+# committed; this override pattern is opt-in and per-machine.
+docker-compose.local.override.yml
 
 # vercel
 .vercel

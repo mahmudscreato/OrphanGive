@@ -1,0 +1,27 @@
+{
+  "name": "orphangive-bootstrap",
+  "version": "1.0.0",
+  "description": "One-shot schema and seed-data bootstrapper for the OrphanGive Directus instance.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bootstrap": "tsx src/index.ts",
+    "bootstrap:schema": "tsx src/index.ts --only=schema",
+    "bootstrap:seed": "tsx src/index.ts --only=seed",
+    "policies": "tsx src/policies.ts",
+    "v3-register-collections": "tsx src/v3-register-collections.ts",
+    "v3-update-permissions": "tsx src/v3-update-permissions.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@directus/sdk": "^17.0.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

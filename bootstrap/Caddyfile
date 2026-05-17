@@ -1,0 +1,43 @@
+# OrphanGive — Caddy reverse proxy + automatic SSL
+#
+# Place this file at /opt/orphangive/Caddyfile
+# Caddy will auto-fetch SSL certificates from Let's Encrypt for the
+# domain below, and renew them automatically.
+#
+# When the public website is deployed (Phase 1 build), uncomment the
+# orphangive.org block to also serve the public site through Caddy.
+
+admin.orphangive.org {
+    reverse_proxy directus:8055
+
+    # security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), camera=(), microphone=()"
+    }
+
+    # block direct access to common WordPress/exploit paths
+    @blocked {
+        path /wp-admin* /wp-login* /wp-content* /xmlrpc.php /.env*
+    }
+    respond @blocked 404
+
+    encode gzip
+}
+
+# ============ PUBLIC WEBSITE (uncomment when Phase 1 build deploys) ============
+#
+# orphangive.org, www.orphangive.org {
+#     reverse_proxy public-site:3000
+#
+#     header {
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+#         X-Content-Type-Options "nosniff"
+#         Referrer-Policy "strict-origin-when-cross-origin"
+#     }
+#
+#     encode gzip
+# }
