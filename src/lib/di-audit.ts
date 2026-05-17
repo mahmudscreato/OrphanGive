@@ -74,7 +74,21 @@ export type AuditAction =
   // on DI-facing feeds (action_role != 'data_inputter' AND no
   // childId in metadata; the per-child History tab reads di_*
   // events only).
-  | "admin_viewed_proposal";
+  | "admin_viewed_proposal"
+  // Session 52b — admin review queue actions for documents, intake
+  // photos, and moments. View events are logged per-detail-page-load
+  // (force-dynamic) for traceability; approve/reject events fire on
+  // the mutation. Per-photo audits inside a batch decision each
+  // get their own row.
+  | "admin_viewed_document"
+  | "admin_approved_document"
+  | "admin_rejected_document"
+  | "admin_viewed_intake_photo_batch"
+  | "admin_approved_intake_photo"
+  | "admin_rejected_intake_photo"
+  | "admin_viewed_moment"
+  | "admin_approved_moment"
+  | "admin_rejected_moment";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -279,6 +293,18 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   // type definition above) — the description here is for completeness
   // / future admin-side audit log views.
   admin_viewed_proposal: (a) => `${a} opened a proposal`,
+  // Session 52b — admin review queue events. Approval/rejection
+  // surface in the DI's per-child History tab; view events stay
+  // admin-only (mirroring admin_viewed_proposal's pattern).
+  admin_viewed_document: (a) => `${a} opened a document`,
+  admin_approved_document: () => `Admin approved a document`,
+  admin_rejected_document: () => `Admin rejected a document`,
+  admin_viewed_intake_photo_batch: (a) => `${a} opened intake photos`,
+  admin_approved_intake_photo: () => `Admin approved an intake photo`,
+  admin_rejected_intake_photo: () => `Admin rejected an intake photo`,
+  admin_viewed_moment: (a) => `${a} opened a moment`,
+  admin_approved_moment: () => `Admin approved a moment`,
+  admin_rejected_moment: () => `Admin rejected a moment`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

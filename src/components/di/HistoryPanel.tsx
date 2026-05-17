@@ -57,6 +57,18 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // type safety; if a future surface ever decides to render it the
   // icon is reasonable.
   admin_viewed_proposal: HistoryIcon,
+  // Session 52b — admin review queue actions. View events stay
+  // admin-only so HistoryIcon is the type-safety placeholder;
+  // approve/reject events surface on the per-child History tab.
+  admin_viewed_document: HistoryIcon,
+  admin_approved_document: CheckCircle2,
+  admin_rejected_document: XCircle,
+  admin_viewed_intake_photo_batch: HistoryIcon,
+  admin_approved_intake_photo: CheckCircle2,
+  admin_rejected_intake_photo: XCircle,
+  admin_viewed_moment: HistoryIcon,
+  admin_approved_moment: CheckCircle2,
+  admin_rejected_moment: XCircle,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back

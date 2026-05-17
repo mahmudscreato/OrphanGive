@@ -27,6 +27,13 @@ import type {
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
+  // Session 52b — same icon pairs for the new review queue actions.
+  admin_approved_document: CheckCircle2,
+  admin_rejected_document: XCircle,
+  admin_approved_intake_photo: CheckCircle2,
+  admin_rejected_intake_photo: XCircle,
+  admin_approved_moment: CheckCircle2,
+  admin_rejected_moment: XCircle,
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
   admin_verified_delivery: Truck,
