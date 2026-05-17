@@ -144,8 +144,14 @@ export function SiteFooter() {
   // Session 25 — also hide on /maintenance and /offline, both of
   // which render their own minimal inline footers and need to be
   // robust to the rest of the app's data layer being unreachable.
+  // Session 42-FIX2 — also hide on /di/*. The DI Dashboard is a
+  // utility surface for staff; it has no marketing partner-credits
+  // story to tell. The mobile DiBottomNav also occupies the bottom
+  // of the viewport, so a footer below it would just push the bottom
+  // nav up the page on scroll.
   if (
     pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/di") ||
     pathname === "/maintenance" ||
     pathname === "/offline"
   ) {
