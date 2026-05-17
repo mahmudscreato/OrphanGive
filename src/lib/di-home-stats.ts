@@ -83,8 +83,9 @@ export async function getDiHomeStats(userId: string): Promise<HomeStats> {
     pendingDeliveryCount,
     awaitingSponsorCount,
   ] = await Promise.all([
-    // 1. Children I manage — (uploaded_by OR assigned) AND status !=
-    //    withdrawn.
+    // 1. Children I manage — (uploaded_by OR assigned) AND status
+    //    not withdrawn / awaiting_intake. Session 52a — stubs
+    //    excluded so the headline count matches the children list.
     safeCount("child", {
       _and: [
         {
@@ -93,7 +94,7 @@ export async function getDiHomeStats(userId: string): Promise<HomeStats> {
             { assigned_di: { _eq: userId } },
           ],
         },
-        { status: { _neq: "withdrawn" } },
+        { status: { _nin: ["withdrawn", "awaiting_intake"] } },
       ],
     }),
 
@@ -180,7 +181,9 @@ async function countAwaitingSponsor(userId: string): Promise<number | null> {
                 { assigned_di: { _eq: userId } },
               ],
             },
-            { status: { _neq: "withdrawn" } },
+            // Session 52a — exclude stub children from the
+            // awaiting-sponsor pool (they have no real profile yet).
+            { status: { _nin: ["withdrawn", "awaiting_intake"] } },
             { support_type: { _nnull: true } },
           ],
         },

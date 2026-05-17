@@ -352,7 +352,10 @@ function rowToDetail(row: ChildRow, userId: string): DiChildDetail {
 // ─── Scoped child fetchers ──────────────────────────────────────────
 
 // Filter expression: child is in DI scope when uploaded_by_di OR
-// assigned_di equals userId, AND status is not 'withdrawn'.
+// assigned_di equals userId, AND status is not 'withdrawn' OR
+// 'awaiting_intake' (Session 52a — stubs from CREATE drafts are
+// excluded from the DI's main children list; they show up under
+// /di/drafts via child_proposal.status='draft' instead).
 function buildScopeFilter(userId: string): Record<string, unknown> {
   return {
     _and: [
@@ -362,7 +365,7 @@ function buildScopeFilter(userId: string): Record<string, unknown> {
           { assigned_di: { _eq: userId } },
         ],
       },
-      { status: { _neq: "withdrawn" } },
+      { status: { _nin: ["withdrawn", "awaiting_intake"] } },
     ],
   };
 }

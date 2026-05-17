@@ -512,6 +512,27 @@ export function ChildForm({
   // submit button. Documents are optional for both draft + submit;
   // this is information, not a blocker.
   const [missingDocTypes, setMissingDocTypes] = useState<DocumentType[]>([]);
+  // Session 52a — `effectiveChildId` is the id used for documents +
+  // intake-photo attachments. Resolution order:
+  //   1. EDIT mode: `existing.id` (always present).
+  //   2. CREATE mode + resumed draft with a stub: draft's
+  //      target_child (server pre-created the stub at draft-save
+  //      time per Session 52a).
+  //   3. CREATE mode + fresh form: null, until the user clicks
+  //      Save as draft for the first time — that response populates
+  //      this state via setEffectiveChildId.
+  // When null, IntakePhotoGrid + DocumentsSection render their
+  // "save a draft first" hint cards (defensive fallback).
+  const [effectiveChildId, setEffectiveChildId] = useState<string | null>(
+    () => {
+      if (existing?.id) return existing.id;
+      const draftTarget = (existingDraft as { target_child?: string | null } | null)
+        ?.target_child;
+      return typeof draftTarget === "string" && draftTarget.length > 0
+        ? draftTarget
+        : null;
+    },
+  );
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((s) => ({ ...s, [key]: value }));
@@ -876,6 +897,16 @@ export function ChildForm({
     setServerError(null);
     setSavingDraft(true);
     try {
+      // Session 52a design contract: drafts ALWAYS save regardless
+      // of whether the form has any changes vs the existing child.
+      // The data-layer createDraftProposal / updateDraftProposal do
+      // not run change-detection. If for any reason the server
+      // returned a no_changes-like error here, we'd still mark the
+      // save as "ok" rather than surface the change-detection
+      // message — drafts are user checkpoints, not approval
+      // submissions, and the user should never be blocked from
+      // saving one. (No code path currently returns no_changes from
+      // the draft endpoints; the guard below is defensive.)
       if (draftId) {
         // Update existing draft via PATCH.
         const draftBody = buildDraftBody();
@@ -888,6 +919,16 @@ export function ChildForm({
           }),
         });
         if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          // Defensive: any future no_changes leak is treated as a
+          // no-op success for the draft path (see contract above).
+          if (body.error === "no_changes") {
+            setDraftSavedAt(new Date());
+            setDraftSavedTick((t) => t + 1);
+            return;
+          }
           setServerError("Couldn't save your draft. Try again in a moment.");
           return;
         }
@@ -899,10 +940,22 @@ export function ChildForm({
           body: JSON.stringify(buildDraftBody()),
         });
         if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          if (body.error === "no_changes") {
+            // Same contract — no_changes never blocks a draft save.
+            setDraftSavedAt(new Date());
+            setDraftSavedTick((t) => t + 1);
+            return;
+          }
           setServerError("Couldn't save your draft. Try again in a moment.");
           return;
         }
-        const ok = (await res.json()) as { proposalId?: string };
+        const ok = (await res.json()) as {
+          proposalId?: string;
+          childId?: string;
+        };
         if (ok.proposalId) {
           setDraftId(ok.proposalId);
           // Update URL so a page refresh resumes the draft cleanly
@@ -913,6 +966,12 @@ export function ChildForm({
             url.searchParams.set("draftId", ok.proposalId);
             window.history.replaceState(null, "", url.toString());
           }
+        }
+        // Session 52a Bug 3 — fresh CREATE drafts now return the
+        // stub child id so the form can immediately unlock
+        // documents + intake photo uploads against it.
+        if (ok.childId) {
+          setEffectiveChildId(ok.childId);
         }
       }
       setDraftSavedAt(new Date());
@@ -964,8 +1023,13 @@ export function ChildForm({
             issues?: Array<{ path?: string; message?: string }>;
           };
           if (errBody.error === "no_changes") {
+            // Session 52a — directing the user at "Save as draft" is
+            // the friendly recourse: drafts have no change-detection,
+            // so they can keep their checkpoint without editing
+            // anything. The Submit button keeps the strict check
+            // (only proposals with actual changes go to admin).
             setServerError(
-              "No fields have actually changed. Edit something before submitting.",
+              "No fields have actually changed since you opened the form. Use \"Save as draft\" if you just want a checkpoint, or edit a field before submitting for review.",
             );
           } else if (errBody.error === "division_not_allowed") {
             const allowed = errBody.allowedCodes ?? [];
@@ -1413,7 +1477,7 @@ export function ChildForm({
           them.
         </p>
         <IntakePhotoGrid
-          childId={existing?.id ?? null}
+          childId={effectiveChildId}
           initial={intakePhotos}
         />
       </Section>
@@ -1957,7 +2021,7 @@ export function ChildForm({
           have everything yet, and admin will follow up.
         </p>
         <DocumentsSection
-          childId={existing?.id ?? null}
+          childId={effectiveChildId}
           initial={documents}
           onMissingChange={setMissingDocTypes}
         />

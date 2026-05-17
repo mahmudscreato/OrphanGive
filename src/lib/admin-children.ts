@@ -16,11 +16,15 @@ import { readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { getSupportTypeLabel } from "./form-constants";
 
+// Session 52a — renamed `pending_intake` → `awaiting_intake` to
+// match the new `child.status` value used for stub children. The
+// admin children page surfaces this as a filter pill so admins can
+// triage "drafts in progress from DIs."
 export type AdminChildStatusFilter =
   | "all"
   | "active"
   | "withdrawn"
-  | "pending_intake";
+  | "awaiting_intake";
 
 export interface AdminChildRow {
   id: string;
