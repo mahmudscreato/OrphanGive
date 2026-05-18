@@ -43,6 +43,14 @@ export interface AdminProposalSummary {
   // prior reasons without opening the detail page.
   rejection_reason: string | null;
   published_at: string | null;
+  // Session 60 — surfaced for the list-view urgency pill + sort.
+  // 'urgent' rows float to the top of the pending queue; the pill
+  // also renders on Approved / Rejected / All so admin can trace
+  // urgent items across their lifecycle.
+  priority_support: string | null;
+  // Session 60 — division surfaced for the per-division filter on
+  // the queue list. Stored as bd_division.code (e.g. 'dhaka').
+  bd_division: string | null;
 }
 
 export interface AdminProposalDiffEntry {
@@ -88,6 +96,11 @@ type ProposalRowFlat = {
   Photo: string | null;
   created_by: string | null;
   previous_snapshot: Record<string, unknown> | null;
+  // Session 60 — surfaced for the urgency-first sort + division
+  // filter on the queue list. Both are mirror columns on
+  // child_proposal so we already get them via the fields=* read.
+  priority_support: string | null;
+  bd_division: string | null;
 } & Partial<Record<string, unknown>>;
 
 // Same field list as MIRROR_FIELDS in admin-proposals.ts — these are
@@ -153,15 +166,42 @@ function isProposalType(s: string | null): s is ProposalType {
  * pass status='all' to disable the status filter entirely. Sort is
  * ascending date_created when status is `pending` (FIFO review
  * order), descending otherwise (most recent decisions on top).
+ *
+ * Session 60 — extended with:
+ *   - `proposalType` filter (create | update | 'all')
+ *   - `bdDivision`   filter (a single bd_division.code value)
+ *   - `page` + `pageSize` pagination (1-indexed pages, default size 20)
+ *   - urgency-first sort layered on top of the date sort for
+ *     pending: rows with priority_support='urgent' float to the
+ *     top, then FIFO within urgent and within non-urgent groups.
+ *     This is a server-side fetch + client-side stable sort because
+ *     Directus's REST API doesn't accept multi-key sorts with a
+ *     synthetic priority ordering.
+ *
+ * Return shape is the same flat array as before so existing
+ * callers (admin-proposals page, admin-home-stats) keep working;
+ * the new pagination + total-count helpers are exposed separately
+ * via listAdminProposalsPage below.
  */
 export async function listAdminProposals(opts?: {
   status?: ProposalStatus | "all";
   limit?: number;
+  proposalType?: ProposalType | "all";
+  bdDivision?: string | null;
 }): Promise<AdminProposalSummary[]> {
   const status = opts?.status ?? "pending";
+  const proposalType = opts?.proposalType ?? "all";
+  const bdDivision = opts?.bdDivision ?? null;
 
-  const filter: Record<string, unknown> | undefined =
-    status === "all" ? undefined : { status: { _eq: status } };
+  // Compose the Directus filter as a list of _and clauses so we
+  // only emit predicates for filters the caller actually narrowed.
+  const andClauses: Record<string, unknown>[] = [];
+  if (status !== "all") andClauses.push({ status: { _eq: status } });
+  if (proposalType !== "all")
+    andClauses.push({ proposal_type: { _eq: proposalType } });
+  if (bdDivision) andClauses.push({ bd_division: { _eq: bdDivision } });
+  const filter =
+    andClauses.length === 0 ? undefined : { _and: andClauses };
 
   // FIFO when reviewing pending; reverse-chron when browsing decided
   // history (most recent at top).
@@ -207,7 +247,7 @@ export async function listAdminProposals(opts?: {
     childIds.length > 0 ? resolveChildNames(childIds) : new Map(),
   ]);
 
-  return rows.map((r) => {
+  const summaries: AdminProposalSummary[] = rows.map((r) => {
     const status: ProposalStatus = isProposalStatus(r.status)
       ? r.status
       : "pending";
@@ -236,8 +276,249 @@ export async function listAdminProposals(opts?: {
       change_count: countProposalChanges(r),
       rejection_reason: r.rejection_reason,
       published_at: r.published_at,
+      priority_support:
+        typeof r.priority_support === "string" ? r.priority_support : null,
+      bd_division: typeof r.bd_division === "string" ? r.bd_division : null,
     };
   });
+
+  // Session 60 — urgency-first stable sort on PENDING only. We
+  // already sorted ascending date_created at the SDK call; this
+  // overlay floats `priority_support === 'urgent'` to the top while
+  // preserving FIFO within each priority group. On decided tabs
+  // (approved / rejected / all) we leave the reverse-chron order
+  // alone since urgency is a triage signal that matters most when
+  // there's a queue to clear.
+  if (status === "pending") {
+    summaries.sort((a, b) => {
+      const aUrgent = (a.priority_support || "").toLowerCase() === "urgent";
+      const bUrgent = (b.priority_support || "").toLowerCase() === "urgent";
+      if (aUrgent && !bUrgent) return -1;
+      if (!aUrgent && bUrgent) return 1;
+      // Same priority bucket — fall back to FIFO (oldest first).
+      const aT = a.date_created ? Date.parse(a.date_created) : 0;
+      const bT = b.date_created ? Date.parse(b.date_created) : 0;
+      return aT - bT;
+    });
+  }
+
+  return summaries;
+}
+
+// ─── Public API: paginated list + total count (Session 60) ──────────
+
+/**
+ * Paginated wrapper around listAdminProposals. Returns { rows,
+ * total, page, pageSize } so the queue page can render "Showing
+ * 1-20 of N" + page navigation. We fetch the full filtered set
+ * once (limit -1) and slice in-memory — at the scale this admin
+ * surface operates (~hundreds of proposals across the lifetime
+ * of the org), the simplicity is worth the extra bytes.
+ *
+ * page is 1-indexed; pageSize defaults to 20 per the brief.
+ */
+export async function listAdminProposalsPage(opts?: {
+  status?: ProposalStatus | "all";
+  proposalType?: ProposalType | "all";
+  bdDivision?: string | null;
+  page?: number;
+  pageSize?: number;
+}): Promise<{
+  rows: AdminProposalSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}> {
+  const pageSize = Math.max(1, Math.min(opts?.pageSize ?? 20, 100));
+  const page = Math.max(1, opts?.page ?? 1);
+
+  // Fetch the full filtered set once — same args, no limit cap so
+  // we know the real total for pagination math.
+  const all = await listAdminProposals({
+    status: opts?.status,
+    proposalType: opts?.proposalType,
+    bdDivision: opts?.bdDivision,
+    limit: -1,
+  });
+  const total = all.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  return {
+    rows: all.slice(start, start + pageSize),
+    total,
+    page: safePage,
+    pageSize,
+    totalPages,
+  };
+}
+
+// ─── Public API: per-proposal history (Session 60) ─────────────────
+
+export interface ProposalHistoryEvent {
+  id: string;
+  timestamp: string | null;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  collection: string | null;
+  // Lightweight: surface the rejection / change-request reason if the
+  // audit row's metadata carries it. Other metadata keys are left
+  // opaque — admin can dig into Directus admin if they need more.
+  reason: string | null;
+}
+
+/**
+ * Fetch the audit trail relevant to a proposal: events on the
+ * proposal itself + (when known) events on the target_child the
+ * proposal references. Admin-only — no DI scope filter; admin can
+ * see everything across both DI and admin actions.
+ *
+ * We fetch a wide window (the audit_log lacks Postgres-side
+ * filtering on JSON metadata via the SDK) and narrow in memory
+ * by matching either:
+ *   - record_id === proposalId AND collection === 'child_proposal'
+ *   - metadata.childId === target_child  (for child-scoped events
+ *     like document approvals, intake-photo uploads, etc.)
+ *
+ * Sorted newest-first. Default limit 30 — enough for a 6-month
+ * lifecycle of a typical profile.
+ */
+export async function listAuditEventsForProposal(
+  proposalId: string,
+  targetChildId: string | null,
+  limit: number = 30,
+): Promise<ProposalHistoryEvent[]> {
+  if (!proposalId) return [];
+
+  // Pull a recent window of events on the two collections most
+  // likely to surface relevant rows. Wider window than `limit` so
+  // metadata filtering doesn't starve the result.
+  const windowSize = Math.max(200, limit * 6);
+  let rows: Array<{
+    id: string;
+    timestamp: string | null;
+    actor: string | null;
+    actor_role: string | null;
+    action: string | null;
+    collection: string | null;
+    record_id: string | null;
+    metadata: unknown;
+  }> = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("audit_log" as never, {
+        // No collection narrowing: we want both child_proposal
+        // events AND child-scoped events (documents / photos /
+        // moments / deliveries) attached to the same target_child.
+        // Sort newest-first; filter in memory.
+        fields: [
+          "id",
+          "timestamp",
+          "actor",
+          "actor_role",
+          "action",
+          "collection",
+          "record_id",
+          "metadata",
+        ],
+        sort: ["-timestamp"],
+        limit: windowSize,
+      } as never),
+    )) as unknown as typeof rows | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[admin-proposals-list] listAuditEventsForProposal failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+
+  const filtered = rows
+    .filter((r) => {
+      if (
+        r.collection === "child_proposal" &&
+        r.record_id === proposalId
+      ) {
+        return true;
+      }
+      if (!targetChildId) return false;
+      const md =
+        r.metadata && typeof r.metadata === "object"
+          ? (r.metadata as Record<string, unknown>)
+          : null;
+      return md ? md.childId === targetChildId : false;
+    })
+    .slice(0, limit);
+
+  if (filtered.length === 0) return [];
+
+  // Resolve actor names in one batched lookup.
+  const actorIds = Array.from(
+    new Set(filtered.map((r) => r.actor).filter((x): x is string => !!x)),
+  );
+  const nameById =
+    actorIds.length > 0 ? await resolveUserNames(actorIds) : new Map();
+
+  return filtered.map((r) => {
+    const md =
+      r.metadata && typeof r.metadata === "object"
+        ? (r.metadata as Record<string, unknown>)
+        : null;
+    const reasonCandidate =
+      md &&
+      (typeof md.rejectionReason === "string"
+        ? md.rejectionReason
+        : typeof md.requestedChangesReason === "string"
+          ? md.requestedChangesReason
+          : typeof md.reason === "string"
+            ? md.reason
+            : null);
+    return {
+      id: r.id,
+      timestamp: r.timestamp,
+      actorName: r.actor ? nameById.get(r.actor) ?? "Unknown" : "System",
+      actorRole: r.actor_role ?? "unknown",
+      action: r.action ?? "unknown",
+      collection: r.collection,
+      reason: reasonCandidate || null,
+    };
+  });
+}
+
+// ─── Public API: distinct divisions on pending rows (Session 60) ────
+
+/**
+ * Returns the set of bd_division codes present across non-archived
+ * proposals — used to populate the division filter dropdown on the
+ * list page so admin doesn't see filter options for divisions where
+ * no proposals exist. Ordered alphabetically for predictable UI.
+ */
+export async function listProposalDivisions(): Promise<string[]> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("child_proposal" as never, {
+        fields: ["bd_division"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ bd_division: string | null }> | undefined;
+    if (!Array.isArray(rows)) return [];
+    const codes = new Set<string>();
+    for (const r of rows) {
+      if (r.bd_division && r.bd_division.trim()) {
+        codes.add(r.bd_division.trim());
+      }
+    }
+    return Array.from(codes).sort();
+  } catch (err) {
+    console.warn(
+      "[admin-proposals-list] listProposalDivisions failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
 }
 
 // ─── Public API: detail ─────────────────────────────────────────────

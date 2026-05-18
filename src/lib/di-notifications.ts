@@ -44,6 +44,15 @@ export type NotificationType =
   // Wired in Session 47 — admin-proposals.ts approve/reject paths.
   | "admin_approved_proposal"
   | "admin_rejected_proposal"
+  // Session 60 — admin asks the DI to revise a proposal rather than
+  // outright reject it. The proposal flips back to status='draft' so
+  // the DI sees it in their drafts queue and can edit + resubmit
+  // without rebuilding from scratch. Distinct from rejection because
+  // the rejection terminates the proposal lifecycle ("we're not
+  // taking this"); a changes request keeps the door open ("almost
+  // there, please tweak X"). Notification body carries the admin's
+  // change-request reason verbatim.
+  | "admin_requested_proposal_changes"
   // Session 52b — admin review queues for documents, intake photos,
   // and moments. Each pair (approved/rejected) ships with its own
   // notification copy. Per-intake-photo notifications fire once per
@@ -121,6 +130,8 @@ const NOTIFICATION_FIELDS = [
 const VALID_TYPES = new Set<string>([
   "admin_approved_proposal",
   "admin_rejected_proposal",
+  // Session 60 — change-request flow (back-to-draft instead of reject).
+  "admin_requested_proposal_changes",
   "admin_approved_document",
   "admin_rejected_document",
   "admin_approved_intake_photo",
