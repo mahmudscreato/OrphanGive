@@ -67,14 +67,20 @@ const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://orphangive.org"
 ).replace(/\/$/, "");
 
-// Session 39 — must be a raster format. WhatsApp, iMessage, Facebook,
-// and Twitter all reject SVG og:image and fall back to a default
-// placeholder (the triangle icon Mahmud was seeing on shares). This
-// is the homepage ClosingCTA hero PNG — confirmed-working, properly
-// branded, ~1200×630 aspect. Consumed by both openGraph.images[0].url
-// and twitter.images[0] below.
-const DEFAULT_OG_IMAGE =
-  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778529921/_OrphanGive_CG_V2_25_khxro8.png";
+// Session 64 — og:image moved to Next.js's file-based metadata
+// convention. See src/app/opengraph-image.tsx — it generates a
+// 1200×630 PNG dynamically via ImageResponse and Next auto-injects
+// the og:image meta tag pointing at /opengraph-image. The previous
+// inline Cloudinary URL (`_OrphanGive_CG_V2_25_khxro8.png` with
+// `f_auto`) was problematic: Cloudinary served it as image/jpeg
+// despite the .png extension, which some scrapers cross-check and
+// silently drop. The file-convention image has a deterministic
+// image/png Content-Type and Next handles caching for us.
+//
+// IMPORTANT: explicit openGraph.images / twitter.images here would
+// override the file convention — so they're intentionally OMITTED.
+// Twitter clients fall back to og:image when twitter:image is
+// absent, so the file convention covers both card types.
 
 const DEFAULT_DESCRIPTION =
   "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021).";
@@ -97,20 +103,13 @@ export const metadata: Metadata = {
     url: SITE_URL,
     title: "OrphanGive — Sponsor an orphan in Bangladesh",
     description: DEFAULT_DESCRIPTION,
-    images: [
-      {
-        url: DEFAULT_OG_IMAGE,
-        width: 1200,
-        height: 630,
-        alt: "OrphanGive — sponsor an orphan in Bangladesh",
-      },
-    ],
+    // images: [...] intentionally omitted — see Session 64 note above.
   },
   twitter: {
     card: "summary_large_image",
     title: "OrphanGive — Sponsor an orphan in Bangladesh",
     description: DEFAULT_DESCRIPTION,
-    images: [DEFAULT_OG_IMAGE],
+    // images: [...] intentionally omitted — see Session 64 note above.
   },
   robots: {
     // Crawler directives are also broadcast via /robots.txt; the

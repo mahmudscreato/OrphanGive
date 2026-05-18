@@ -17,19 +17,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { PhotoBlob } from "@/components/decorations/PhotoBlob";
+// Session 64 — see faq/page.tsx for the same migration rationale.
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/about",
   title: "About OrphanGive — Bangladesh's verified child sponsorship network",
   description:
     "OrphanGive is a project of Goodverse Foundation in collaboration with Children's Heaven Trust — a verified child sponsorship network for orphaned and vulnerable children in Bangladesh.",
-  openGraph: {
-    title: "About OrphanGive — Bangladesh's verified child sponsorship network",
-    description:
-      "A project of Goodverse Foundation in collaboration with Children's Heaven Trust. Verified profiles, privacy-first, every taka tracked.",
-  },
-};
+});
 
 // --- Asset constants. URLs match the homepage AboutSection so
 // the visual language stays consistent. No new Cloudinary uploads.
