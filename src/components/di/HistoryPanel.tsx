@@ -80,6 +80,19 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Session 52d — admin direct uploads (admin filling in for DI).
   admin_uploaded_document: FileText,
   admin_uploaded_intake_photo: ImagePlus,
+  // Session 66 — admin child management. Edit / archive / reactivate
+  // never surface on DI feeds (they target the child collection, not
+  // a DI artifact). admin_viewed_child also stays admin-only. The
+  // two re-upload requests DO surface on DI dashboards via the
+  // notification system; mapping them to Edit3 here is type-safety
+  // only (future per-child History tab can swap to a friendlier
+  // icon when the read filter is widened to admin_requested_*).
+  admin_viewed_child: HistoryIcon,
+  admin_edited_child: Edit3,
+  admin_archived_child: Trash2,
+  admin_reactivated_child: CheckCircle2,
+  admin_requested_document_reupload: Edit3,
+  admin_requested_intake_reupload: Edit3,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back

@@ -24,11 +24,26 @@ import {
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
-const NAV_ITEMS = [
+// Session 66 — added optional `badgeKey` to support count pills next
+// to nav labels. Kept the union narrow (just 'children' for now)
+// so future sessions can extend it without rewriting the contract.
+type BadgeKey = "children";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  exact: boolean;
+  badgeKey?: BadgeKey;
+};
+
+const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/admin", label: "Home", icon: Home, exact: true },
   { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false },
   { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false },
-  { href: "/admin/children", label: "Children", icon: Users, exact: false },
+  // Session 66 — children gets an active-count badge fed by the
+  // layout's countActiveChildrenForBadge() fetch.
+  { href: "/admin/children", label: "Children", icon: Users, exact: false, badgeKey: "children" },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
@@ -36,7 +51,14 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  badges,
+}: {
+  // Optional per-key counts. null = "fetch errored / still loading"
+  // (we hide). 0 = "nothing to flag" (also hidden — a zero badge
+  // reads as noise rather than information).
+  badges?: Partial<Record<BadgeKey, number | null>>;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -84,6 +106,8 @@ export function AdminSidebar() {
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
+            const count = item.badgeKey ? badges?.[item.badgeKey] ?? null : null;
+            const showBadge = typeof count === "number" && count > 0;
             return (
               <li key={item.href}>
                 <Link
@@ -98,7 +122,15 @@ export function AdminSidebar() {
                   <Icon
                     className={`w-4 h-4 ${active ? "stroke-[2.25]" : "stroke-[1.75]"}`}
                   />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {showBadge ? (
+                    <span
+                      className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-tangerine-soft text-tangerine-deeper text-[11px] font-semibold tabular-nums"
+                      aria-label={`${count} active`}
+                    >
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );

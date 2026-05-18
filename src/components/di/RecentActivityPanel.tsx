@@ -67,6 +67,14 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_removed_approved_intake_photo: Trash2,
   admin_uploaded_document: FileText,
   admin_uploaded_intake_photo: ImagePlus,
+  // Session 66 — admin child management. Same rationale as
+  // HistoryPanel.tsx; placeholders for type safety.
+  admin_viewed_child: Home,
+  admin_edited_child: Edit3,
+  admin_archived_child: Trash2,
+  admin_reactivated_child: CheckCircle2,
+  admin_requested_document_reupload: Edit3,
+  admin_requested_intake_reupload: Edit3,
 };
 
 function relativeTime(iso: string | null): string {

@@ -14,6 +14,8 @@
 
 import { redirect } from "next/navigation";
 import { requireAdminUser } from "@/lib/admin-auth";
+// Session 66 — active-children count for the sidebar/bottom-nav badge.
+import { countActiveChildrenForBadge } from "@/lib/admin-children";
 import { AdminBottomNav } from "@/components/admin/AdminBottomNav";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -29,19 +31,28 @@ export default async function AdminAuthedLayout({
     redirect("/admin/login");
   }
 
+  // Session 66 — single fetch threaded to both navs so the desktop
+  // sidebar pill and the mobile bottom-nav corner badge can't drift.
+  // countActiveChildrenForBadge swallows failure and returns 0 — the
+  // nav code hides the badge when the number is 0 so a fetch error
+  // is indistinguishable from "no active children", which is fine
+  // for a non-critical decoration.
+  const activeChildren = await countActiveChildrenForBadge();
+  const badges = { children: activeChildren };
+
   return (
     <div className="bg-cream min-h-screen text-ink">
       {/* Mobile-only header */}
       <AdminHeader />
       {/* Desktop-only sidebar (240px wide, fixed left) */}
-      <AdminSidebar />
+      <AdminSidebar badges={badges} />
       <main className="md:pl-[240px] pb-24 md:pb-12 min-h-screen">
         {/* Desktop-only top bar with admin identity pill */}
         <AdminTopBar session={session} />
         {children}
       </main>
       {/* Mobile-only bottom nav */}
-      <AdminBottomNav />
+      <AdminBottomNav badges={badges} />
     </div>
   );
 }
