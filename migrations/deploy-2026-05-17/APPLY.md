@@ -129,6 +129,42 @@ Manually verify the platform behaves as expected with the new schema:
 
 ---
 
+## CRITICAL: DI user setup — `assigned_divisions` must use the canonical codes
+
+When creating or editing a Data Inputter user, their `assigned_divisions` JSONB field MUST contain codes that exist in the `bd_division.code` column. Production uses lowercase, geographic names — **not letter codes**.
+
+The canonical eight codes are:
+
+```
+barisal, chittagong, dhaka, khulna, mymensingh, rajshahi, rangpur, sylhet
+```
+
+A DI whose `assigned_divisions` contains codes that don't match anything in `bd_division.code` (e.g. legacy letter codes like `BD-A`, `BD-B`, …) will silently fail every submit operation with a 403 `division not allowed` error from `isDivisionAllowedForUser` in `src/lib/di-proposals.ts`. The UI surfaces this as a generic submit failure with no helpful diagnostic.
+
+Verify codes match by running both queries and eyeballing the overlap:
+
+```bash
+# Canonical codes (the source of truth)
+docker exec og-database psql -U directus -d directus -c \
+  "SELECT code FROM bd_division ORDER BY code;"
+
+# Per-DI assigned codes
+docker exec og-database psql -U directus -d directus -c \
+  "SELECT email, assigned_divisions FROM directus_users
+   WHERE role IN (SELECT id FROM directus_roles WHERE name = 'Data Inputter');"
+```
+
+If any DI has wrong codes, fix via the Directus admin UI (Settings → Data Model → Directus Users → edit the user → assigned_divisions) by pasting an array of correct codes, e.g. `["dhaka", "chittagong"]`. The form layer in `/di/children/new` does NOT lock the dropdown to assigned divisions (so the DI sees all 8), but the server-side `createCreateProposal` does enforce the check — a mismatch silently 403s every submit until corrected.
+
+If you're scripting user creation in the future, pull the codes dynamically rather than hard-coding to avoid drift:
+
+```bash
+docker exec og-database psql -U directus -d directus -tA -c \
+  "SELECT json_agg(code) FROM bd_division;"
+```
+
+---
+
 ## Rollback
 
 If anything goes wrong on VPS, restore from the pre-deploy backup:

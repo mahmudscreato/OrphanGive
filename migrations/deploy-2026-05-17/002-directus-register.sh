@@ -122,24 +122,61 @@ post_relation() {
   fi
 }
 
-# POST a permission row. $1=policy_id, $2=collection, $3=action,
-# $4=fields-JSON, $5=permissions-filter-JSON (default null).
+# UPSERT a permission row. $1=policy_id, $2=collection, $3=action,
+# $4=fields-JSON, $5=permissions-filter-JSON (default null), $6=presets (default null).
+#
+# Session 56 — upgraded from pure POST to upsert. Previously this
+# helper would SKIP if a (policy, collection, action) row already
+# existed, which meant a script-side change to a permission's
+# presets / fields / filter would never propagate to installs that
+# had already been bootstrapped. The 002-status-preset hotfix on
+# production (May 17) needed manual REST PATCHes for exactly that
+# reason. Now: GET first to check existence, then POST (create) or
+# PATCH (update by id) so the script-side spec is always
+# authoritative.
 post_permission() {
   local policy="$1" collection="$2" action="$3" fields="$4" perms="${5:-null}" presets="${6:-null}"
-  local resp
-  resp=$(curl -sS -X POST "$URL/permissions" \
+  local body
+  body="{\"policy\":\"$policy\",\"collection\":\"$collection\",\"action\":\"$action\",\"fields\":$fields,\"permissions\":$perms,\"presets\":$presets}"
+
+  # Look up an existing row by (policy, collection, action). Directus
+  # allows multiple permission rows per triple (Access Control v11
+  # supports stacked permissions), so we match the FIRST one and
+  # accept ambiguity in that edge case — every triple this script
+  # writes has been a singleton historically.
+  local existing_id
+  existing_id=$(curl -sS -g \
+    "$URL/permissions?filter%5Bpolicy%5D%5B_eq%5D=$policy&filter%5Bcollection%5D%5B_eq%5D=$collection&filter%5Baction%5D%5B_eq%5D=$action&fields=id&limit=1" \
     -H "Authorization: Bearer $ADMIN" \
-    -H "Content-Type: application/json" \
-    -d "{\"policy\":\"$policy\",\"collection\":\"$collection\",\"action\":\"$action\",\"fields\":$fields,\"permissions\":$perms,\"presets\":$presets}")
-  if printf '%s' "$resp" | grep -q '"data"'; then
-    note "  perm $collection $action" "OK"
-    OK=$((OK + 1))
-  elif printf '%s' "$resp" | grep -qi 'already exist'; then
-    note "  perm $collection $action" "SKIP (exists)"
-    SKIP=$((SKIP + 1))
+    | python3 -c "import sys,json; rows=json.load(sys.stdin).get('data') or []; print(rows[0]['id'] if rows else '')" 2>/dev/null)
+
+  local resp
+  if [ -n "$existing_id" ]; then
+    # PATCH the existing row so fields/permissions/presets/validation
+    # match the script-side spec exactly.
+    resp=$(curl -sS -X PATCH "$URL/permissions/$existing_id" \
+      -H "Authorization: Bearer $ADMIN" \
+      -H "Content-Type: application/json" \
+      -d "{\"fields\":$fields,\"permissions\":$perms,\"presets\":$presets}")
+    if printf '%s' "$resp" | grep -q '"data"'; then
+      note "  perm $collection $action" "UPDATED (id $existing_id)"
+      OK=$((OK + 1))
+    else
+      note "  perm $collection $action" "ERR (PATCH): $(printf '%s' "$resp" | head -c 150)"
+      ERR=$((ERR + 1))
+    fi
   else
-    note "  perm $collection $action" "ERR: $(printf '%s' "$resp" | head -c 150)"
-    ERR=$((ERR + 1))
+    resp=$(curl -sS -X POST "$URL/permissions" \
+      -H "Authorization: Bearer $ADMIN" \
+      -H "Content-Type: application/json" \
+      -d "$body")
+    if printf '%s' "$resp" | grep -q '"data"'; then
+      note "  perm $collection $action" "CREATED"
+      OK=$((OK + 1))
+    else
+      note "  perm $collection $action" "ERR (POST): $(printf '%s' "$resp" | head -c 150)"
+      ERR=$((ERR + 1))
+    fi
   fi
 }
 
@@ -185,7 +222,16 @@ patch_field child_proposal proposal_type '{"meta":{"interface":"select-dropdown"
 patch_field child_proposal target_child '{"meta":{"interface":"select-dropdown-m2o","special":["m2o"]}}'
 patch_field child_proposal status '{"meta":{"interface":"select-dropdown","options":{"choices":[{"text":"Draft","value":"draft"},{"text":"Pending","value":"pending"},{"text":"Approved","value":"approved"},{"text":"Rejected","value":"rejected"}]},"required":true}}'
 patch_field child_proposal rejection_reason '{"meta":{"interface":"input-multiline"}}'
-patch_field child_proposal created_by '{"meta":{"interface":"select-dropdown-m2o","special":["user-created","m2o"],"readonly":true,"required":true}}'
+# Session 56 — DO NOT add `user-created` to `special` here. The
+# Directus `user-created` special force-overrides whatever value
+# the insert payload contains with the token-owner's UUID. Since
+# the lib code (`createDraftProposal` in src/lib/di-proposals.ts)
+# uses the admin server token and explicitly writes
+# `created_by: userId`, `user-created` would silently re-stamp
+# every draft with the admin's UUID — breaking every ownership
+# filter downstream (getDraftForUser → null → PATCH 404). Hit on
+# production 2026-05-17.
+patch_field child_proposal created_by '{"meta":{"interface":"select-dropdown-m2o","special":["m2o"],"readonly":true,"required":true}}'
 patch_field child_proposal approved_by '{"meta":{"interface":"select-dropdown-m2o","special":["m2o"]}}'
 patch_field child_proposal date_created '{"meta":{"interface":"datetime","special":["date-created"],"readonly":true}}'
 patch_field child_proposal published_at '{"meta":{"interface":"datetime"}}'
@@ -244,7 +290,12 @@ patch_field aid_delivery photo '{"meta":{"interface":"file-image","special":["fi
 patch_field aid_delivery recipient_acknowledgment '{"meta":{"interface":"input-multiline"}}'
 patch_field aid_delivery status '{"meta":{"interface":"select-dropdown","options":{"choices":[{"text":"Pending","value":"pending"},{"text":"Verified","value":"verified"},{"text":"Rejected","value":"rejected"}]},"required":true}}'
 patch_field aid_delivery rejection_reason '{"meta":{"interface":"input-multiline"}}'
-patch_field aid_delivery delivered_by '{"meta":{"interface":"select-dropdown-m2o","special":["user-created","m2o"],"readonly":true,"required":true}}'
+# Session 56 — same `user-created` removal as child_proposal.created_by.
+# `recordDelivery` in src/lib/di-deliveries.ts writes delivered_by
+# explicitly with the DI's session userId; the user-created special
+# would override that to the admin UUID and break per-DI delivery
+# scope.
+patch_field aid_delivery delivered_by '{"meta":{"interface":"select-dropdown-m2o","special":["m2o"],"readonly":true,"required":true}}'
 patch_field aid_delivery verified_by '{"meta":{"interface":"select-dropdown-m2o","special":["m2o"]}}'
 patch_field aid_delivery date_created '{"meta":{"interface":"datetime","special":["date-created"],"readonly":true}}'
 patch_field aid_delivery verified_at '{"meta":{"interface":"datetime"}}'
@@ -299,7 +350,14 @@ patch_field child_intake_photo proposal '{"meta":{"interface":"select-dropdown-m
 patch_field child_intake_photo photo '{"meta":{"interface":"file-image","special":["file"],"required":true}}'
 patch_field child_intake_photo caption '{"meta":{"interface":"input","options":{"placeholder":"Short caption (optional)"}}}'
 patch_field child_intake_photo display_order '{"meta":{"interface":"input","note":"Lower numbers sort first"}}'
-patch_field child_intake_photo uploaded_by '{"meta":{"interface":"select-dropdown-m2o","readonly":true,"special":["user-created","m2o"]}}'
+# Session 56 — same `user-created` removal as child_proposal.created_by.
+# `createIntakePhoto` in src/lib/di-intake-photos.ts writes
+# uploaded_by explicitly via `withToken(session.accessToken, ...)`
+# so it carries the DI user's identity; `user-created` here would
+# override that on admin-token paths (`uploadDirectIntakePhoto`)
+# and silently mis-stamp DI uploads on others. Required:false
+# preserved — admin direct uploads write the field explicitly too.
+patch_field child_intake_photo uploaded_by '{"meta":{"interface":"select-dropdown-m2o","readonly":true,"special":["m2o"]}}'
 patch_field child_intake_photo status '{"meta":{"interface":"select-dropdown","options":{"choices":[{"text":"Pending","value":"pending"},{"text":"Approved","value":"approved"},{"text":"Rejected","value":"rejected"},{"text":"Archived","value":"archived"}]}}}'
 patch_field child_intake_photo reviewed_by '{"meta":{"interface":"select-dropdown-m2o","readonly":true,"special":["m2o"]}}'
 patch_field child_intake_photo reviewed_at '{"meta":{"interface":"datetime","readonly":true}}'
@@ -432,7 +490,17 @@ echo "  Admin policy: $ADMIN_POLICY"
 echo ""
 
 echo "  -- DI: child_proposal (full CRUD on own drafts) --"
-post_permission "$DI_POLICY" child_proposal create '"*"' 'null' '{"status":"draft","created_by":"$CURRENT_USER"}'
+# Session 56 — removed the `status: "draft"` preset. The original
+# intent was "DI inserts default to draft", but Directus presets
+# *force-override* values from the payload — so when the form
+# submitted with status='pending_review' to advance the workflow,
+# Directus silently rewrote it back to 'draft' and the row never
+# entered admin's review queue. Hit on production 2026-05-17.
+# The Postgres column already has `DEFAULT 'draft'` so omitted
+# inserts still get the right default. `created_by: $CURRENT_USER`
+# is preserved — that's the actual security boundary preventing
+# DI users from spoofing ownership.
+post_permission "$DI_POLICY" child_proposal create '"*"' 'null' '{"created_by":"$CURRENT_USER"}'
 post_permission "$DI_POLICY" child_proposal read   '"*"' '{"created_by":{"_eq":"$CURRENT_USER"}}'
 post_permission "$DI_POLICY" child_proposal update '"*"' '{"_and":[{"created_by":{"_eq":"$CURRENT_USER"}},{"status":{"_in":["draft","pending"]}}]}'
 
