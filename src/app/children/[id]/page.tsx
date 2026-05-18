@@ -235,7 +235,11 @@ export default async function ChildProfilePage({
 
   return (
     <>
-      <div className="px-4 md:px-6 pt-28 md:pt-32 bg-warmth-50">
+      {/* Session 57.1 — top padding trimmed from pt-28/pt-32 to
+          pt-8/pt-12 per Mahmud's hotfix brief. The fixed site nav
+          already establishes breathing room above; the prior
+          padding was double-counting. */}
+      <div className="px-4 md:px-6 pt-8 md:pt-12 bg-warmth-50">
         <div className="max-w-[1100px] mx-auto">
           <Breadcrumb
             crumbs={[

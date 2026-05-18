@@ -658,6 +658,69 @@ export function getSupportTypeLabel(
   return lookup(SUPPORT_TYPE_LABELS, value);
 }
 
+// Session 57.1 — donor-facing color coding for support_type pills.
+// The reference design palette suggested terracotta/red/green/amber
+// tones distinct per need; we map those intents to the existing OG
+// palette so no rogue hex codes get introduced. Each entry is a
+// pair of Tailwind classes (bg + text) chosen to clear AA on the
+// warmth-50 page canvas.
+//
+// Education     → tangerine-soft / tangerine-deeper  (warm orange)
+// Food          → moss-soft     / moss-deep          (olive green)
+// Healthcare    → tangerine-mist / tangerine-deep    (soft peach)
+// Clothing      → warmth-100   / warmth-text         (warm beige)
+// General care  → sky/30        / sky-deep           (soft blue)
+// Other (+null) → warmth-100   / warmth-text         (neutral warm)
+export const NEED_COLOR_MAP: Record<
+  string,
+  { bg: string; text: string; ring: string }
+> = {
+  education: {
+    bg: "bg-tangerine-soft/60",
+    text: "text-tangerine-deeper",
+    ring: "ring-tangerine-deeper/20",
+  },
+  food: {
+    bg: "bg-moss-soft/70",
+    text: "text-moss-deep",
+    ring: "ring-moss-deep/20",
+  },
+  healthcare: {
+    bg: "bg-tangerine-mist",
+    text: "text-tangerine-deep",
+    ring: "ring-tangerine-deep/20",
+  },
+  clothing: {
+    bg: "bg-warmth-100",
+    text: "text-warmth-text",
+    ring: "ring-warmth-accent/25",
+  },
+  general_care: {
+    bg: "bg-sky/30",
+    text: "text-sky-deep",
+    ring: "ring-sky-deep/20",
+  },
+  other: {
+    bg: "bg-warmth-100",
+    text: "text-warmth-text",
+    ring: "ring-warmth-accent/25",
+  },
+};
+
+/**
+ * Resolve a support_type slug to its donor-facing color pair.
+ * Unknown / null values fall through to the neutral "other"
+ * warm-beige variant so the pill always renders.
+ */
+export function getNeedColor(value: string | null | undefined): {
+  bg: string;
+  text: string;
+  ring: string;
+} {
+  if (!value) return NEED_COLOR_MAP.other!;
+  return NEED_COLOR_MAP[value] ?? NEED_COLOR_MAP.other!;
+}
+
 export function getGenderLabel(
   value: Gender | string | null | undefined,
 ): string {
