@@ -9,13 +9,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ClipboardCheck, ListChecks, Users } from "lucide-react";
+import {
+  Home,
+  ClipboardCheck,
+  ListChecks,
+  Users,
+  HeartHandshake,
+} from "lucide-react";
 
+// Mobile nav is space-constrained; we still fit five tabs at 375px
+// because the labels are 10px font-mono. If a sixth tab gets added,
+// switch this to a horizontal scroller or icon-only mode.
 const TABS = [
   { href: "/admin", label: "Home", icon: Home, exact: true },
   { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false },
   { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false },
   { href: "/admin/children", label: "Children", icon: Users, exact: false },
+  // Session 61
+  { href: "/admin/sponsorships", label: "Sponsors", icon: HeartHandshake, exact: false },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {

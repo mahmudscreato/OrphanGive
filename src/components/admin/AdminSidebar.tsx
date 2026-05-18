@@ -18,6 +18,7 @@ import {
   ClipboardCheck,
   ListChecks,
   Users,
+  HeartHandshake,
   LogOut,
 } from "lucide-react";
 
@@ -29,6 +30,8 @@ const NAV_ITEMS = [
   { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false },
   { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false },
   { href: "/admin/children", label: "Children", icon: Users, exact: false },
+  // Session 61 — live sponsorships management surface.
+  { href: "/admin/sponsorships", label: "Sponsorships", icon: HeartHandshake, exact: false },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
