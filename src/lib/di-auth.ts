@@ -32,6 +32,8 @@ export const DI_REFRESH_COOKIE = "di_refresh_token";
 const ACCESS_COOKIE_MAX_AGE = 60 * 15;
 const REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
+type CookieJar = Awaited<ReturnType<typeof cookies>>;
+
 function getDirectusUrl(): string {
   const url = process.env.NEXT_PUBLIC_DIRECTUS_URL;
   if (!url) throw new Error("NEXT_PUBLIC_DIRECTUS_URL is not defined");
@@ -151,19 +153,86 @@ export async function logoutDi(refreshToken: string): Promise<void> {
   }
 }
 
-// ─── Session read ───────────────────────────────────────────────────
+// ─── Session read (with transparent refresh) ────────────────────────
 //
 // Reads the `di_access_token` cookie and validates it against
-// Directus's /users/me. Returns null on missing/invalid cookie OR if
-// the user's role is not Data Inputter (e.g. role got reassigned
-// after the cookie was set).
+// Directus's /users/me. If the access token is missing or rejected
+// (401/403) but the `di_refresh_token` cookie is still valid, this
+// transparently rotates the pair via Directus's /auth/refresh and
+// retries — so a DI who leaves the dashboard open past the 15-minute
+// access TTL doesn't get bounced to login.
+//
+// Cookie-write constraint (Next.js):
+//   Server Components cannot mutate cookies (cookies().set() throws
+//   "Cookies can only be modified in a Server Action or Route
+//   Handler"). Calling refresh from a Server Component would consume
+//   the old refresh token on Directus's side but leave the rotated
+//   pair unpersisted — orphaning the new tokens AND locking the user
+//   out on the next request. So we PROBE for cookie-write capability
+//   first (`canPersistCookies`); if the context is read-only, we skip
+//   refresh and return null. That preserves the pre-refresh behavior
+//   for layout renders, while the first subsequent route handler or
+//   server action will rotate cleanly because the refresh cookie is
+//   still untouched.
 
 export async function getDirectusSession(): Promise<DiSession | null> {
   const store = await cookies();
-  const accessToken = store.get(DI_ACCESS_COOKIE)?.value;
-  if (!accessToken) return null;
+  const accessToken = store.get(DI_ACCESS_COOKIE)?.value ?? null;
+  const refreshToken = store.get(DI_REFRESH_COOKIE)?.value ?? null;
+  if (!accessToken && !refreshToken) return null;
 
   const url = getDirectusUrl();
+
+  // 1) Try the current access token first.
+  if (accessToken) {
+    const result = await fetchDiUser(url, accessToken);
+    if (result.kind === "ok") return result.session;
+    if (result.kind === "non_di") return null;
+    // result.kind === "unauthorized" → fall through to refresh.
+  }
+
+  // 2) No usable access token. Need a refresh token to recover.
+  if (!refreshToken) return null;
+
+  // 3) Bail if this context can't persist the rotated pair — see
+  //    block comment above for why.
+  if (!canPersistCookies(store, refreshToken)) return null;
+
+  // 4) Rotate.
+  const rotated = await refreshDiTokens(url, refreshToken);
+  if (!rotated) {
+    // Refresh token is itself expired / revoked. Clear stale cookies
+    // so the next render shows the login page cleanly.
+    try {
+      clearDiCookies(store);
+    } catch {
+      // ignore — unreachable; we already passed canPersistCookies.
+    }
+    return null;
+  }
+
+  // 5) Persist the rotated pair and retry /users/me with the new token.
+  try {
+    setDiCookies(store, rotated.accessToken, rotated.refreshToken);
+  } catch {
+    // ignore — unreachable; we already passed canPersistCookies.
+  }
+  const result = await fetchDiUser(url, rotated.accessToken);
+  if (result.kind === "ok") return result.session;
+  return null;
+}
+
+// ─── Refresh helpers ────────────────────────────────────────────────
+
+type FetchUserResult =
+  | { kind: "ok"; session: DiSession }
+  | { kind: "unauthorized" } // 401/403, network failure, or malformed payload
+  | { kind: "non_di" }; // authenticated but wrong role — never refresh out of this
+
+async function fetchDiUser(
+  url: string,
+  accessToken: string,
+): Promise<FetchUserResult> {
   let res: Response;
   try {
     res = await fetch(
@@ -171,9 +240,10 @@ export async function getDirectusSession(): Promise<DiSession | null> {
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
   } catch {
-    return null;
+    return { kind: "unauthorized" };
   }
-  if (!res.ok) return null;
+  if (!res.ok) return { kind: "unauthorized" };
+
   const body = (await res.json()) as {
     data?: {
       id?: string;
@@ -185,17 +255,76 @@ export async function getDirectusSession(): Promise<DiSession | null> {
     };
   };
   const me = body.data;
-  if (!me?.id || !me.email) return null;
-  if (me.role?.name !== DI_ROLE_NAME) return null;
+  if (!me?.id || !me.email) return { kind: "unauthorized" };
+  if (me.role?.name !== DI_ROLE_NAME) return { kind: "non_di" };
 
   return {
-    userId: me.id,
-    firstName: me.first_name ?? null,
-    lastName: me.last_name ?? null,
-    email: me.email,
-    assignedDivisions: Array.isArray(me.assigned_divisions) ? me.assigned_divisions : null,
-    accessToken,
+    kind: "ok",
+    session: {
+      userId: me.id,
+      firstName: me.first_name ?? null,
+      lastName: me.last_name ?? null,
+      email: me.email,
+      assignedDivisions: Array.isArray(me.assigned_divisions)
+        ? me.assigned_divisions
+        : null,
+      accessToken,
+    },
   };
+}
+
+async function refreshDiTokens(
+  url: string,
+  refreshToken: string,
+): Promise<{ accessToken: string; refreshToken: string } | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${url}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken, mode: "json" }),
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const body = (await res.json()) as {
+    data?: { access_token?: string; refresh_token?: string };
+  };
+  const newAccess = body.data?.access_token;
+  const newRefresh = body.data?.refresh_token;
+  if (!newAccess || !newRefresh) return null;
+  return { accessToken: newAccess, refreshToken: newRefresh };
+}
+
+// Probe whether the current Next.js execution context allows cookie
+// mutation. cookies().set() throws synchronously in Server Components,
+// so we attempt a benign restamp of the existing refresh cookie (same
+// value, same options) — succeeds in route handlers / server actions,
+// throws in Server Components. The "side effect" of the restamp is
+// resetting the refresh cookie's max-age to 7d from now; that's
+// indistinguishable from what setDiCookies would do a few lines later
+// on a successful refresh, so it's a no-op in the happy path and
+// merely a small bonus extension in the (rare) case where refresh
+// itself fails.
+function canPersistCookies(
+  store: CookieJar,
+  refreshToken: string,
+): boolean {
+  try {
+    store.set({
+      name: DI_REFRESH_COOKIE,
+      value: refreshToken,
+      maxAge: REFRESH_COOKIE_MAX_AGE,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Server-side auth gate ──────────────────────────────────────────
@@ -214,8 +343,6 @@ export async function requireDiUser(): Promise<DiSession> {
 }
 
 // ─── Cookie helpers ─────────────────────────────────────────────────
-
-type CookieJar = Awaited<ReturnType<typeof cookies>>;
 
 export function setDiCookies(
   store: CookieJar,
