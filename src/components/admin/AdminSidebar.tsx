@@ -18,11 +18,17 @@ import {
   ClipboardCheck,
   ListChecks,
   Users,
+  UserCircle,
   LogOut,
 } from "lucide-react";
 
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
+
+// Session 65 — added "donors" to the badgeKey union so the new
+// Donors nav entry can surface a pending-approval count alongside
+// proposals + reviews.
+type BadgeKey = "proposals" | "reviews" | "donors";
 
 type NavItem = {
   href: string;
@@ -31,7 +37,7 @@ type NavItem = {
   exact: boolean;
   // Session 60 — optional pending-count badge. Driven by the
   // server-side layout fetch; rendered next to the label when > 0.
-  badgeKey?: "proposals" | "reviews";
+  badgeKey?: BadgeKey;
 };
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
@@ -51,6 +57,16 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     badgeKey: "reviews",
   },
   { href: "/admin/children", label: "Children", icon: Users, exact: false },
+  // Session 65 — donor management. Lives after Children so the
+  // "people" cluster (Children + Donors) reads together; badge
+  // shows pending first-time approvals.
+  {
+    href: "/admin/donors",
+    label: "Donors",
+    icon: UserCircle,
+    exact: false,
+    badgeKey: "donors",
+  },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
@@ -64,7 +80,8 @@ export function AdminSidebar({
   // Session 60 — optional per-key pending counts. Null = "still
   // loading / fetch errored" (we hide the badge). 0 = "nothing
   // pending" (also hidden so 0 doesn't read as noise).
-  badges?: Partial<Record<"proposals" | "reviews", number | null>>;
+  // Session 65 — extended to include 'donors'.
+  badges?: Partial<Record<BadgeKey, number | null>>;
 } = {}) {
   const pathname = usePathname();
   const router = useRouter();

@@ -108,7 +108,19 @@ export type AuditAction =
   // flow (admin uploads with status='approved' immediately). Same
   // shape as a DI upload at the audit level, but with admin actor.
   | "admin_uploaded_document"
-  | "admin_uploaded_intake_photo";
+  | "admin_uploaded_intake_photo"
+  // Session 65 — admin donor management. View event logged on every
+  // detail page load (force-dynamic) so we can trace who looked at
+  // a donor's contact info / Stripe id / financial summary. Approve
+  // / reject flip og_admin_approval_status; suspend / reactivate flip
+  // directus_users.status; password-reset is a write-no-mutation event
+  // (admin trigger of Directus's /auth/password/request flow).
+  | "admin_viewed_donor"
+  | "admin_approved_donor"
+  | "admin_rejected_donor"
+  | "admin_suspended_donor"
+  | "admin_reactivated_donor"
+  | "admin_triggered_password_reset";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -333,6 +345,16 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Admin removed a previously-approved intake photo`,
   admin_uploaded_document: () => `Admin uploaded a document directly`,
   admin_uploaded_intake_photo: () => `Admin uploaded an intake photo directly`,
+  // Session 65 — donor management events. These never surface on
+  // DI-facing feeds (the per-child History tab filters di_* actions
+  // only). Descriptions are admin-facing future-proofing for when
+  // a per-donor audit history view ships.
+  admin_viewed_donor: (a) => `${a} opened a donor profile`,
+  admin_approved_donor: (a) => `${a} approved a donor`,
+  admin_rejected_donor: (a) => `${a} rejected a donor`,
+  admin_suspended_donor: (a) => `${a} suspended a donor`,
+  admin_reactivated_donor: (a) => `${a} reactivated a donor`,
+  admin_triggered_password_reset: (a) => `${a} triggered a password reset for a donor`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

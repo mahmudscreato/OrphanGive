@@ -9,14 +9,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ClipboardCheck, ListChecks, Users } from "lucide-react";
+import {
+  Home,
+  ClipboardCheck,
+  ListChecks,
+  Users,
+  UserCircle,
+} from "lucide-react";
+
+// Session 65 — keep the badge-key union in sync with AdminSidebar.tsx.
+type BadgeKey = "proposals" | "reviews" | "donors";
 
 type Tab = {
   href: string;
   label: string;
   icon: typeof Home;
   exact: boolean;
-  badgeKey?: "proposals" | "reviews";
+  badgeKey?: BadgeKey;
 };
 
 const TABS: ReadonlyArray<Tab> = [
@@ -36,6 +45,14 @@ const TABS: ReadonlyArray<Tab> = [
     badgeKey: "reviews",
   },
   { href: "/admin/children", label: "Children", icon: Users, exact: false },
+  // Session 65 — donor management.
+  {
+    href: "/admin/donors",
+    label: "Donors",
+    icon: UserCircle,
+    exact: false,
+    badgeKey: "donors",
+  },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
@@ -48,7 +65,8 @@ export function AdminBottomNav({
 }: {
   // Session 60 — mirror the sidebar's badge-count plumbing for
   // mobile parity. Same shape, same null/0 = hide convention.
-  badges?: Partial<Record<"proposals" | "reviews", number | null>>;
+  // Session 65 — extended to include 'donors'.
+  badges?: Partial<Record<BadgeKey, number | null>>;
 } = {}) {
   const pathname = usePathname();
 

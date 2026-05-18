@@ -67,6 +67,16 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_removed_approved_intake_photo: Trash2,
   admin_uploaded_document: FileText,
   admin_uploaded_intake_photo: ImagePlus,
+  // Session 65 — donor-management events. Never surface on the DI
+  // recent activity feed (the audit query filters by collection IN
+  // [child_*, …], and these all target directus_users). Icons are
+  // type-safety placeholders.
+  admin_viewed_donor: Home,
+  admin_approved_donor: CheckCircle2,
+  admin_rejected_donor: XCircle,
+  admin_suspended_donor: XCircle,
+  admin_reactivated_donor: CheckCircle2,
+  admin_triggered_password_reset: Home,
 };
 
 function relativeTime(iso: string | null): string {

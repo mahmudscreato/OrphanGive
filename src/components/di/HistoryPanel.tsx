@@ -80,6 +80,18 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Session 52d — admin direct uploads (admin filling in for DI).
   admin_uploaded_document: FileText,
   admin_uploaded_intake_photo: ImagePlus,
+  // Session 65 — donor-management events. These touch directus_users
+  // (not a child collection) and never carry a childId in metadata,
+  // so they never surface on the per-child History tab. Mapped to
+  // HistoryIcon purely for the Record<AuditAction, ...> exhaustiveness
+  // check; if a future per-donor history view ships, swap in
+  // donor-specific icons.
+  admin_viewed_donor: HistoryIcon,
+  admin_approved_donor: CheckCircle2,
+  admin_rejected_donor: XCircle,
+  admin_suspended_donor: XCircle,
+  admin_reactivated_donor: CheckCircle2,
+  admin_triggered_password_reset: HistoryIcon,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
