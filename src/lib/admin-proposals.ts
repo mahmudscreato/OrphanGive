@@ -582,6 +582,123 @@ export async function rejectProposal(
   return { proposalId };
 }
 
+/**
+ * Session 60 — request-changes flow. Soft alternative to outright
+ * rejection: keeps the proposal alive in the DI's drafts queue so
+ * they can edit + resubmit without rebuilding from scratch.
+ *
+ * Behavior:
+ *   1. Read the proposal; must be in `pending` status.
+ *   2. Flip status back to `draft`. Stamps `approved_by` with the
+ *      admin's userId (we reuse the column as the "last admin who
+ *      touched this row" — both the existing approve/reject paths
+ *      do this).
+ *   3. Store the admin's reason in `rejection_reason` (column
+ *      doubles as the admin → DI comments channel; the DI's draft
+ *      surface already renders this when present, and the
+ *      notification carries it verbatim).
+ *   4. Audit `admin_requested_proposal_changes`.
+ *   5. Notify the DI in-app — body includes the reason verbatim,
+ *      title makes clear it's a request to revise, not a reject.
+ *
+ * Reason is REQUIRED (min 10 chars) at the route layer so the DI
+ * has actionable feedback when the proposal lands back in drafts.
+ * If callers ever invoke without one, we still proceed (the lib
+ * is permissive); the route enforces.
+ *
+ * Atomicity: same Directus-no-transactions caveat as
+ * approveProposal — the proposal update is followed by best-effort
+ * audit + notification writes. If the proposal update fails we
+ * throw; if audit/notify fail they're logged and swallowed so a
+ * notification miss can't undo the status flip.
+ */
+export async function requestChangesOnProposal(
+  proposalId: string,
+  adminUserId: string,
+  reason?: string,
+): Promise<RejectResult> {
+  if (!proposalId) throw new NotFoundError();
+
+  const proposal = await readProposal(proposalId);
+  if (!proposal) throw new NotFoundError();
+
+  if (proposal.status !== "pending") {
+    throw new InvalidStatusError(
+      `Only pending proposals can be sent back for changes (current: ${proposal.status})`,
+    );
+  }
+
+  const reasonTrimmed = reason?.trim() ?? "";
+  const proposalPatch: Record<string, unknown> = {
+    status: "draft",
+    approved_by: adminUserId,
+    rejection_reason: reasonTrimmed.length > 0 ? reasonTrimmed : null,
+    // We intentionally DON'T touch published_at here. published_at
+    // is set on terminal decisions (approve/reject) — a back-to-
+    // draft is mid-cycle, not a publication event.
+  };
+
+  try {
+    await directusServer().request(
+      updateItem(
+        "child_proposal" as never,
+        proposalId as never,
+        proposalPatch as never,
+      ),
+    );
+  } catch (err) {
+    console.error(
+      "[admin-proposals] requestChangesOnProposal update failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("proposal_update_failed");
+  }
+
+  try {
+    await directusServer().request(
+      createItem("audit_log" as never, {
+        timestamp: new Date().toISOString(),
+        actor: adminUserId,
+        actor_role: "admin",
+        action: "admin_requested_proposal_changes",
+        collection: "child_proposal",
+        record_id: proposalId,
+        metadata: {
+          requestedChangesReason: reasonTrimmed || null,
+          ...(proposal.target_child
+            ? { childId: proposal.target_child }
+            : {}),
+        },
+      } as never),
+    );
+  } catch (err) {
+    console.warn(
+      "[admin-proposals] audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  if (proposal.created_by) {
+    const childLabel = proposal.target_child
+      ? await fetchChildDisplayName(proposal.target_child)
+      : "your new-child proposal";
+    const opLabel =
+      proposal.proposal_type === "create" ? "new-child proposal" : "edit";
+    await notify({
+      recipientUserId: proposal.created_by,
+      type: "admin_requested_proposal_changes",
+      title: `Changes requested: ${opLabel} for ${childLabel}`,
+      body: reasonTrimmed
+        ? `Admin's note: ${reasonTrimmed}. The proposal is back in your drafts — edit and resubmit when ready.`
+        : "Admin asked for changes. The proposal is back in your drafts — open it for context.",
+      relatedCollection: "child_proposal",
+      relatedId: proposalId,
+    });
+  }
+
+  return { proposalId };
+}
+
 // Re-export the audit reader so admin tooling has a single import
 // point — the Session 46 di-audit lib already does the heavy lifting.
 export { listAuditEventsForChild } from "./di-audit";
