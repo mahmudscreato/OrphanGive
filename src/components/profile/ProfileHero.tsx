@@ -170,24 +170,18 @@ export function ProfileHero({
       className="relative overflow-hidden bg-warmth-50
                  pt-8 md:pt-12 pb-12 md:pb-16 px-4 md:px-6"
     >
-      {/* ─── Hand-drawn decorations behind the hero ──────────────
-          Density matches the homepage's hero/about cluster.
-          Each component's inner SVG already carries
-          `aria-hidden="true"`. We pass opacity through `style`
-          because the BrushWash/DottedArc/ConfettiDots prop
-          surfaces are color/className/style only.
-          `max-md:hidden` keeps them off phones where they'd
-          crowd the content. */}
-      <BrushWash
-        color="var(--orange-soft)"
-        className="absolute top-6 right-0 w-[460px] h-[140px] pointer-events-none max-md:hidden"
-        style={{ opacity: 0.35 }}
-      />
+      {/* ─── Decorations that don't depend on the photo column ──
+          DottedArc lives high-right of the *content container*.
+          ConfettiDots tucks under the bottom edge as the homepage
+          Hero does. Both `max-md:hidden` to keep mobile airy.
+          BrushWash now lives INSIDE the photo column (below) so
+          it actually backdrops the photo rather than floating
+          at the viewport edge. */}
       <DottedArc
         color="var(--orange-solid)"
-        size={220}
-        className="absolute top-20 left-[44%] pointer-events-none max-lg:hidden"
-        style={{ opacity: 0.35, transform: "rotate(-18deg)" }}
+        size={200}
+        className="absolute top-10 right-[6%] pointer-events-none max-lg:hidden"
+        style={{ opacity: 0.4, transform: "rotate(14deg)" }}
       />
       {/* ConfettiDots auto-generates from its own brand palette
           (CONFETTI_PALETTE inside InspoDecor.tsx); it takes
@@ -195,34 +189,45 @@ export function ProfileHero({
       <ConfettiDots
         count={12}
         area={[180, 120]}
-        className="absolute bottom-8 left-8 pointer-events-none max-md:hidden"
+        className="absolute bottom-4 left-6 pointer-events-none max-md:hidden"
         style={{ opacity: 0.55 }}
       />
 
       <div className="relative max-w-[1180px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-8 md:gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-8 md:gap-12 items-center">
           {/* ─── Photo: PhotoBlob with brand orange ring ────────
-              `broken` blob has a tall portrait silhouette that
-              suits a child photo better than `editorial`. Outer
-              wrapper enforces the 70vh ceiling + aspect ratios
-              so the photo never pushes content below the fold. */}
-          <div className="order-1 relative w-full max-w-[420px] lg:max-w-[480px] mx-auto lg:mx-0">
-            <div
-              className="relative aspect-[4/5] md:aspect-[3/4]"
-              style={{ maxHeight: "70vh" }}
-            >
-              <PhotoBlob
-                pathKey="broken"
-                src={photoSrc ?? undefined}
-                alt={`Portrait of ${child.display_name}`}
-                ringColor="#ED8B3F"
-                fallbackGrad={["#FAEFE0", "#F9D4B1"]}
-                priority
-                objectPosition="center 18%"
-                sizes="(max-width: 768px) 90vw, 480px"
-                className="absolute inset-0"
-              />
-            </div>
+              Session 57.2 fix:
+              The outer wrapper is `relative` and sized by the
+              aspect-ratio utility on a `w-full max-w-[420px]`
+              constraint. Inside, BrushWash sits absolute behind
+              everything so the photo gets a soft peach backdrop
+              (matches the homepage hero/about wash pattern).
+              The PhotoBlob is given `w-full h-full` (NOT
+              `absolute inset-0`, which the prior session passed
+              and which lost the cascade — `relative` declared
+              later in Tailwind's stylesheet won over `absolute`,
+              collapsing the blob to 0×0 and rendering an empty
+              column. The homepage Hero uses the same w-full
+              h-full pattern.) */}
+          <div className="order-1 relative w-full max-w-[420px] lg:max-w-[460px] mx-auto lg:mx-0 aspect-[4/5] md:aspect-[3/4]">
+            {/* Backdrop wash — bleeds past the blob's edges to
+                give it a soft peach halo. Pure decoration. */}
+            <BrushWash
+              color="var(--orange-soft)"
+              className="absolute -top-8 -right-8 w-[120%] h-[60%] pointer-events-none max-md:hidden"
+              style={{ opacity: 0.35 }}
+            />
+            <PhotoBlob
+              pathKey="broken"
+              src={photoSrc ?? undefined}
+              alt={`Portrait of ${child.display_name}`}
+              ringColor="#ED8B3F"
+              fallbackGrad={["#FAEFE0", "#F9D4B1"]}
+              priority
+              objectPosition="center 18%"
+              sizes="(max-width: 768px) 90vw, 460px"
+              className="relative z-10 w-full h-full"
+            />
           </div>
 
           {/* ─── Content ──────────────────────────────────────── */}

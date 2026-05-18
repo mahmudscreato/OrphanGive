@@ -132,22 +132,24 @@ export function SponsorCTA({
           {/* ─── Photo column ──────────────────────────────────
               Small PhotoBlob, same `broken` path as the hero so
               the page reads cohesive — different size, same
-              brushed ring vocabulary. */}
-          <div className="order-1 mx-auto lg:mx-0 w-full max-w-[220px] lg:max-w-[240px]">
-            <div className="relative aspect-[4/5]">
-              <PhotoBlob
-                pathKey="broken"
-                src={photoSrc ?? undefined}
-                alt=""
-                ringColor="#ED8B3F"
-                fallbackGrad={["#FAEFE0", "#F9D4B1"]}
-                outerStrokeWidth={10}
-                innerStrokeWidth={6}
-                objectPosition="center 18%"
-                sizes="(max-width: 768px) 50vw, 240px"
-                className="absolute inset-0"
-              />
-            </div>
+              brushed ring vocabulary.
+              Session 57.2 — same className fix as the hero blob:
+              PhotoBlob takes `w-full h-full` on a sized parent
+              instead of `absolute inset-0` (which collapsed it
+              to 0×0 via the relative/absolute cascade conflict). */}
+          <div className="order-1 mx-auto lg:mx-0 w-full max-w-[220px] lg:max-w-[240px] aspect-[4/5]">
+            <PhotoBlob
+              pathKey="broken"
+              src={photoSrc ?? undefined}
+              alt=""
+              ringColor="#ED8B3F"
+              fallbackGrad={["#FAEFE0", "#F9D4B1"]}
+              outerStrokeWidth={10}
+              innerStrokeWidth={6}
+              objectPosition="center 18%"
+              sizes="(max-width: 768px) 50vw, 240px"
+              className="relative w-full h-full"
+            />
           </div>
 
           {/* ─── Text + CTA column ─────────────────────────────
