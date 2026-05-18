@@ -1,12 +1,23 @@
+// Session 57 — Children profile redesign: warm-tinted bottom CTA.
+//
+// Replaces the prior dark-gradient SponsorCTA ("Walk with X for the
+// next year" on bg-ink) with a warm-cream full-bleed band. Reads
+// as a natural close to the warm card stack above rather than a
+// stark sales pitch.
+//
+// Layout: centered, max-720px column. Large serif heading,
+// 2-3 line emotional copy, primary tangerine CTA, soft footnote.
+// No more dark mode reversal — keeps the page in one emotional key
+// from hero to footer.
+
 import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import type { ChildProfile, ViewerTier } from "@/lib/child-profile-data";
 
-const TRUST_PILLS = [
-  "Verified profile",
-  "Secure payment",
-  "48-hour review",
+const TRUST_NOTES = [
   "Cancel anytime",
+  "100% reaches the child's care",
+  "Verified by Children's Heaven Trust",
 ];
 
 export function SponsorCTA({
@@ -16,62 +27,47 @@ export function SponsorCTA({
   child: ChildProfile;
   tier: ViewerTier;
 }) {
-  const firstName = child.display_name.split(" ")[0];
+  const firstName = child.display_name.split(" ")[0] || child.display_name;
+
   return (
-    <section className="relative overflow-hidden px-6 py-32 max-md:py-24 bg-gradient-to-br from-ink to-[#1a1a1c] text-cream text-center">
+    <section className="relative px-4 md:px-6 py-16 md:py-24 bg-warmth-100 overflow-hidden">
       <div
         aria-hidden="true"
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(circle, rgba(243,147,34,0.18) 0%, transparent 60%)",
-        }}
+        className="absolute -top-32 -left-32 w-[480px] h-[480px] rounded-full
+                   bg-tangerine-soft/30 blur-3xl pointer-events-none"
       />
       <div
-        className="logo-motif"
         aria-hidden="true"
-        style={{
-          bottom: -100,
-          right: -100,
-          width: 400,
-          height: 400,
-          opacity: 0.06,
-          transform: "rotate(15deg)",
-        }}
+        className="absolute -bottom-40 -right-40 w-[520px] h-[520px] rounded-full
+                   bg-warmth-accent/15 blur-3xl pointer-events-none"
       />
 
-      <div className="relative max-w-[720px] mx-auto">
-        <div
-          className="eyebrow-tag justify-center"
-          style={{ color: "var(--tangerine-light)" }}
-        >
-          Become {firstName}&apos;s sponsor
-        </div>
-        <h2 className="font-display font-normal mt-6 text-cream leading-[0.98] tracking-[-0.03em] text-[clamp(2.75rem,5.5vw,5rem)]">
-          Walk with{" "}
-          <em className="italic text-tangerine">{firstName}</em>
-          <br />
-          for the next year.
+      <div className="relative max-w-[640px] mx-auto text-center">
+        <h2 className="font-display font-medium text-warmth-text leading-tight
+                       text-[32px] md:text-[40px]">
+          Sponsor {firstName} today
         </h2>
-        <p className="mt-7 text-[18px] text-cream/70 leading-[1.65]">
-          Sponsorships start at BDT 1,500 a month — covering education, books,
-          meals, and care. Your contribution is zakat-eligible and structured
-          as ongoing sadaqah. Cancel any time.
+        <p className="mt-4 md:mt-5 text-[16.5px] md:text-[17.5px] text-ink/85 leading-[1.7]">
+          A monthly commitment of BDT 1,500 covers {firstName}&apos;s
+          school fees, books, meals, and routine medical care. Sponsors
+          receive quarterly updates and the child&apos;s own letters —
+          never edited, never staged.
         </p>
 
-        <div className="mt-12 flex flex-col gap-4 items-center">
+        <div className="mt-8 md:mt-10 flex flex-col items-center gap-3">
           {tier === "public" ? (
             <>
               <Button
                 href={`/signin?from=/children/${child.id}`}
                 variant="tangerine"
                 size="lg"
+                className="w-full sm:w-auto"
               >
                 Sign in to begin sponsorship →
               </Button>
               <Link
                 href={`/signup?from=/children/${child.id}`}
-                className="text-[14px] text-cream/60 hover:text-cream/90 underline-offset-4 hover:underline"
+                className="text-[13.5px] text-warmth-text hover:text-warmth-accent underline-offset-4 hover:underline"
               >
                 Or create a donor account
               </Link>
@@ -81,17 +77,21 @@ export function SponsorCTA({
               href={`/sponsor/${child.id}`}
               variant="tangerine"
               size="lg"
+              className="w-full sm:w-auto"
             >
-              Begin a sponsorship →
+              Become {firstName}&apos;s sponsor — from BDT 1,500/mo
             </Button>
           )}
         </div>
 
-        <div className="mt-9 flex justify-center gap-6 flex-wrap font-mono text-[11px] tracking-[0.1em] text-cream/50">
-          {TRUST_PILLS.map((p) => (
-            <span key={p} className="inline-flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-moss" />
-              {p}
+        <div className="mt-7 flex justify-center gap-x-5 gap-y-2 flex-wrap font-mono text-[11px] tracking-[0.1em] uppercase text-warmth-text/80">
+          {TRUST_NOTES.map((n) => (
+            <span key={n} className="inline-flex items-center gap-1.5">
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-moss"
+                aria-hidden="true"
+              />
+              {n}
             </span>
           ))}
         </div>

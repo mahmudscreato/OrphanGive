@@ -14,6 +14,14 @@ import { ChildSponsorBanner } from "@/components/children/ChildSponsorBanner";
 // Session 52b — donor-facing intake photo gallery, placed between
 // hero and story. Renders only when there are approved photos.
 import { IntakePhotoGallery } from "@/components/profile/IntakePhotoGallery";
+// Session 57 — two new cards (family-narrative for sponsors,
+// health & wellbeing conditional on health data) + a mobile
+// sticky CTA that follows the user past the hero. All three are
+// pure visual additions — the data they read was already on
+// ChildProfile from prior sessions.
+import { FamilyNarrativeCard } from "@/components/profile/FamilyNarrativeCard";
+import { HealthWellbeingCard } from "@/components/profile/HealthWellbeingCard";
+import { StickyMobileSponsorCTA } from "@/components/profile/StickyMobileSponsorCTA";
 import {
   getApprovedIntakePhotosForChild,
   isSponsorOfChild,
@@ -200,10 +208,35 @@ export default async function ChildProfilePage({
     }
   }
 
+  // Session 57 — section order rewritten to match the redesign
+  // brief. Sequence (top → bottom):
+  //   1. Breadcrumb (unchanged, top of warm canvas)
+  //   2. Hero (rewritten ProfileHero)
+  //   3. ChildSponsorBanner (queue display, conditional)
+  //   4. Sticky mobile sponsor CTA sentinel (renders below hero,
+  //      auto-pins to viewport bottom on small screens)
+  //   5. Story card
+  //   6. First-meeting card (IntakePhotoGallery, now WarmCard-
+  //      wrapped internally)
+  //   7. School & studies card
+  //   8. Family situation card (new — narrative prose for sponsors,
+  //      locked invitation for everyone else)
+  //   9. Moments card (WarmCard-wrapped, with warm empty-state)
+  //  10. Health & wellbeing card (new — only renders when health
+  //      data is populated)
+  //  11. LockedFieldsBand (existing reveal-request flow; out of
+  //      scope to redesign per brief)
+  //  12. Updates section (existing news/posts; out of scope)
+  //  13. DocumentsBanner (existing verified-counts strip; out of
+  //      scope)
+  //  14. SponsorCTA — replaced with warm-tinted bottom band
+  //  15. RelatedChildren (unchanged)
+  const childFirstName = child.display_name.split(" ")[0] || child.display_name;
+
   return (
     <>
-      <div className="px-6 pt-32 bg-cream max-md:pt-28">
-        <div className="max-w-[1320px] mx-auto">
+      <div className="px-4 md:px-6 pt-28 md:pt-32 bg-warmth-50">
+        <div className="max-w-[1100px] mx-auto">
           <Breadcrumb
             crumbs={[
               { href: "/", label: "Home" },
@@ -214,11 +247,16 @@ export default async function ChildProfilePage({
         </div>
       </div>
       <ProfileHero child={child} tier={tier} />
+      <StickyMobileSponsorCTA
+        childId={child.id}
+        childFirstName={childFirstName}
+        tier={tier}
+      />
       {queueDisplay.active ? (
-        <section className="px-6 pt-8 pb-2 bg-cream max-md:pt-6">
+        <section className="px-4 md:px-6 pt-2 pb-2 bg-warmth-50">
           <div className="max-w-[760px] mx-auto">
             <ChildSponsorBanner
-              childFirstName={child.display_name.split(" ")[0]}
+              childFirstName={childFirstName}
               active={queueDisplay.active}
               queued={queueDisplay.queued}
               isFull={queueDisplay.isFull}
@@ -226,9 +264,12 @@ export default async function ChildProfilePage({
           </div>
         </section>
       ) : null}
-      {/* Session 52b — Intake photo gallery, between hero/banner and
-          story. Renders only when there are approved intake photos.
-          Blur-overlay for non-sponsors handled inside the component. */}
+
+      <StorySection child={child} tier={tier} />
+
+      {/* First meeting — Session 52b intake gallery, now wrapped in
+          a WarmCard internally. Renders null when no approved intake
+          photos exist; non-sponsor blur-overlay handled inside. */}
       <IntakePhotoGallery
         childDisplayName={child.display_name}
         childId={child.id}
@@ -236,8 +277,19 @@ export default async function ChildProfilePage({
         isSponsor={isSponsor}
         isAuthenticated={tier !== "public"}
       />
-      <StorySection child={child} tier={tier} />
+
+      <EducationSection child={child} />
+
+      <FamilyNarrativeCard
+        child={child}
+        isSponsor={isSponsor}
+        isAuthenticated={tier !== "public"}
+      />
+
       <MomentsGallery childName={child.display_name} moments={moments} />
+
+      <HealthWellbeingCard child={child} />
+
       <LockedFieldsBand
         child={child}
         tier={tier}
@@ -245,9 +297,9 @@ export default async function ChildProfilePage({
         revealedValues={revealedValues}
         revealedApprovedAt={revealedApprovedAt}
       />
-      <DocumentsBanner docs={docs} />
+
       <UpdatesSection childName={child.display_name} updates={updates} />
-      <EducationSection child={child} />
+      <DocumentsBanner docs={docs} />
       <SponsorCTA child={child} tier={tier} />
       <RelatedChildren items={related} />
     </>

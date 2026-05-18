@@ -1,5 +1,6 @@
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
+import { WarmCard, CardHeader } from "./WarmCard";
 import type { ChildMoment } from "@/lib/child-profile-data";
 
 const TILE_SIZES =
@@ -65,6 +66,12 @@ function MomentTile({
   );
 }
 
+// Session 57 — Recent moments, wrapped in WarmCard.
+//
+// Empty-state path: when no moments are approved yet, render a
+// warm encouragement card rather than nothing. The brief: "If no
+// moments: warm empty state: 'Sponsoring {Name} will unlock
+// updates as their story unfolds.'"
 export function MomentsGallery({
   childName,
   moments,
@@ -72,26 +79,43 @@ export function MomentsGallery({
   childName: string;
   moments: ChildMoment[];
 }) {
-  if (moments.length === 0) return null;
-  const firstName = childName.split(" ")[0];
+  const firstName = childName.split(" ")[0] || childName;
+
+  if (moments.length === 0) {
+    return (
+      <section className="px-4 md:px-6 py-6 md:py-8 bg-warmth-50">
+        <div className="max-w-[760px] mx-auto">
+          <WarmCard>
+            <CardHeader title="Recent moments" />
+            <p className="text-[15px] text-warmth-text leading-relaxed">
+              Sponsoring {firstName} will unlock updates as their story
+              unfolds — field-team photos, school progress, and small
+              everyday moments along the way.
+            </p>
+          </WarmCard>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section className="px-6 py-20 bg-cream max-md:py-14">
-      <div className="max-w-[1320px] mx-auto">
-        <div className="max-w-[640px]">
-          <div className="eyebrow-tag">Moments</div>
-          <h2 className="font-display font-normal mt-3 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2rem,3.75vw,3rem)]">
-            Moments from {firstName}&apos;s journey
-          </h2>
-          <p className="mt-3 text-[15px] text-slate leading-[1.65]">
+    <section className="px-4 md:px-6 py-6 md:py-8 bg-warmth-50">
+      <div className="max-w-[760px] mx-auto">
+        <WarmCard>
+          <CardHeader
+            eyebrow="Moments"
+            title={`Moments from ${firstName}'s journey`}
+          />
+          <p className="text-[14.5px] text-warmth-text leading-relaxed mb-5">
             Curated by our field team. New moments added regularly.
           </p>
-        </div>
 
-        <ul className="mt-8 grid grid-cols-4 gap-4 max-lg:grid-cols-3 max-md:grid-cols-2 max-md:gap-3">
-          {moments.map((m) => (
-            <MomentTile key={m.id} moment={m} childName={childName} />
-          ))}
-        </ul>
+          <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {moments.map((m) => (
+              <MomentTile key={m.id} moment={m} childName={childName} />
+            ))}
+          </ul>
+        </WarmCard>
       </div>
     </section>
   );

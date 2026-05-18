@@ -31,6 +31,7 @@
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { BlurredPhotoModalTrigger } from "./BlurredPhotoModalTrigger";
+import { WarmCard, CardHeader } from "./WarmCard";
 import type { DonorIntakePhoto } from "@/lib/donor-intake-photos";
 
 export interface IntakePhotoGalleryProps {
@@ -54,20 +55,26 @@ export function IntakePhotoGallery({
   const [main, ...rest] = photos;
   const thumbs = rest.slice(0, 4);
 
+  // Session 57 — wrapped in WarmCard to match the rest of the
+  // redesigned profile. Outer band switched from flat bg-cream to
+  // bg-warmth-50 so the card surface contrasts gently with the
+  // page canvas. Inner photo wrappers keep their own rounded
+  // shape so the locked-modal trigger and main photo nest cleanly.
   return (
-    <section className="px-6 pt-12 pb-16 bg-cream max-md:pt-8 max-md:pb-12">
-      <div className="max-w-[1100px] mx-auto">
-        <div className="eyebrow-tag mb-3">First meeting</div>
-        <h2 className="font-display font-normal text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(1.5rem,2.5vw,2rem)] mb-1.5">
-          A few moments from when we met {firstName}.
-        </h2>
-        <p className="text-[14.5px] text-ink-soft leading-relaxed mb-8 max-w-[640px]">
-          Photos from our field team&apos;s initial visit. The story
-          starts here.
-        </p>
+    <section className="px-4 md:px-6 py-6 md:py-8 bg-warmth-50">
+      <div className="max-w-[760px] mx-auto">
+        <WarmCard>
+          <CardHeader
+            eyebrow="First meeting"
+            title={`A few moments from when we met ${firstName}.`}
+          />
+          <p className="text-[14.5px] text-warmth-text leading-relaxed mb-6 max-w-[640px]">
+            Photos from our field team&apos;s initial visit. The story
+            starts here.
+          </p>
 
         {/* Main photo */}
-        <div className="rounded-[24px] overflow-hidden bg-linen border border-ink/[0.05] mb-4">
+        <div className="rounded-2xl overflow-hidden bg-linen border border-ink/[0.05] mb-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={main.photoUrl}
@@ -148,6 +155,7 @@ export function IntakePhotoGallery({
             ) : null}
           </div>
         ) : null}
+        </WarmCard>
       </div>
     </section>
   );
