@@ -295,6 +295,109 @@ export class InvalidValueError extends Error {
   }
 }
 
+// Session 63 — aggregate validation error.
+//
+// Previously createCreateProposal / createUpdateProposal threw on the
+// first missing or invalid field, so the form could only show one
+// problem at a time — user fixes it, submits, sees the next one,
+// repeat. Painful when you've left several fields blank.
+//
+// The new pattern: validators push into a ValidationCollector, the
+// collector throws this single error at the end carrying ALL the
+// problems, and the route handler maps it to:
+//   { error: "validation_failed", fields: [{ field, message }, ...] }
+//
+// MissingRequiredFieldError + InvalidValueError remain exported and
+// the route handlers still catch them as a defensive fallback — if
+// any deeper path ever throws one individually, the route still
+// degrades gracefully into the legacy single-error shape.
+
+export interface ValidationFieldError {
+  field: string;
+  message: string;
+}
+
+export class ValidationError extends Error {
+  readonly code = "validation_failed" as const;
+  constructor(public readonly fields: ReadonlyArray<ValidationFieldError>) {
+    super(
+      `Validation failed: ${fields
+        .map((f) => `${f.field} (${f.message})`)
+        .join("; ")}`,
+    );
+    this.name = "ValidationError";
+  }
+}
+
+/**
+ * Push-don't-throw validator. Mirrors the standalone ensureRequired /
+ * validateDate / validateMoney helpers, but collects errors into a
+ * list so we can report ALL of them at once via throwIfErrors().
+ *
+ * The methods deliberately return void rather than guarding subsequent
+ * type narrowing — that's the price of "keep going to collect more
+ * errors". Callers should assume nothing about the validity of the
+ * value after a push.
+ */
+class ValidationCollector {
+  private errors: ValidationFieldError[] = [];
+
+  /** Required-presence check. Treats null/undefined/blank-string as missing. */
+  required(field: string, value: unknown, customMessage?: string): void {
+    if (value === null || value === undefined) {
+      this.errors.push({ field, message: customMessage ?? "Required." });
+      return;
+    }
+    if (typeof value === "string" && value.trim().length === 0) {
+      this.errors.push({ field, message: customMessage ?? "Required." });
+    }
+  }
+
+  /** Free-form invalid-value push. */
+  invalid(field: string, message: string): void {
+    this.errors.push({ field, message });
+  }
+
+  /** ISO YYYY-MM-DD shape check. No-op on null/undefined/empty. */
+  validateDate(field: string, value: string | null | undefined): void {
+    if (value === null || value === undefined || value === "") return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      this.errors.push({ field, message: "Use YYYY-MM-DD format." });
+      return;
+    }
+    const d = new Date(`${value}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) {
+      this.errors.push({ field, message: "Not a real date." });
+    }
+  }
+
+  /** Non-negative whole number check. No-op on null/undefined. */
+  validateMoney(field: string, value: number | null | undefined): void {
+    if (value === null || value === undefined) return;
+    if (!Number.isFinite(value)) {
+      this.errors.push({ field, message: "Must be a finite number." });
+      return;
+    }
+    if (!Number.isInteger(value)) {
+      this.errors.push({ field, message: "Must be a whole number." });
+      return;
+    }
+    if (value < 0) {
+      this.errors.push({ field, message: "Must be ≥ 0." });
+    }
+  }
+
+  hasErrors(): boolean {
+    return this.errors.length > 0;
+  }
+
+  throwIfErrors(): void {
+    if (this.errors.length > 0) {
+      throw new ValidationError([...this.errors]);
+    }
+  }
+}
+
 // ─── Editable field set + diff helpers ──────────────────────────────
 
 // Session 46-fix-2 — full DI-collectable surface (28 fields).
@@ -416,46 +519,12 @@ function isActuallyChanged(
   return String(a) !== String(b);
 }
 
-// ─── Validators ─────────────────────────────────────────────────────
-
-function ensureRequired(
-  fieldName: string,
-  value: unknown,
-): asserts value is string | number {
-  if (value === null || value === undefined) {
-    throw new MissingRequiredFieldError(fieldName);
-  }
-  if (typeof value === "string" && value.trim().length === 0) {
-    throw new MissingRequiredFieldError(fieldName);
-  }
-}
-
-function validateDate(fieldName: string, value: string): void {
-  // ISO YYYY-MM-DD only. Directus stores `date` columns as strings;
-  // we normalise to that shape before insert.
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new InvalidValueError(fieldName, "expected YYYY-MM-DD");
-  }
-  const d = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) {
-    throw new InvalidValueError(fieldName, "not a real date");
-  }
-}
-
-function validateMoney(fieldName: string, value: number | null): void {
-  if (value === null) return;
-  if (!Number.isFinite(value)) {
-    throw new InvalidValueError(fieldName, "must be a finite number");
-  }
-  if (!Number.isInteger(value)) {
-    throw new InvalidValueError(fieldName, "must be a whole number");
-  }
-  if (value < 0) {
-    throw new InvalidValueError(fieldName, "must be ≥ 0");
-  }
-}
-
 // ─── Public API ─────────────────────────────────────────────────────
+//
+// Session 63 — the standalone throw-on-first ensureRequired /
+// validateDate / validateMoney helpers were removed. Validation now
+// runs through ValidationCollector (defined above) which pushes
+// errors into a list and throws ValidationError once at the end.
 
 /**
  * Reads the DI's assigned_divisions from directus_users. Returns
@@ -557,6 +626,46 @@ async function createUpdateProposal(
     return field as keyof typeof current;
   };
 
+  // Session 63 — validation pass (collect-all, then throw).
+  // We can't interleave validation with the proposedRow build the way
+  // the old code did, because the old throw-on-first model would
+  // abort partway through. Two passes: collect ALL validation errors
+  // for any actually-changed field, then either throw the aggregate
+  // OR run the build pass.
+  const v = new ValidationCollector();
+  for (const field of EDITABLE_FIELDS) {
+    if (!(field in submittedFields)) continue;
+    const submittedValue = submittedFields[field];
+    const currentValue = (current as unknown as Record<string, unknown>)[
+      snapshotKeyOf(field)
+    ];
+    if (!isActuallyChanged(submittedValue, currentValue)) continue;
+    if (
+      (field === "date_of_birth" ||
+        field === "last_visit_date" ||
+        field === "last_medical_checkup" ||
+        field === "submission_date") &&
+      typeof submittedValue === "string"
+    ) {
+      v.validateDate(field, submittedValue);
+    }
+    if (
+      field === "monthly_cost" ||
+      field === "monthly_household_income_bdt" ||
+      field === "siblings_count" ||
+      field === "sibling_position" ||
+      field === "household_size"
+    ) {
+      v.validateMoney(
+        field,
+        submittedValue === null || submittedValue === undefined
+          ? null
+          : Number(submittedValue),
+      );
+    }
+  }
+  v.throwIfErrors();
+
   // Compute the changed slice. For each field the DI submitted,
   // compare to the current child's value. If different, record the
   // submitted value as the proposed value.
@@ -571,30 +680,6 @@ async function createUpdateProposal(
       snapshotKeyOf(field)
     ];
     if (isActuallyChanged(submittedValue, currentValue)) {
-      // Light per-field validation for the mutating subset.
-      if (
-        (field === "date_of_birth" ||
-          field === "last_visit_date" ||
-          field === "last_medical_checkup" ||
-          field === "submission_date") &&
-        typeof submittedValue === "string"
-      ) {
-        validateDate(field, submittedValue);
-      }
-      if (
-        field === "monthly_cost" ||
-        field === "monthly_household_income_bdt" ||
-        field === "siblings_count" ||
-        field === "sibling_position" ||
-        field === "household_size"
-      ) {
-        validateMoney(
-          field,
-          submittedValue === null || submittedValue === undefined
-            ? null
-            : Number(submittedValue),
-        );
-      }
       proposedRow[field] = normaliseForInsert(field, submittedValue);
       snapshot[field] = currentValue ?? null;
       didChange = true;
@@ -648,22 +733,29 @@ async function createCreateProposal(
     input.fields,
   ) as ChildCreatableFields;
 
-  // Required-field check (string-typed).
-  ensureRequired("display_name", f.display_name);
-  ensureRequired("date_of_birth", f.date_of_birth);
-  ensureRequired("bd_division", f.bd_division);
-  ensureRequired("bd_district", f.bd_district);
-  ensureRequired("district_internal", f.district_internal);
-  ensureRequired("support_type", f.support_type);
-  ensureRequired("monthly_cost", f.monthly_cost);
-  ensureRequired("story", f.story);
-  ensureRequired("guardian_summary_internal", f.guardian_summary_internal);
-  ensureRequired("guardian_relationship", f.guardian_relationship);
+  // Session 63 — collect ALL validation errors instead of throwing on
+  // the first one. The client renders the full list as a summary panel
+  // above the submit button plus per-field red highlights, so the DI
+  // can fix everything in one pass rather than the old whack-a-mole
+  // flow.
+  const v = new ValidationCollector();
+
+  // Required-field check.
+  v.required("display_name", f.display_name);
+  v.required("date_of_birth", f.date_of_birth);
+  v.required("bd_division", f.bd_division);
+  v.required("bd_district", f.bd_district);
+  v.required("district_internal", f.district_internal);
+  v.required("support_type", f.support_type);
+  v.required("monthly_cost", f.monthly_cost);
+  v.required("story", f.story);
+  v.required("guardian_summary_internal", f.guardian_summary_internal);
+  v.required("guardian_relationship", f.guardian_relationship);
   // Session 48a — new mandatory-on-create fields.
-  ensureRequired("parent_loss", f.parent_loss);
-  ensureRequired("guardian_phone", f.guardian_phone);
+  v.required("parent_loss", f.parent_loss);
+  v.required("guardian_phone", f.guardian_phone);
   if (!input.photoUuid) {
-    throw new MissingRequiredFieldError("photoUuid");
+    v.required("photoUuid", null, "A photo is required for new children.");
   }
   // Cross-field rule — priority_notes required when priority_support
   // is non-'none'. The form already enforces this client-side; this
@@ -673,26 +765,26 @@ async function createCreateProposal(
     f.priority_support !== "none" &&
     (!f.priority_notes || f.priority_notes.trim().length === 0)
   ) {
-    throw new MissingRequiredFieldError("priority_notes");
+    v.required(
+      "priority_notes",
+      null,
+      "Required when priority is standard or urgent.",
+    );
   }
 
-  // Per-field validation.
-  validateDate("date_of_birth", f.date_of_birth);
-  validateMoney("monthly_cost", f.monthly_cost);
-  if (f.last_visit_date) validateDate("last_visit_date", f.last_visit_date);
-  if (f.last_medical_checkup) validateDate("last_medical_checkup", f.last_medical_checkup);
-  if (f.monthly_household_income_bdt !== undefined && f.monthly_household_income_bdt !== null) {
-    validateMoney("monthly_household_income_bdt", f.monthly_household_income_bdt);
-  }
-  if (f.siblings_count !== undefined && f.siblings_count !== null) {
-    validateMoney("siblings_count", f.siblings_count);
-  }
-  if (f.sibling_position !== undefined && f.sibling_position !== null) {
-    validateMoney("sibling_position", f.sibling_position);
-  }
-  if (f.household_size !== undefined && f.household_size !== null) {
-    validateMoney("household_size", f.household_size);
-  }
+  // Per-field validation. The collector's validators are no-ops on
+  // null/undefined, so we don't need to guard them like the old
+  // ensureRequired-throws-then-validateDate sequence did.
+  v.validateDate("date_of_birth", f.date_of_birth);
+  v.validateMoney("monthly_cost", f.monthly_cost);
+  v.validateDate("last_visit_date", f.last_visit_date);
+  v.validateDate("last_medical_checkup", f.last_medical_checkup);
+  v.validateMoney("monthly_household_income_bdt", f.monthly_household_income_bdt);
+  v.validateMoney("siblings_count", f.siblings_count);
+  v.validateMoney("sibling_position", f.sibling_position);
+  v.validateMoney("household_size", f.household_size);
+
+  v.throwIfErrors();
 
   // Division guard — DI may only propose new children in their
   // assigned divisions. Fetch the assigned set once so we can pass

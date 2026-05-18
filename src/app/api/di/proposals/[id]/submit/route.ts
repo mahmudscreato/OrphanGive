@@ -34,6 +34,7 @@ import {
   MissingRequiredFieldError,
   NoChangesError,
   OutOfScopeError,
+  ValidationError,
   type CreateProposalInput,
 } from "@/lib/di-proposals";
 import { recordAuditEvent } from "@/lib/di-audit";
@@ -187,6 +188,19 @@ export async function POST(
         { status: 403 },
       );
     }
+    // Session 63 — aggregate validation, same shape as the
+    // /api/di/proposals POST handler. See that route for the rationale.
+    if (err instanceof ValidationError) {
+      return NextResponse.json(
+        {
+          error: "validation_failed",
+          fields: err.fields,
+        },
+        { status: 400 },
+      );
+    }
+    // Legacy single-error fallbacks — defensive only; not thrown by
+    // the current di-proposals code path.
     if (err instanceof MissingRequiredFieldError) {
       return NextResponse.json(
         {

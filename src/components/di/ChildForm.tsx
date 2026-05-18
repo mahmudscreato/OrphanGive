@@ -110,14 +110,148 @@ const HOUSEHOLD_INCOME_OPTIONS = [
 
 // ─── Shared style tokens ────────────────────────────────────────────
 
+// Session 63 — aria-invalid variants on the base classes give us
+// red-border error styling on any input that gets aria-invalid="true"
+// without per-field className branching. The form sets the attribute
+// via the errProps() helper below; Tailwind v4 supports the
+// aria-invalid: variant natively.
 const inputClass =
-  "w-full rounded-xl border border-ink/[0.12] bg-white px-4 py-3 text-[15px] text-ink placeholder:text-slate-soft focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft transition-all duration-150 disabled:opacity-60";
+  "w-full rounded-xl border border-ink/[0.12] bg-white px-4 py-3 text-[15px] text-ink placeholder:text-slate-soft focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft transition-all duration-150 disabled:opacity-60 aria-invalid:border-rose-500 aria-invalid:focus:border-rose-500 aria-invalid:focus:ring-rose-100";
 const textareaClass = `${inputClass} min-h-[120px] resize-y leading-relaxed`;
 const selectClass = inputClass;
 const labelClass =
   "block font-mono text-[11px] tracking-[0.14em] uppercase text-slate font-medium mb-1.5";
 const helperClass = "mt-1.5 text-[12.5px] text-ink-soft leading-relaxed";
 const errorClass = "mt-1.5 text-[12.5px] text-[#D04848]";
+
+// Session 63 — human-readable labels for the error summary panel.
+// Keys mirror the error map keys (which mirror the server's `field`
+// names). Anything missing falls back to the raw key.
+const FIELD_LABELS: Record<string, string> = {
+  display_name: "Name",
+  gender: "Gender",
+  date_of_birth: "Date of birth",
+  photo_consent: "Photo consent",
+  Photo: "Photo",
+  photoUuid: "Photo",
+  bd_division: "Division",
+  bd_district: "District",
+  district_internal: "Address (internal note)",
+  permanent_address: "Permanent address",
+  education_level: "Education level",
+  class_grade: "Class / grade",
+  educational_organization: "School",
+  school_name_raw: "School name",
+  areas_of_interest: "Areas of interest",
+  story: "Story",
+  support_type: "Support type",
+  monthly_cost: "Monthly cost (BDT)",
+  priority_support: "Priority",
+  priority_notes: "Priority notes",
+  blood_group: "Blood group",
+  vaccination_status: "Vaccination status",
+  last_medical_checkup: "Last medical check-up",
+  disability_status: "Disability status",
+  disability_notes: "Disability notes",
+  parent_loss: "Parent loss",
+  siblings_count: "Siblings count",
+  sibling_position: "Sibling position",
+  siblings_notes: "Siblings notes",
+  household_size: "Household size",
+  household_income_source: "Household income source",
+  monthly_household_income_bdt: "Monthly household income (BDT)",
+  guardian_relationship: "Guardian relationship",
+  guardian_employment_type: "Guardian employment type",
+  guardian_employment: "Guardian employment",
+  guardian_phone: "Guardian phone",
+  guardian_phone_alt: "Guardian phone (alt)",
+  guardian_summary_internal: "Guardian summary (internal)",
+  additional_family_notes: "Additional family notes",
+  last_visit_date: "Last visit date",
+  submission_date: "Submission date",
+};
+
+function fieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? field;
+}
+
+// Session 63 — authoritative display order. Drives the summary panel
+// (so errors list in the same order as the form sections) and the
+// scrollToFirstError pick. Must stay aligned with the JSX section
+// order below; entries not in this list still render but fall to the
+// bottom of the summary in undefined order.
+const FIELD_ORDER: ReadonlyArray<string> = [
+  // Identity
+  "display_name",
+  "gender",
+  "date_of_birth",
+  "Photo",
+  "photo_consent",
+  // Location
+  "bd_division",
+  "bd_district",
+  "district_internal",
+  "permanent_address",
+  // Education + interests
+  "education_level",
+  "class_grade",
+  "educational_organization",
+  "school_name_raw",
+  "areas_of_interest",
+  // Story
+  "story",
+  // Support
+  "support_type",
+  "monthly_cost",
+  "priority_support",
+  "priority_notes",
+  // Health
+  "blood_group",
+  "vaccination_status",
+  "last_medical_checkup",
+  "disability_status",
+  "disability_notes",
+  // Family
+  "parent_loss",
+  "siblings_count",
+  "sibling_position",
+  "siblings_notes",
+  "household_size",
+  // Socioeconomic
+  "household_income_source",
+  "monthly_household_income_bdt",
+  // Guardian
+  "guardian_relationship",
+  "guardian_employment_type",
+  "guardian_employment",
+  "guardian_phone",
+  "guardian_phone_alt",
+  "guardian_summary_internal",
+  "additional_family_notes",
+  // Visit
+  "last_visit_date",
+  "submission_date",
+];
+
+// Session 63 — server returns `field: "photoUuid"` for the missing-photo
+// case; the form keys this error under `Photo` (the input's id and the
+// IntakePhotoGrid's external-error prop name). Add other rename
+// mappings here if the server's vocab drifts from the form's later.
+const SERVER_TO_FORM_FIELD: Record<string, string> = {
+  photoUuid: "Photo",
+};
+
+function remapServerField(field: string): string {
+  return SERVER_TO_FORM_FIELD[field] ?? field;
+}
+
+// Session 63 — companion to SERVER_TO_FORM_FIELD: when the user edits
+// a form-state field, also wipe any error keyed under its alias. The
+// set() function consults this so editing `photo_uuid` clears the
+// `Photo` error.
+const FORM_KEY_TO_ERROR_KEY: Record<string, string> = {
+  photo_uuid: "Photo",
+};
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -536,13 +670,64 @@ export function ChildForm({
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((s) => ({ ...s, [key]: value }));
-    if (errors[key as string]) {
+    // Session 63 — clear the matching error AND any alias keys when
+    // the form field changes. Alias example: the photo error lives
+    // under `Photo` (matches the PhotoUploadField's externalError
+    // prop + the server's MissingRequiredFieldError("photoUuid")
+    // remap), but the form state key is `photo_uuid`. Without the
+    // alias clear, uploading a photo would leave the rose-50 summary
+    // panel still listing "Photo — Required.".
+    const formKey = key as string;
+    const errorKey = FORM_KEY_TO_ERROR_KEY[formKey] ?? formKey;
+    if (errors[formKey] || (errorKey !== formKey && errors[errorKey])) {
       setErrors((e) => {
         const next = { ...e };
-        delete next[key as string];
+        delete next[formKey];
+        delete next[errorKey];
         return next;
       });
     }
+  }
+
+  // Session 63 — spread `{...errProps("display_name")}` into any
+  // input/textarea/select to opt into the red aria-invalid border
+  // styling. Omits the attribute entirely when there's no error so we
+  // don't ever render the misleading aria-invalid="false" (which some
+  // screen readers still announce).
+  function errProps(fieldKey: string): { "aria-invalid"?: true } {
+    return errors[fieldKey] ? { "aria-invalid": true } : {};
+  }
+
+  // Session 63 — auto-scroll to the first error after a failed submit.
+  // The form is several screens tall — without this, the new summary
+  // panel appears at the bottom but the user's looking at section 1,
+  // so they have no idea why submit "did nothing". Scrolls the field
+  // into the middle of the viewport and (when focusable) focuses it.
+  function scrollToFirstError(errorMap: Record<string, string>): void {
+    const keys = Object.keys(errorMap);
+    if (keys.length === 0) return;
+    // Match the summary panel's order: walk the form's authoritative
+    // field list and pick the first one with an error. Keeps the
+    // scroll target stable instead of dependent on JS object iteration
+    // order.
+    const firstKey =
+      FIELD_ORDER.find((k) => errorMap[k]) ?? keys[0]!;
+    // Defer to next tick so React has flushed the aria-invalid attrs
+    // before we look up the node.
+    setTimeout(() => {
+      const el = document.getElementById(firstKey);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Best-effort focus — falls through silently if the element
+      // isn't focusable (e.g. a wrapping div for a custom widget).
+      if ("focus" in el && typeof (el as HTMLElement).focus === "function") {
+        try {
+          (el as HTMLElement).focus({ preventScroll: true });
+        } catch {
+          // ignore
+        }
+      }
+    }, 0);
   }
 
   function clientValidate(): Record<string, string> {
@@ -998,7 +1183,10 @@ export function ChildForm({
     setServerError(null);
     const localErrors = clientValidate();
     if (Object.keys(localErrors).length > 0) {
+      // Session 63 — scroll the user up to the offending field so the
+      // disabled-feeling-but-actually-blocked submit isn't mysterious.
       setErrors(localErrors);
+      scrollToFirstError(localErrors);
       return;
     }
 
@@ -1030,6 +1218,8 @@ export function ChildForm({
             // divisions so we can render a concrete "you can only
             // create children in X, Y" message inline on the field.
             allowedCodes?: string[];
+            // Session 63 — aggregate validation payload.
+            fields?: Array<{ field?: string; message?: string }>;
             issues?: Array<{ path?: string; message?: string }>;
           };
           if (errBody.error === "no_changes") {
@@ -1050,25 +1240,63 @@ export function ChildForm({
                   )
                   .join(", ")
               : null;
-            setErrors((e) => ({
-              ...e,
-              bd_division: allowedFriendly
-                ? `You can only create children in your assigned divisions: ${allowedFriendly}.`
-                : "You don't have any assigned divisions yet. Ask your admin to set them up before creating a new child.",
-            }));
+            const msg = allowedFriendly
+              ? `You can only create children in your assigned divisions: ${allowedFriendly}.`
+              : "You don't have any assigned divisions yet. Ask your admin to set them up before creating a new child.";
+            setErrors((e) => {
+              const next = { ...e, bd_division: msg };
+              scrollToFirstError(next);
+              return next;
+            });
           } else if (
+            // Session 63 — aggregate validation result. Server collects
+            // every problem and sends them at once so the DI can fix
+            // them all in a single pass.
+            errBody.error === "validation_failed" &&
+            Array.isArray(errBody.fields) &&
+            errBody.fields.length > 0
+          ) {
+            const aggregated: Record<string, string> = {};
+            for (const f of errBody.fields) {
+              if (!f.field) continue;
+              const key = remapServerField(f.field);
+              aggregated[key] = f.message?.trim() || "Invalid.";
+            }
+            if (Object.keys(aggregated).length > 0) {
+              setErrors((e) => {
+                const next = { ...e, ...aggregated };
+                scrollToFirstError(next);
+                return next;
+              });
+            } else {
+              // Defensive: validation_failed with zero usable fields
+              // shouldn't happen — flag it visibly rather than going
+              // silently green.
+              setServerError(
+                "Submission failed validation but no specific fields were reported. Please refresh and try again.",
+              );
+            }
+          } else if (
+            // Legacy single-error shape — kept for the unlikely case
+            // a deeper code path still throws MissingRequiredFieldError
+            // / InvalidValueError individually.
             errBody.error === "missing_required_field" &&
             errBody.field
           ) {
-            setErrors((e) => ({
-              ...e,
-              [errBody.field as string]: "Required.",
-            }));
+            const key = remapServerField(errBody.field);
+            setErrors((e) => {
+              const next = { ...e, [key]: "Required." };
+              scrollToFirstError(next);
+              return next;
+            });
           } else if (errBody.error === "invalid_value" && errBody.field) {
-            setErrors((e) => ({
-              ...e,
-              [errBody.field as string]: errBody.message ?? "Invalid value.",
-            }));
+            const key = remapServerField(errBody.field);
+            const msg = errBody.message ?? "Invalid value.";
+            setErrors((e) => {
+              const next = { ...e, [key]: msg };
+              scrollToFirstError(next);
+              return next;
+            });
           } else if (errBody.error === "not_found") {
             setServerError(
               "This child isn't in your care anymore. Refresh and try again.",
@@ -1077,10 +1305,14 @@ export function ChildForm({
             const zodErrors: Record<string, string> = {};
             for (const i of errBody.issues) {
               const path = i.path?.split(".").pop() ?? "";
-              if (path) zodErrors[path] = i.message ?? "Invalid.";
+              if (path) zodErrors[remapServerField(path)] = i.message ?? "Invalid.";
             }
             if (Object.keys(zodErrors).length > 0) {
-              setErrors((e) => ({ ...e, ...zodErrors }));
+              setErrors((e) => {
+                const next = { ...e, ...zodErrors };
+                scrollToFirstError(next);
+                return next;
+              });
             } else {
               setServerError("Something didn't pass validation.");
             }
@@ -1156,6 +1388,7 @@ export function ChildForm({
             onChange={(e) => set("display_name", e.target.value)}
             placeholder="e.g. Fahim Khan"
             disabled={pending}
+            {...errProps("display_name")}
           />
           <p className={helperClass}>Use what&apos;s safe to share publicly.</p>
           {errors.display_name ? (
@@ -1196,6 +1429,7 @@ export function ChildForm({
                 value={form.date_of_birth}
                 onChange={(e) => set("date_of_birth", e.target.value)}
                 disabled={pending}
+                {...errProps("date_of_birth")}
               />
               {computedAge !== null ? (
                 <span className="text-[13px] text-ink-soft whitespace-nowrap">
@@ -1262,6 +1496,7 @@ export function ChildForm({
             value={form.bd_division}
             onChange={(e) => set("bd_division", e.target.value)}
             disabled={pending}
+            {...errProps("bd_division")}
           >
             <option value="">Select a division…</option>
             {divisions.map((d) => (
@@ -1304,6 +1539,7 @@ export function ChildForm({
             onChange={(e) => set("district_internal", e.target.value)}
             placeholder="House / road / village / area"
             disabled={pending}
+            {...errProps("district_internal")}
           />
           <p className={helperClass}>Not shown to donors.</p>
           {errors.district_internal ? (
@@ -1464,6 +1700,7 @@ export function ChildForm({
             placeholder="Tell their story warmly without revealing identifying details that could narrow them in their community."
             disabled={pending}
             rows={6}
+            {...errProps("story")}
           />
           <p className={helperClass}>
             Donors see this. Aim for 2–4 short paragraphs.{" "}
@@ -1509,6 +1746,7 @@ export function ChildForm({
               value={form.support_type}
               onChange={(e) => set("support_type", e.target.value)}
               disabled={pending}
+              {...errProps("support_type")}
             >
               <option value="">Select a type…</option>
               {SUPPORT_TYPE_OPTIONS.map((s) => (
@@ -1537,6 +1775,7 @@ export function ChildForm({
               onChange={(e) => set("monthly_cost", e.target.value)}
               placeholder="e.g. 1500"
               disabled={pending}
+              {...errProps("monthly_cost")}
             />
             <p className={helperClass}>Approximate monthly need.</p>
             {errors.monthly_cost ? (
@@ -1584,6 +1823,7 @@ export function ChildForm({
               placeholder="Why is this child a priority? Brief context for admin."
               disabled={pending}
               rows={3}
+              {...errProps("priority_notes")}
             />
             <p className={helperClass}>
               Required when priority is standard or urgent. Internal-only.
@@ -1650,6 +1890,7 @@ export function ChildForm({
             value={form.last_medical_checkup}
             onChange={(e) => set("last_medical_checkup", e.target.value)}
             disabled={pending}
+            {...errProps("last_medical_checkup")}
           />
           {errors.last_medical_checkup ? (
             <p className={errorClass}>{errors.last_medical_checkup}</p>
@@ -1708,6 +1949,7 @@ export function ChildForm({
             value={form.parent_loss}
             onChange={(e) => set("parent_loss", e.target.value)}
             disabled={pending}
+            {...errProps("parent_loss")}
           >
             <option value="">Select…</option>
             {PARENT_LOSS_OPTIONS.map((opt) => (
@@ -1736,6 +1978,7 @@ export function ChildForm({
               value={form.siblings_count}
               onChange={(e) => set("siblings_count", e.target.value)}
               disabled={pending}
+              {...errProps("siblings_count")}
             />
             {errors.siblings_count ? (
               <p className={errorClass}>{errors.siblings_count}</p>
@@ -1757,6 +2000,7 @@ export function ChildForm({
               onChange={(e) => set("sibling_position", e.target.value)}
               placeholder="e.g. 1 = eldest"
               disabled={pending}
+              {...errProps("sibling_position")}
             />
             <p className={helperClass}>Is this child the eldest, youngest…</p>
             {errors.sibling_position ? (
@@ -1794,6 +2038,7 @@ export function ChildForm({
             value={form.household_size}
             onChange={(e) => set("household_size", e.target.value)}
             disabled={pending}
+            {...errProps("household_size")}
           />
           <p className={helperClass}>Total people in the household.</p>
           {errors.household_size ? (
@@ -1844,6 +2089,7 @@ export function ChildForm({
                 set("monthly_household_income_bdt", e.target.value)
               }
               disabled={pending}
+              {...errProps("monthly_household_income_bdt")}
             />
             <p className={helperClass}>Approximate. Not shown to donors.</p>
             {errors.monthly_household_income_bdt ? (
@@ -1867,6 +2113,7 @@ export function ChildForm({
             value={form.guardian_relationship}
             onChange={(e) => set("guardian_relationship", e.target.value)}
             disabled={pending}
+            {...errProps("guardian_relationship")}
           >
             <option value="">Select…</option>
             {GUARDIAN_RELATIONSHIP_OPTIONS.map((g) => (
@@ -1947,6 +2194,7 @@ export function ChildForm({
                 onChange={(e) => set("guardian_phone", e.target.value)}
                 placeholder="+8801XXXXXXXXX"
                 disabled={pending}
+                {...errProps("guardian_phone")}
               />
               <p className={helperClass}>
                 Internal only — never shown to donors.
@@ -1968,6 +2216,7 @@ export function ChildForm({
                 onChange={(e) => set("guardian_phone_alt", e.target.value)}
                 placeholder="Optional secondary contact"
                 disabled={pending}
+                {...errProps("guardian_phone_alt")}
               />
               {errors.guardian_phone_alt ? (
                 <p className={errorClass}>{errors.guardian_phone_alt}</p>
@@ -1991,6 +2240,7 @@ export function ChildForm({
             placeholder="Family situation, who the child lives with, anything the admin should know."
             disabled={pending}
             rows={4}
+            {...errProps("guardian_summary_internal")}
           />
           <p className={helperClass}>Not shown to donors.</p>
           {errors.guardian_summary_internal ? (
@@ -2057,6 +2307,7 @@ export function ChildForm({
             value={form.submission_date}
             onChange={(e) => set("submission_date", e.target.value)}
             disabled={pending}
+            {...errProps("submission_date")}
           />
           <p className={helperClass}>
             Optional. The date this profile was prepared.
@@ -2089,6 +2340,17 @@ export function ChildForm({
           </p>
         </div>
       ) : null}
+
+      {/* Session 63 — validation summary panel. Renders whenever the
+          field-error map has entries (either local clientValidate() or
+          a server validation_failed response populated it). Lists
+          every offending field in section order so the DI can sweep
+          top-to-bottom rather than guessing which input lit up red.
+          The per-field red border + helper text under each input is
+          still there — this panel is the "what's wrong overall" view.
+          Cleared automatically as the DI fixes each field, since
+          set() drops the corresponding error key on edit. */}
+      <ErrorSummaryPanel errors={errors} />
 
       {/* Submit + Save as draft (Session 48b).
           Layout: on mobile, the buttons stack column-reverse so Submit
@@ -2218,6 +2480,49 @@ function Tier3Field({ children }: { children: React.ReactNode }) {
         </span>
       </div>
       {children}
+    </div>
+  );
+}
+
+// Session 63 — summary panel listing every field-level error.
+// Sits above the submit button so the user sees the full to-fix
+// list right before the affordance that triggered the validation.
+// Sorted by FIELD_ORDER so the bullets read in the same top-to-bottom
+// order as the form sections, then anything not in FIELD_ORDER falls
+// to the bottom in original-insertion order (Object.keys is reliable
+// for string keys in modern JS engines).
+function ErrorSummaryPanel({ errors }: { errors: Record<string, string> }) {
+  const keys = Object.keys(errors);
+  if (keys.length === 0) return null;
+
+  const ordered: string[] = [];
+  for (const k of FIELD_ORDER) {
+    if (errors[k]) ordered.push(k);
+  }
+  for (const k of keys) {
+    if (!ordered.includes(k)) ordered.push(k);
+  }
+
+  return (
+    <div
+      className="rounded-xl border border-rose-200 bg-rose-50 p-4 mb-2"
+      role="alert"
+      aria-live="polite"
+    >
+      <p className="text-[13.5px] font-semibold text-rose-900 mb-2">
+        Please fix {ordered.length === 1 ? "this" : `these ${ordered.length}`} before
+        submitting:
+      </p>
+      <ul className="list-disc list-inside space-y-1 text-[13.5px] text-rose-900 leading-snug">
+        {ordered.map((field) => (
+          <li key={field}>
+            <span className="font-medium">{fieldLabel(field)}</span>
+            {errors[field] && errors[field] !== "Required."
+              ? ` — ${errors[field]}`
+              : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
