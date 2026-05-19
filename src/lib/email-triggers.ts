@@ -118,6 +118,24 @@ export async function fireWelcomeEmail(
   });
 }
 
+// Campaign donation thank-you (Session 58.2-overnight Task 2) —
+// fires once per campaign one-time gift (sponsorship.child === null)
+// when the PI succeeds. Distinct from fireWelcomeEmail because the
+// welcome template personalizes around a child and crashes on null.
+//
+// Caller responsibility: only invoke for sponsorship rows with
+// child === null and status that just transitioned to 'completed'.
+// The route itself refuses (400) if the row has a child set, as a
+// defensive cross-check against caller bugs.
+export async function fireCampaignThankYouEmail(
+  sponsorshipId: string,
+): Promise<void> {
+  if (!sponsorshipId) return;
+  await callInternalEmailRoute("/api/internal/email/campaign-thank-you", {
+    sponsorshipId,
+  });
+}
+
 // Monthly receipt — fires per payment row for recurring sub
 // invoices. Caller should only invoke when `createPaymentIfMissing`
 // returned true (i.e. THIS event is the first time we recorded the

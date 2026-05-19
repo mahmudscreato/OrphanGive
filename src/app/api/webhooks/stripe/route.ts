@@ -20,6 +20,7 @@ import {
   fireMonthlyReceiptEmail,
   fireRefundEmail,
   fireWelcomeEmail,
+  fireCampaignThankYouEmail,
 } from "@/lib/email-triggers";
 
 // Webhooks need the RAW request body to verify signatures. Force the
@@ -450,16 +451,27 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
   // isn't tied to a specific child). The welcome email template
   // fetches the child by id and personalizes around it — null child
   // would either break the lookup or produce a generic email with no
-  // child anchor. Filter those out here; campaign donations get a
-  // dedicated thank-you (Stripe receipt + /donate/success page) and
-  // skip the sponsorship-welcome template. Future: dedicated
-  // "thank you for your gift to X cause" template (Session 58.3).
-  const idsForWelcomeEmail = newlyActiveIds.filter((id) => {
+  // child anchor. We split the newly-active set in two:
+  //   - child-scoped rows  → fireWelcomeEmail (existing path)
+  //   - campaign rows      → fireCampaignThankYouEmail
+  //                          (Session 58.2-overnight Task 2)
+  // Each route has its own donor-level dedup so replays are safe.
+  const childScoped: string[] = [];
+  const campaignOnly: string[] = [];
+  for (const id of newlyActiveIds) {
     const s = sponsorships.find((x) => x.id === id);
-    return s && s.child !== null && s.child !== undefined;
-  });
-  if (idsForWelcomeEmail.length > 0) {
-    await fireWelcomeEmail(idsForWelcomeEmail);
+    if (!s) continue;
+    if (s.child === null || s.child === undefined) campaignOnly.push(id);
+    else childScoped.push(id);
+  }
+  if (childScoped.length > 0) {
+    await fireWelcomeEmail(childScoped);
+  }
+  for (const id of campaignOnly) {
+    // Campaign route takes a single sponsorshipId, not an array —
+    // each campaign gift has its own cause + amount + package and
+    // doesn't bundle.
+    await fireCampaignThankYouEmail(id);
   }
 }
 
