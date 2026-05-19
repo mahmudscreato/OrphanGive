@@ -18,17 +18,33 @@ import {
   ClipboardCheck,
   ListChecks,
   Users,
+  ScrollText,
   LogOut,
 } from "lucide-react";
 
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
-const NAV_ITEMS = [
-  { href: "/admin", label: "Home", icon: Home, exact: true },
-  { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false },
-  { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false },
-  { href: "/admin/children", label: "Children", icon: Users, exact: false },
+// Session 67 — `group` distinguishes the daily-use cluster (primary)
+// from operational / forensic surfaces (secondary). The render below
+// inserts a divider between groups.
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  exact: boolean;
+  group: "primary" | "secondary";
+};
+
+const NAV_ITEMS: ReadonlyArray<NavItem> = [
+  { href: "/admin", label: "Home", icon: Home, exact: true, group: "primary" },
+  { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false, group: "primary" },
+  { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false, group: "primary" },
+  { href: "/admin/children", label: "Children", icon: Users, exact: false, group: "primary" },
+  // Session 67 — forensic surface. Secondary group; lives at the
+  // bottom of the nav above Sign out so it's accessible without
+  // crowding the daily-use cluster.
+  { href: "/admin/audit", label: "Audit log", icon: ScrollText, exact: false, group: "secondary" },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
@@ -81,11 +97,23 @@ export function AdminSidebar() {
 
       <nav className="flex-1">
         <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.map((item, idx) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
+            // Session 67 — divider before the first secondary item.
+            // Sets the visual rhythm "daily work, then ops/forensics".
+            const previousItem = idx > 0 ? NAV_ITEMS[idx - 1] : null;
+            const showDivider =
+              item.group === "secondary" &&
+              (!previousItem || previousItem.group !== "secondary");
             return (
               <li key={item.href}>
+                {showDivider ? (
+                  <div
+                    className="my-2 border-t border-ink/[0.08]"
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
