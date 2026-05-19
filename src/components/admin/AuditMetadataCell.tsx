@@ -5,10 +5,11 @@
 //   - "metadata" — the JSON payload from audit_log.metadata
 //   - "diff"     — the before/after structure from audit_log.diff
 //
-// Collapsed state is a truncated single-line preview (first 80 chars
-// of JSON.stringify). Expanded state is pretty-printed with 2-space
-// indent inside a <pre>. Neither section renders when its payload
-// is null/empty.
+// Session 67.1 hotfix — the collapsed state previously rendered a
+// truncated raw-JSON preview alongside the chevron. The preview
+// was unreadable (mostly uuids + braces) and made the table feel
+// like debug output. Switched to chevron + label only; pretty-
+// printed JSON appears below on expand.
 //
 // Client component because the expand/collapse toggle is per-row +
 // per-section local state; the parent table stays server-rendered.
@@ -17,8 +18,6 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-
-const PREVIEW_CHARS = 80;
 
 interface Props {
   metadata: Record<string, unknown> | null;
@@ -53,9 +52,6 @@ function ExpandableSection({
   payload: Record<string, unknown>;
 }) {
   const [open, setOpen] = useState(false);
-  const json = safeStringify(payload);
-  const preview =
-    json.length > PREVIEW_CHARS ? `${json.slice(0, PREVIEW_CHARS)}…` : json;
 
   return (
     <div>
@@ -79,14 +75,9 @@ function ExpandableSection({
         <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] font-semibold">
           {label}
         </span>
-        {!open ? (
-          <span className="font-mono text-[11.5px] text-ink-soft/80 truncate max-w-[260px]">
-            {preview}
-          </span>
-        ) : null}
       </button>
       {open ? (
-        <pre className="mt-1.5 ml-4 rounded-lg bg-stone-50 border border-stone-200 p-2.5 font-mono text-[11.5px] text-ink leading-relaxed whitespace-pre-wrap break-words overflow-x-auto max-w-[520px]">
+        <pre className="mt-1.5 ml-4 rounded-lg bg-stone-100 border border-stone-200 p-2.5 font-mono text-[11.5px] text-ink leading-relaxed whitespace-pre-wrap break-words overflow-x-auto max-w-[520px]">
           {safeStringify(payload, true)}
         </pre>
       ) : null}

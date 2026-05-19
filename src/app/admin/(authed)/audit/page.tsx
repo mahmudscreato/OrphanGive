@@ -35,6 +35,9 @@ import {
   type AuditSubjectBucket,
 } from "@/lib/audit-labels";
 import { AuditMetadataCell } from "@/components/admin/AuditMetadataCell";
+// Session 67.1 hotfix — replaces the native <select multiple> the
+// page shipped with a checkbox list (no Cmd/Ctrl hidden gesture).
+import { AuditActionsCheckboxFilter } from "@/components/admin/AuditActionsCheckboxFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -220,35 +223,16 @@ export default async function AdminAuditPage({
         method="GET"
         className="mb-5 grid grid-cols-1 md:grid-cols-12 gap-3"
       >
-        {/* Action dropdown (multi-select via <select multiple>) */}
+        {/* Session 67.1 hotfix — checkbox list replaces the native
+            <select multiple>. The new component writes its joined
+            value into a hidden input named "actions" so this form's
+            existing GET submit handler keeps working unchanged. */}
         <div className="md:col-span-4">
-          <label
-            htmlFor="actions"
-            className="block font-mono text-[10.5px] tracking-[0.14em] uppercase text-slate font-medium mb-1.5"
-          >
-            Actions
-          </label>
-          <select
-            id="actions"
-            name="actions"
-            multiple
+          <AuditActionsCheckboxFilter
+            options={result.available_actions}
+            labelFor={formatActionLabel}
             defaultValue={actions}
-            size={6}
-            className="w-full rounded-xl border border-ink/[0.12] bg-white px-3 py-2 text-[13px] text-ink focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft transition-all duration-150"
-          >
-            {result.available_actions.length === 0 ? (
-              <option disabled>(none recorded yet)</option>
-            ) : (
-              result.available_actions.map((a) => (
-                <option key={a} value={a}>
-                  {formatActionLabel(a)}
-                </option>
-              ))
-            )}
-          </select>
-          <p className="mt-1 text-[11.5px] text-ink-soft">
-            Cmd/Ctrl-click to select multiple. Empty = all actions.
-          </p>
+          />
         </div>
 
         <div className="md:col-span-2 flex flex-col gap-3">
@@ -482,11 +466,16 @@ function AuditRowTable({ row }: { row: AdminAuditRowOut }) {
         {formatTimestamp(row.timestamp)}
       </td>
       <td className="px-3 py-3">
-        <p className="text-ink font-medium leading-snug">
+        {/* Session 67.1 hotfix — dropped the raw-enum sub-line that
+            rendered "admin_resumed_sponsorship" under the human
+            label. It read as debug output and added clutter to
+            every row. The raw action key is still available via
+            hover (title attr) for the rare debug case. */}
+        <p
+          className="text-ink font-medium leading-snug"
+          title={row.action}
+        >
           {formatActionLabel(row.action)}
-        </p>
-        <p className="mt-0.5 text-[11px] text-ink-soft/70 font-mono">
-          {row.action}
         </p>
       </td>
       <td className="px-3 py-3">

@@ -47,6 +47,9 @@ import { getQueueForChild } from "@/lib/queue";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { AdminChildActionBar } from "@/components/admin/AdminChildActionBar";
 import { ReuploadRequestButton } from "@/components/admin/ReuploadRequestButton";
+// Session 69.1 hotfix — wire the standalone StripeLink helper into
+// the sponsorship row's Stripe subscription id render.
+import { StripeLink } from "@/components/admin/StripeLink";
 
 export const dynamic = "force-dynamic";
 
@@ -641,9 +644,15 @@ function SponsorshipRow({
           <>
             {" · "}
             Stripe sub{" "}
-            <code className="text-[11px] bg-white px-1 py-0.5 rounded border border-stone-200">
-              {s.stripe_subscription_id.slice(0, 14)}…
-            </code>
+            {/* Session 69.1 hotfix — clickable link to the Stripe
+                dashboard. Truncated label keeps the row compact;
+                full id surfaces in the title attribute via the
+                StripeLink default. */}
+            <StripeLink
+              kind="subscription"
+              id={s.stripe_subscription_id}
+              label={`${s.stripe_subscription_id.slice(0, 14)}…`}
+            />
           </>
         ) : null}
       </p>
