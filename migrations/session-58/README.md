@@ -57,6 +57,7 @@ Primary key: `id` (uuid).
 | `support_types` | json (array of strings) | no | `[]` | Subset of `child.support_type` enum: `education`, `food`, `healthcare`, `clothing`, `general_care`, `other`. Empty array allowed for one-time gifts that aren't child-scoped. |
 | `cause_tag` | string | no | null | Free-form tag for one-time campaigns (e.g. `feed-a-child`, `winter-clothing`). Nullable on monthly. |
 | `icon` | string | no | null | Lucide icon name (e.g. `BookOpen`, `Apple`) |
+| `duration_months` | integer | no | null | **Added by 002.** Null = open-ended monthly subscription. Positive integer = prepaid bundle of N months as a single upfront charge. Only meaningful on `package_type = monthly`. |
 | `date_created` | timestamp | auto | — | Directus special field |
 | `date_updated` | timestamp | auto | — | Directus special field |
 
@@ -137,6 +138,37 @@ Mahmud's placeholder padded rates; admin-adjustable post-launch.
 - All admin-side reads should bypass `is_active` so disabled
   packages remain editable. All public-site reads must filter
   `is_active = true`.
+
+## Migration 002 — sponsorship extensions (Session 58.2)
+
+`migrations/session-58/002-extend-sponsorship-and-package.mjs`.
+
+### `sponsorship` collection changes
+
+| Field | Change | Notes |
+|---|---|---|
+| `child` | Required → **nullable** | Campaign-style one-time donations (e.g. `feed-a-child`) aren't tied to a specific child. Both Directus `meta.required` + Postgres `NOT NULL` cleared. Existing rows are unaffected (all have `child` set). |
+| `cause_tag` | **Added** — string, nullable, max 64 | Denormalized from `donation_package.cause_tag` at checkout time so "show me every feed-a-child gift" is a single-table filter. |
+| `donation_package` | **Added** — M2O FK to `donation_package.id`, nullable | Records which preset the donor selected. Null for custom-amount donations. |
+| `donor_currency_code` | **Added** — string(3), nullable | ISO 4217 of the currency the donor was actually charged in. Null on legacy rows. |
+| `donor_currency_amount` | **Added** — decimal(10,2), nullable | Donor-facing amount (e.g. `14.00` for £14). |
+| `bdt_per_unit_at_checkout` | **Added** — decimal(10,2), nullable | Snapshotted FX rate at checkout. If admin changes rates after a charge, the historic row keeps its original rate so finance reconciliation is deterministic. |
+
+### `donation_package` collection changes
+
+| Field | Change | Notes |
+|---|---|---|
+| `duration_months` | **Added** — integer, nullable | Null = open-ended monthly subscription. Positive integer N = prepaid bundle of N months as a single upfront charge. Only meaningful on `package_type = monthly`. |
+
+### Seed addition
+
+One prepaid-bundle example so the data path is exercised end-to-end:
+
+| display_order | name_en | amount_bdt | duration_months | support_types |
+|---|---|---|---|---|
+| 5 | 12 months upfront — Education Support | 24000 (= 12 × 2000, no discount) | 12 | `["education"]` |
+
+**No discount/savings copy anywhere.** Description: _"One year of education support, paid in full upfront. Single charge to your card."_ — the value is convenience + commitment, not price.
 
 ## Filed for follow-up (NOT in this migration)
 
