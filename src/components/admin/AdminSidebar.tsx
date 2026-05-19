@@ -26,18 +26,15 @@ import {
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
-// Session 65 — added "donors" to the badgeKey union so the new
-// Donors nav entry can surface a pending-approval count alongside
-// proposals + reviews.
-type BadgeKey = "proposals" | "reviews" | "donors";
+// Session 65 + 66 — combined badge key union. Proposals + reviews
+// from Session 60, donors from Session 65, children from Session 66.
+type BadgeKey = "proposals" | "reviews" | "donors" | "children";
 
 type NavItem = {
   href: string;
   label: string;
   icon: typeof Home;
   exact: boolean;
-  // Session 60 — optional pending-count badge. Driven by the
-  // server-side layout fetch; rendered next to the label when > 0.
   badgeKey?: BadgeKey;
 };
 
@@ -57,12 +54,22 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     badgeKey: "reviews",
   },
-  { href: "/admin/children", label: "Children", icon: Users, exact: false },
+  // Session 66 — children gets an active-count badge.
+  {
+    href: "/admin/children",
+    label: "Children",
+    icon: Users,
+    exact: false,
+    badgeKey: "children",
+  },
   // Session 61 — live sponsorships management surface.
-  { href: "/admin/sponsorships", label: "Sponsorships", icon: HeartHandshake, exact: false },
-  // Session 65 — donor management. Lives after Sponsorships so the
-  // "people" cluster (Children + Sponsorships + Donors) reads together;
-  // badge shows pending first-time approvals.
+  {
+    href: "/admin/sponsorships",
+    label: "Sponsorships",
+    icon: HeartHandshake,
+    exact: false,
+  },
+  // Session 65 — donor management.
   {
     href: "/admin/donors",
     label: "Donors",
@@ -80,10 +87,6 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
 export function AdminSidebar({
   badges,
 }: {
-  // Session 60 — optional per-key pending counts. Null = "still
-  // loading / fetch errored" (we hide the badge). 0 = "nothing
-  // pending" (also hidden so 0 doesn't read as noise).
-  // Session 65 — extended to include 'donors'.
   badges?: Partial<Record<BadgeKey, number | null>>;
 } = {}) {
   const pathname = usePathname();
@@ -133,11 +136,8 @@ export function AdminSidebar({
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
-            const badgeCount = item.badgeKey
-              ? badges?.[item.badgeKey] ?? null
-              : null;
-            const showBadge =
-              typeof badgeCount === "number" && badgeCount > 0;
+            const count = item.badgeKey ? badges?.[item.badgeKey] ?? null : null;
+            const showBadge = typeof count === "number" && count > 0;
             return (
               <li key={item.href}>
                 <Link
@@ -156,9 +156,9 @@ export function AdminSidebar({
                   {showBadge ? (
                     <span
                       className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-tangerine text-white text-[11px] font-semibold tabular-nums"
-                      aria-label={`${badgeCount} pending`}
+                      aria-label={`${count} pending`}
                     >
-                      {badgeCount > 99 ? "99+" : badgeCount}
+                      {count > 99 ? "99+" : count}
                     </span>
                   ) : null}
                 </Link>

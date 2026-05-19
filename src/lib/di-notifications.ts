@@ -84,7 +84,16 @@ export type NotificationType =
   // when admin delivery verification has a server-side handler
   // (currently admins flip aid_delivery.status='verified' via
   // Directus admin — no /api hook).
-  | "admin_verified_delivery";
+  | "admin_verified_delivery"
+  // Session 66 — admin "please re-upload this" request. Distinct
+  // from `admin_rejected_*` (which is a first-time decision on a
+  // pending item) and from `admin_removed_approved_*` (which is a
+  // reversal that hard-removes the file). Re-upload is a soft
+  // nudge — the existing row keeps its status='approved'; the DI
+  // just needs to upload a fresh version. The body carries
+  // admin's reason verbatim so the DI knows what to fix.
+  | "admin_requested_document_reupload"
+  | "admin_requested_intake_reupload";
 
 export interface NotificationPayload {
   title: string;
@@ -143,6 +152,9 @@ const VALID_TYPES = new Set<string>([
   "admin_assigned_child",
   "admin_assigned_task",
   "admin_verified_delivery",
+  // Session 66
+  "admin_requested_document_reupload",
+  "admin_requested_intake_reupload",
 ]);
 
 function isNotificationType(s: string | null | undefined): s is NotificationType {

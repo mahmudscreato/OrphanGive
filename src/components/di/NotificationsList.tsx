@@ -12,6 +12,7 @@ import { useState, useTransition } from "react";
 import {
   Bell,
   CheckCircle2,
+  Edit3,
   FileBarChart,
   FileEdit,
   HeartHandshake,
@@ -44,6 +45,9 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
   admin_verified_delivery: Truck,
+  // Session 66 — re-upload requests.
+  admin_requested_document_reupload: Edit3,
+  admin_requested_intake_reupload: Edit3,
 };
 
 function formatLongDate(iso: string | null): string {

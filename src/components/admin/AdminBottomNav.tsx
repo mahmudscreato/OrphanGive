@@ -4,9 +4,6 @@
 // in the AdminHeader's overflow on mobile (vs the sidebar's anchored
 // bottom button on desktop) — admins use mobile rarely so the cost
 // of rebuilding a hamburger menu wasn't worth it for V1.
-//
-// Mobile nav is space-constrained. At 6+ tabs on 375px we icon-only
-// or scroll horizontally; today's 6 tabs still fit with 10px labels.
 
 "use client";
 
@@ -21,7 +18,7 @@ import {
   UserCircle,
 } from "lucide-react";
 
-type BadgeKey = "proposals" | "reviews" | "donors";
+type BadgeKey = "proposals" | "reviews" | "donors" | "children";
 
 type Tab = {
   href: string;
@@ -47,10 +44,14 @@ const TABS: ReadonlyArray<Tab> = [
     exact: false,
     badgeKey: "reviews",
   },
-  { href: "/admin/children", label: "Children", icon: Users, exact: false },
-  // Session 61
+  {
+    href: "/admin/children",
+    label: "Children",
+    icon: Users,
+    exact: false,
+    badgeKey: "children",
+  },
   { href: "/admin/sponsorships", label: "Sponsors", icon: HeartHandshake, exact: false },
-  // Session 65
   {
     href: "/admin/donors",
     label: "Donors",
@@ -68,9 +69,6 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
 export function AdminBottomNav({
   badges,
 }: {
-  // Session 60 — mirror the sidebar's badge-count plumbing for
-  // mobile parity. Same shape, same null/0 = hide convention.
-  // Session 65 — extended to include 'donors'.
   badges?: Partial<Record<BadgeKey, number | null>>;
 } = {}) {
   const pathname = usePathname();
@@ -84,11 +82,8 @@ export function AdminBottomNav({
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const active = isActive(pathname, tab.href, tab.exact);
-          const badgeCount = tab.badgeKey
-            ? badges?.[tab.badgeKey] ?? null
-            : null;
-          const showBadge =
-            typeof badgeCount === "number" && badgeCount > 0;
+          const count = tab.badgeKey ? badges?.[tab.badgeKey] ?? null : null;
+          const showBadge = typeof count === "number" && count > 0;
           return (
             <li key={tab.href} className="flex-1">
               <Link
@@ -107,9 +102,9 @@ export function AdminBottomNav({
                   {showBadge ? (
                     <span
                       className="absolute -top-1 -right-2 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-tangerine text-white text-[9.5px] font-semibold tabular-nums"
-                      aria-label={`${badgeCount} pending`}
+                      aria-label={`${count} pending`}
                     >
-                      {badgeCount > 99 ? "99+" : badgeCount}
+                      {count > 99 ? "99+" : count}
                     </span>
                   ) : null}
                 </div>
