@@ -1,33 +1,24 @@
-// Sponsorship tier definitions. Source of truth for amounts/labels.
-// Stripe integration in Part B will reference these tier ids.
+// Pricing primitives shared across the donation system.
+//
+// Session 58.2 removed SPONSORSHIP_TIERS — the hardcoded tier table
+// that drove the legacy /sponsor/[childId] flow. Amounts now come
+// from the admin-editable `donation_package` collection (read via
+// src/lib/donation-packages.ts). The SponsorshipTier shape is also
+// gone since nothing imports it after the rip.
+//
+// What remains in this file is the small set of primitives still
+// load-bearing across the codebase:
+//   - PaymentMode      enum used in cart-data, /api/cart/*, sponsorship-data
+//   - PaymentSchedule  enum mapped to existing sponsorship rows
+//   - MIN_AMOUNTS      floor for legacy cart/extend paths (the new
+//                      /api/donate/init endpoint enforces its own
+//                      floors via validateCustomAmount)
+//   - formatUsd        display helper still used on the dashboard
+//                      for amount_usd-shaped legacy values
+//   - duration helpers calculateScheduledEndDate, isValidDurationMonths
+//   - predicates       isPaymentMode, isPaymentSchedule, isValidAmount
 
 export type PaymentMode = "monthly" | "one_time";
-
-export type SponsorshipTier = {
-  id: string;
-  amount: number; // USD, integer
-  label: string;
-  description?: string;
-};
-
-export const SPONSORSHIP_TIERS: Record<PaymentMode, ReadonlyArray<SponsorshipTier>> = {
-  monthly: [
-    { id: "t_m_25",  amount: 25,  label: "Essentials",
-      description: "Food, basic supplies, regular health checks." },
-    { id: "t_m_50",  amount: 50,  label: "Care",
-      description: "Above plus school supplies, clothing." },
-    { id: "t_m_100", amount: 100, label: "Full sponsorship",
-      description: "Above plus tutoring, healthcare, full support." },
-    { id: "t_m_250", amount: 250, label: "Patron",
-      description: "Full sponsorship plus contribution to centre operations." },
-  ],
-  one_time: [
-    { id: "t_o_50",  amount: 50,  label: "Gift" },
-    { id: "t_o_100", amount: 100, label: "Meaningful gift" },
-    { id: "t_o_250", amount: 250, label: "Significant gift" },
-    { id: "t_o_500", amount: 500, label: "Major gift" },
-  ],
-};
 
 export const MIN_AMOUNTS: Record<PaymentMode, number> = {
   monthly: 10,

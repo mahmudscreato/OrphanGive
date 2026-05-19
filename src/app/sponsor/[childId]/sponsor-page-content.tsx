@@ -1,41 +1,48 @@
-"use client";
+// Session 58.2 — child-scoped monthly sponsor flow, rewired off
+// SPONSORSHIP_TIERS to the new donation_package + currency_rate
+// system.
+//
+// Server component for the data fetch + access gates; the picker +
+// Stripe Elements live in SponsorChildClient.
+//
+// Access gates preserved from the legacy flow:
+//   selfActiveMonthly → viewer is the active sponsor; link to dashboard
+//   monthlyLocked     → child has an active sponsor (any donor),
+//                       queue feature deferred to 58.3 so we render
+//                       the "already sponsored" message instead of
+//                       offering a queue-join slot
+//   queueJoin         → same treatment as monthlyLocked for v1 — the
+//                       new endpoint doesn't yet honor trial_end +
+//                       queued_starts_at. Filed for 58.3. The donor
+//                       sees "already sponsored, come back later"
+//                       rather than a broken queue-join button.
+//
+// Otherwise the picker renders monthly packages (open-ended + prepaid
+// bundles mixed, sorted by display_order), donor picks one, optionally
+// switches currency, clicks Continue, Stripe Elements mount inline,
+// confirm → /donate/success.
 
+import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
-import { directusAssetUrl } from "@/lib/homepage-data";
+import { Heart, Lock, ArrowLeft } from "lucide-react";
 import {
-  CUSTOM_DURATION_MAX,
-  CUSTOM_DURATION_MIN,
-  isPaymentMode,
-  isPaymentSchedule,
-  isValidAmount,
-  SPONSORSHIP_TIERS,
-  type PaymentMode,
-  type PaymentSchedule,
-} from "@/lib/pricing";
-import type { DonorState } from "@/lib/donor-data";
-import { ModeSelector } from "@/components/sponsor/ModeSelector";
-import { TierGrid } from "@/components/sponsor/TierGrid";
-import { AmountInput } from "@/components/sponsor/AmountInput";
+  listActivePackages,
+  type DonationPackage,
+  modeForPackage,
+} from "@/lib/donation-packages";
 import {
-  DurationPicker,
-  isDurationSelectionValid,
-  type DurationSelection,
-} from "@/components/sponsor/DurationPicker";
-import { PaymentSchedulePicker } from "@/components/sponsor/PaymentSchedulePicker";
-import { CausePicker } from "@/components/sponsor/CausePicker";
-import { VisibilityPicker } from "@/components/sponsor/VisibilityPicker";
-import { SponsorReviewCard } from "@/components/sponsor/SponsorReviewCard";
-import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "@/lib/cause";
+  listActiveCurrencies,
+  convertBdtToCurrency,
+  bdtFloorToCurrencyFloor,
+} from "@/lib/currency-rates";
+import { resolveDonorCurrency } from "@/lib/geo-currency";
+import { CurrencyPicker } from "@/components/donate/CurrencyPicker";
 import {
-  DEFAULT_VISIBILITY,
-  isValidVisibility,
-  type VisibilityEnum,
-} from "@/lib/visibility";
+  SponsorChildClient,
+  type ClientMonthlyPackage,
+} from "./SponsorChildClient";
 
-type ChildProps = {
+interface ChildSummary {
   id: string;
   display_name: string;
   age: number | null;
@@ -43,876 +50,227 @@ type ChildProps = {
   photo: string | null;
   story: string | null;
   story_truncated: boolean;
-};
+}
 
-type Props = {
-  child: ChildProps;
+interface Props {
+  child: ChildSummary;
   signedIn: boolean;
-  donorState: DonorState;
+  donorState: string;
   initialCartItemCount: number;
-  // Session 14.6: when true, this child already has an active monthly
-  // sponsor (any donor). The 'monthly' tile in step 1 renders disabled
-  // and the donor can only build a one-time gift here. The /sponsor
-  // server page sets this from getActiveMonthlySponsorForChild.
   monthlyLocked: boolean;
-  // Donor's first name (when signed in). Surfaced as a preview in the
-  // step 6 'Show my name' option so the donor sees what's about to go
-  // public. Null for guests.
   donorFirstName: string | null;
-  // Session 14.6 — same-donor exemption: when the active monthly
-  // sponsor IS the current donor, monthlyLocked is false and this
-  // carries the existing sponsorship's id + end date so the page can
-  // show a friendly note and a "Manage your monthly sponsorship →"
-  // link instead of silently letting them re-create a duplicate.
-  // Null in the normal (no-active-monthly OR locked-by-other-donor)
-  // path.
   selfActiveMonthly: {
     sponsorshipId: string;
     scheduledEndDate: string | null;
   } | null;
-  // Session 14.7 — queue join: child has another donor's active
-  // monthly sponsor and the queue isn't full. Monthly tile stays
-  // enabled but shows "Get in line" framing; review surfaces
-  // estimated start + queue position. Null otherwise.
   queueJoin: {
     position: number;
     estimatedStartsAt: string | null;
     activeEndDate: string | null;
     donorsAhead: number;
   } | null;
-  // Session 14.7 — queue is full (3 donors already queued).
-  // monthlyLocked is true; this carries the date through which the
-  // queue is committed so the locked-state copy can show
-  // "come back after [date]".
   queueFullThrough: string | null;
-};
-
-const OTHER_TIER_ID = "other" as const;
-
-// Step machine.
-//   1 mode → 2 amount → 3 duration → 4 schedule → 5 cause → 6 visibility → 7 review
-// One-time skips 3 and 4. Indefinite monthly skips 4. Cause (5) and
-// visibility (6) always render — including for one-time gifts.
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
-
-function pickFirstSentence(s: string | null): string | null {
-  if (!s) return null;
-  const m = s.trim().match(/^.+?[.!?](?=\s|$)/);
-  return m ? m[0] : s.trim().slice(0, 160);
 }
 
-// Shared "Mar 27, 2026"-style formatter for queue-state banners and
-// the review card. Returns null on missing/invalid input so callers
-// can omit clauses gracefully.
-function formatDate(iso: string | null): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-// Derive the DurationSelection from a numeric months value (or null).
-// Used when prefilling state from URL search params (edit-from-cart).
-function durationSelectionFromMonths(
-  months: number | null,
-): DurationSelection {
-  if (months === null) return { optionId: "d_indef", months: null };
-  if (months === 3) return { optionId: "d_3", months: 3 };
-  if (months === 6) return { optionId: "d_6", months: 6 };
-  if (months === 12) return { optionId: "d_12", months: 12 };
-  return { optionId: "d_custom", months };
-}
-
-// Read just the mode= URL param when the caller wants to pre-select
-// step 1 without prefilling the rest. Used by the dashboard's
-// re-support buttons (Session 14.7c): the donor clicks "Sponsor again
-// monthly" or "Send a one-time gift" and lands on step 2 (amount)
-// with the mode chosen for them. Returns null if the param is absent
-// or invalid.
-function readModeOnlyParam(
-  searchParams: URLSearchParams,
-): PaymentMode | null {
-  const m = searchParams.get("mode");
-  if (!m || !isPaymentMode(m)) return null;
-  // If amount is also present, the FULL prefill path (readPrefilledState)
-  // owns this URL — defer to it.
-  if (searchParams.get("amount")) return null;
-  return m;
-}
-
-// Pull a prefilled state out of search params if all-required-keys are
-// present and valid. Returns null if the URL is a plain visit.
-function readPrefilledState(searchParams: URLSearchParams): {
-  mode: PaymentMode;
-  amount: number;
-  duration: DurationSelection;
-  schedule: PaymentSchedule | null;
-  cause: CauseEnum;
-  visibility: VisibilityEnum;
-} | null {
-  const m = searchParams.get("mode");
-  const a = searchParams.get("amount");
-  const d = searchParams.get("duration"); // "indef" or integer string
-  const s = searchParams.get("schedule"); // optional for one_time / indef
-  const cRaw = searchParams.get("cause"); // optional; defaults to general_care
-  const vRaw = searchParams.get("visibility"); // optional; defaults to anonymous
-
-  if (!m || !a) return null;
-  if (!isPaymentMode(m)) return null;
-  const amount = Number(a);
-  if (!isValidAmount(m, amount)) return null;
-
-  // Cause is optional in the URL. When provided, it must be a recognised
-  // enum; an invalid value rejects the entire prefill (donor lands on
-  // step 1 fresh) so we never silently swallow a tampered query string.
-  let cause: CauseEnum;
-  if (cRaw === null) {
-    cause = DEFAULT_CAUSE;
-  } else if (isValidCause(cRaw)) {
-    cause = cRaw;
-  } else {
-    return null;
-  }
-
-  // Same shape for visibility (Session 14.6) — optional, validated
-  // strictly when present, defaults to anonymous (privacy-preserving).
-  let visibility: VisibilityEnum;
-  if (vRaw === null) {
-    visibility = DEFAULT_VISIBILITY;
-  } else if (isValidVisibility(vRaw)) {
-    visibility = vRaw;
-  } else {
-    return null;
-  }
-
-  if (m === "one_time") {
-    return {
-      mode: "one_time",
-      amount,
-      duration: { optionId: "d_indef", months: null },
-      schedule: null,
-      cause,
-      visibility,
-    };
-  }
-
-  // monthly
-  let months: number | null;
-  if (d === "indef" || d === null) {
-    months = null;
-  } else {
-    const n = Number(d);
-    if (
-      !Number.isInteger(n) ||
-      n < CUSTOM_DURATION_MIN ||
-      n > CUSTOM_DURATION_MAX
-    ) {
-      return null;
-    }
-    months = n;
-  }
-  let schedule: PaymentSchedule;
-  if (months === null) {
-    schedule = "monthly";
-  } else {
-    if (!s || !isPaymentSchedule(s)) return null;
-    schedule = s;
-  }
-  return {
-    mode: "monthly",
-    amount,
-    duration: durationSelectionFromMonths(months),
-    schedule,
-    cause,
-    visibility,
-  };
-}
-
-export function SponsorPageContent({
+export async function SponsorPageContent({
   child,
-  signedIn,
-  donorState,
-  initialCartItemCount,
   monthlyLocked,
-  donorFirstName,
   selfActiveMonthly,
   queueJoin,
   queueFullThrough,
 }: Props) {
-  const router = useRouter();
-  const search = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const isAlreadySponsoredByOther = Boolean(monthlyLocked || queueJoin);
+  const canSponsor = !selfActiveMonthly && !isAlreadySponsoredByOther;
 
-  // ── State machine ─────────────────────────────────────────────────────
-  const prefill = useMemo(
-    () => readPrefilledState(new URLSearchParams(search.toString())),
-    [search],
-  );
-  // Session 14.7c: when only ?mode= is present (no amount), the
-  // dashboard re-support buttons want to skip step 1 and land the
-  // donor on step 2 (amount picker) with the chosen mode locked in.
-  // The full-prefill path above takes precedence when both are set.
-  const modeOnly = useMemo(
-    () => readModeOnlyParam(new URLSearchParams(search.toString())),
-    [search],
-  );
-  const isEditing = search.get("edit") === "1";
+  const [packages, currencies, rate] = await Promise.all([
+    canSponsor
+      ? listActivePackages("monthly")
+      : Promise.resolve([] as DonationPackage[]),
+    listActiveCurrencies(),
+    resolveDonorCurrency(),
+  ]);
 
-  const [mode, setMode] = useState<PaymentMode | null>(
-    prefill?.mode ?? modeOnly ?? null,
-  );
-  const [tierId, setTierId] = useState<string | null>(() => {
-    if (!prefill) return null;
-    const tier = SPONSORSHIP_TIERS[prefill.mode].find(
-      (t) => t.amount === prefill.amount,
-    );
-    return tier ? tier.id : OTHER_TIER_ID;
+  const clientPackages: ClientMonthlyPackage[] = packages.map((p) => {
+    const mode = modeForPackage(p);
+    const months =
+      mode === "prepaid-bundle" && p.duration_months ? p.duration_months : 1;
+    const totalBdt = p.amount_bdt * months;
+    const display = convertBdtToCurrency(totalBdt, rate);
+    const perMonthDisplay = convertBdtToCurrency(p.amount_bdt, rate);
+    return {
+      id: p.id,
+      mode,
+      duration_months: p.duration_months,
+      name_en: p.name_en,
+      description_en: p.description_en,
+      icon: p.icon,
+      perMonthBdt: p.amount_bdt,
+      perMonthDonorAmount: perMonthDisplay.amount,
+      totalBdt,
+      totalDonorAmount: display.amount,
+    };
   });
-  const [customAmount, setCustomAmount] = useState<number | "">(() => {
-    if (!prefill) return "";
-    const tier = SPONSORSHIP_TIERS[prefill.mode].find(
-      (t) => t.amount === prefill.amount,
-    );
-    return tier ? "" : prefill.amount;
-  });
-  const [duration, setDuration] = useState<DurationSelection>(
-    prefill?.duration ?? { optionId: "d_indef", months: null },
-  );
-  const [schedule, setSchedule] = useState<PaymentSchedule | null>(
-    prefill?.schedule ?? null,
-  );
-  // Cause defaults to general_care so a donor who doesn't engage the
-  // picker still produces a valid value.
-  const [cause, setCause] = useState<CauseEnum>(prefill?.cause ?? DEFAULT_CAUSE);
-  // Visibility defaults to anonymous (faith-conscious / hidden-sadaqah
-  // baseline). Donors opt INTO 'named'.
-  const [visibility, setVisibility] = useState<VisibilityEnum>(
-    prefill?.visibility ?? DEFAULT_VISIBILITY,
-  );
-  // Initial step:
-  //   - Full URL prefill (mode + amount + …) → step 7 review
-  //   - Mode-only URL prefill (?mode=monthly|one_time) → step 2 amount,
-  //     EXCEPT when mode='monthly' AND the child's monthly slot has a
-  //     queue affordance (queue-join or queue-full) — those banners live
-  //     in step 1 and we force the donor through it so they see the
-  //     context (committed start date, position N, queue-full message).
-  //     mode='one_time' always goes straight to step 2 (queue doesn't
-  //     affect one-time gifts).
-  const skipModeOnly =
-    modeOnly === "monthly" && (monthlyLocked || queueJoin !== null);
-  const [step, setStep] = useState<Step>(
-    prefill ? 7 : modeOnly && !skipModeOnly ? 2 : 1,
-  );
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [cartItemCount, setCartItemCount] = useState(initialCartItemCount);
+  const monthlyFloorBdt =
+    packages.length > 0 ? Math.min(...packages.map((p) => p.amount_bdt)) : 1;
+  const customAmountFloor =
+    packages.length > 0 ? bdtFloorToCurrencyFloor(monthlyFloorBdt, rate) : 1;
 
-  const subhead = pickFirstSentence(child.story);
-  const photoSrc = directusAssetUrl(child.photo);
+  const currencyOptions = currencies.map((c) => ({
+    code: c.currency_code,
+    symbol: c.symbol,
+    display_name: c.display_name,
+  }));
 
-  // Resolve effective amount from selected tier OR custom input.
-  const amount = useMemo<number | null>(() => {
-    if (!mode) return null;
-    if (tierId === OTHER_TIER_ID) {
-      if (typeof customAmount === "number" && isValidAmount(mode, customAmount)) {
-        return customAmount;
-      }
-      return null;
-    }
-    if (tierId) {
-      const found = SPONSORSHIP_TIERS[mode].find((t) => t.id === tierId);
-      return found ? found.amount : null;
-    }
-    return null;
-  }, [mode, tierId, customAmount]);
-
-  function reset() {
-    setMode(null);
-    setTierId(null);
-    setCustomAmount("");
-    setDuration({ optionId: "d_indef", months: null });
-    setSchedule(null);
-    setCause(DEFAULT_CAUSE);
-    setVisibility(DEFAULT_VISIBILITY);
-    setStep(1);
-    setError(null);
-    setSuccess(false);
-  }
-
-  // ── Transitions ───────────────────────────────────────────────────────
-  function pickMode(next: PaymentMode) {
-    setError(null);
-    setSuccess(false);
-    setMode(next);
-    setTierId(null);
-    setCustomAmount("");
-    // Reset downstream state.
-    setDuration({ optionId: "d_indef", months: null });
-    setSchedule(next === "monthly" ? null : null);
-    setStep(2);
-  }
-
-  function selectTier(id: string) {
-    setError(null);
-    setSuccess(false);
-    setTierId(id);
-    if (id !== OTHER_TIER_ID) setCustomAmount("");
-  }
-
-  function confirmAmount() {
-    if (mode === "one_time") {
-      // One-time skips duration + schedule, jumps straight to cause picker.
-      setStep(5);
-    } else {
-      setStep(3);
-    }
-  }
-
-  function confirmDuration() {
-    if (duration.months === null) {
-      // Indefinite → schedule is implicitly "monthly", skip step 4.
-      setSchedule("monthly");
-      setStep(5);
-    } else {
-      setStep(4);
-    }
-  }
-
-  function confirmSchedule() {
-    setStep(5);
-  }
-
-  function confirmCause() {
-    setStep(6);
-  }
-
-  function confirmVisibility() {
-    setStep(7);
-  }
-
-  // Edit selections from review screen → restart at step 1 but preserve
-  // the existing values so the donor can quickly pivot.
-  function editSelections() {
-    setStep(1);
-    setError(null);
-    setSuccess(false);
-  }
-
-  // ── Add to cart ───────────────────────────────────────────────────────
-  async function addToCart() {
-    if (!mode || amount === null) return;
-    setError(null);
-    setSuccess(false);
-    startTransition(async () => {
-      try {
-        const body =
-          mode === "one_time"
-            ? {
-                childId: child.id,
-                paymentMode: mode,
-                amountUsd: amount,
-                durationMonths: null,
-                paymentSchedule: null,
-                cause,
-                visibility,
-              }
-            : {
-                childId: child.id,
-                paymentMode: mode,
-                amountUsd: amount,
-                durationMonths: duration.months,
-                paymentSchedule:
-                  duration.months === null ? "monthly" : schedule,
-                cause,
-                visibility,
-              };
-        const res = await fetch("/api/cart/add", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          cart?: { items?: unknown[] };
-          error?: string;
-        };
-        if (!res.ok) {
-          setError(json.error ?? "Could not add to cart.");
-          return;
-        }
-        setSuccess(true);
-        setCartItemCount(
-          Array.isArray(json.cart?.items)
-            ? json.cart.items.length
-            : cartItemCount + 1,
-        );
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("og:cart-changed"));
-        }
-      } catch {
-        setError("Network error. Please try again.");
-      }
-    });
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────
   return (
-    <section className="px-6 pt-8 pb-24 max-md:pt-6 max-md:pb-16">
-      <div className="max-w-[1100px] mx-auto grid grid-cols-[1fr_1.4fr] gap-12 items-start max-lg:grid-cols-1 max-lg:gap-8">
-        {/* Left: child summary */}
-        <aside>
-          <div className="relative aspect-[4/5] rounded-[28px] overflow-hidden shadow-card">
-            {photoSrc ? (
-              <ProtectedChildImage
-                src={photoSrc}
-                alt={child.display_name}
-                width={600}
-                height={750}
-                quality={85}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="child-photo-placeholder" aria-hidden="true" />
-            )}
-          </div>
-          <h1 className="mt-6 font-display text-[32px] text-ink leading-tight tracking-[-0.02em]">
-            Sponsor {child.display_name.split(" ")[0]}
-          </h1>
-          <div className="mt-1 font-mono text-[11px] tracking-[0.12em] uppercase text-slate-soft">
-            {child.district ? child.district : null}
-            {child.district && child.age !== null ? " · " : null}
-            {child.age !== null ? `Age ${child.age}` : null}
-          </div>
-          {subhead ? (
-            <p className="mt-5 font-display italic text-[17px] text-slate leading-snug">
-              &ldquo;{subhead}&rdquo;
+    <main className="bg-bg-canvas">
+      <div className="mx-auto max-w-3xl px-5 md:px-8 py-8 md:py-12">
+        <div className="mb-7 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-tangerine-mist px-3 py-1 text-[12px] font-medium uppercase tracking-[0.14em] text-tangerine-deeper">
+              <Heart className="h-3.5 w-3.5" /> Monthly sponsorship
             </p>
-          ) : null}
-          <Link
-            href={`/children/${child.id}`}
-            className="mt-5 inline-flex items-center gap-2 text-[13px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5"
-          >
-            ← Back to {child.display_name.split(" ")[0]}&apos;s profile
-          </Link>
-        </aside>
-
-        {/* Right: stepped flow */}
-        <div>
-          {donorState === "pending_approval" ? (
-            <div className="rounded-[18px] bg-[#FEF6EC] border border-tangerine-soft border-l-[4px] border-l-tangerine px-5 py-4 mb-6">
-              <div className="font-display text-[17px] text-ink font-medium">
-                You can build your cart now.
-              </div>
-              <p className="mt-1.5 text-[13.5px] text-slate leading-[1.6]">
-                You&apos;ll be able to complete checkout once your account is
-                approved (usually 1–2 business days).
+            <h1 className="font-serif text-3xl md:text-4xl text-ink leading-tight">
+              Sponsor {child.display_name}
+            </h1>
+            {child.age != null || child.district ? (
+              <p className="mt-2 text-[14.5px] text-slate">
+                {child.age != null ? `${child.age} years old` : ""}
+                {child.age != null && child.district ? " · " : ""}
+                {child.district ?? ""}
               </p>
-            </div>
-          ) : null}
-          {!signedIn ? (
-            <p className="text-[13.5px] text-slate-soft mb-5">
-              You&apos;ll sign in at checkout — no account needed yet.
-            </p>
-          ) : null}
-
-          {/* Step 1: mode */}
-          {step === 1 ? (
-            <div className="mb-7">
-              <StepHeader n={1} title="How would you like to give?" />
-              {selfActiveMonthly ? (
-                <SelfActiveMonthlyNote
-                  childFirstName={child.display_name.split(" ")[0]!}
-                  sponsorshipId={selfActiveMonthly.sponsorshipId}
-                  scheduledEndDate={selfActiveMonthly.scheduledEndDate}
-                />
-              ) : monthlyLocked ? (
-                <QueueFullNote
-                  childFirstName={child.display_name.split(" ")[0]!}
-                  queueFullThrough={queueFullThrough}
-                />
-              ) : queueJoin ? (
-                <QueueJoinNote
-                  childFirstName={child.display_name.split(" ")[0]!}
-                  activeEndDate={queueJoin.activeEndDate}
-                  estimatedStartsAt={queueJoin.estimatedStartsAt}
-                  donorsAhead={queueJoin.donorsAhead}
-                />
-              ) : null}
-              <ModeSelector
-                value={mode}
-                onChange={pickMode}
-                monthlyLocked={monthlyLocked}
-                monthlyQueueJoin={
-                  queueJoin
-                    ? {
-                        position: queueJoin.position,
-                        donorsAhead: queueJoin.donorsAhead,
-                      }
-                    : null
-                }
-              />
-            </div>
-          ) : null}
-
-          {/* Step 2: amount */}
-          {step === 2 && mode ? (
-            <div className="mb-7">
-              <StepHeader n={2} title="Choose an amount" />
-              <BackLink onClick={() => setStep(1)} label="Back to give type" />
-              <TierGrid
-                mode={mode}
-                selectedTierId={tierId === OTHER_TIER_ID ? null : tierId}
-                onSelect={selectTier}
-              />
-              <details
-                open={tierId === OTHER_TIER_ID}
-                className="mt-4 rounded-[14px] bg-white border border-ink/[0.08] px-4 py-3"
-              >
-                <summary
-                  className="cursor-pointer text-[13px] text-tangerine-deeper font-medium select-none"
-                  onClick={() => selectTier(OTHER_TIER_ID)}
-                >
-                  Or choose another amount →
-                </summary>
-                <div className="mt-3">
-                  <AmountInput
-                    mode={mode}
-                    value={customAmount}
-                    onChange={(v) => {
-                      setCustomAmount(v);
-                      setTierId(OTHER_TIER_ID);
-                      setSuccess(false);
-                    }}
-                  />
-                </div>
-              </details>
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmAmount}
-                  disabled={amount === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Step 3: duration (monthly only) */}
-          {step === 3 && mode === "monthly" ? (
-            <div className="mb-7">
-              <StepHeader n={3} title="How long?" />
-              <BackLink onClick={() => setStep(2)} label="Back to amount" />
-              <DurationPicker value={duration} onChange={setDuration} />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmDuration}
-                  disabled={!isDurationSelectionValid(duration)}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Step 4: payment schedule (fixed-term monthly only) */}
-          {step === 4 &&
-          mode === "monthly" &&
-          duration.months !== null &&
-          amount !== null ? (
-            <div className="mb-7">
-              <StepHeader n={4} title="How would you like to pay?" />
-              <BackLink onClick={() => setStep(3)} label="Back to duration" />
-              <PaymentSchedulePicker
-                amountUsd={amount}
-                durationMonths={duration.months}
-                value={schedule}
-                onChange={setSchedule}
-              />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmSchedule}
-                  disabled={schedule === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Step 5: cause picker (always shown). Back-link target depends
-              on the previous active step — fixed-term → schedule (4),
-              indefinite monthly → duration (3), one-time → amount (2). */}
-          {step === 5 && mode && amount !== null ? (
-            <div className="mb-7">
-              <StepHeader
-                n={5}
-                title="What would you like this to support?"
-              />
-              <BackLink
-                onClick={() => {
-                  if (mode === "one_time") setStep(2);
-                  else if (duration.months === null) setStep(3);
-                  else setStep(4);
-                }}
-                label="Back"
-              />
-              <CausePicker value={cause} onChange={setCause} />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmCause}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Step 6: visibility (named / anonymous). Always renders for
-              every mode — Islamic hidden-charity preference applies
-              equally to one-time and monthly. Default state is
-              'anonymous'. */}
-          {step === 6 && mode && amount !== null ? (
-            <div className="mb-7">
-              <StepHeader
-                n={6}
-                title="Should your name appear publicly?"
-              />
-              <BackLink onClick={() => setStep(5)} label="Back to cause" />
-              <VisibilityPicker
-                value={visibility}
-                onChange={setVisibility}
-                donorFirstName={donorFirstName}
-              />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmVisibility}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Step 7: review */}
-          {step === 7 && mode && amount !== null ? (
-            <div className="mb-5">
-              <StepHeader n={7} title="Review" />
-              <SponsorReviewCard
-                paymentMode={mode}
-                amountUsd={amount}
-                durationMonths={mode === "monthly" ? duration.months : null}
-                paymentSchedule={
-                  mode === "monthly"
-                    ? duration.months === null
-                      ? "monthly"
-                      : schedule
-                    : null
-                }
-                cause={cause}
-                visibility={visibility}
-                donorFirstName={donorFirstName}
-                queueJoin={
-                  // Queue-join framing only applies when this is a
-                  // monthly join. One-time gifts are unaffected by
-                  // the lock; surfacing a queue position there would
-                  // be confusing.
-                  mode === "monthly" && queueJoin
-                    ? {
-                        position: queueJoin.position,
-                        estimatedStartsAt: queueJoin.estimatedStartsAt,
-                      }
-                    : null
-                }
-                onEdit={editSelections}
-                onAddToCart={addToCart}
-                pending={pending}
-                error={error}
-                ctaLabel={isEditing ? "Save changes" : "Add to cart"}
-              />
-            </div>
-          ) : null}
-
-          {success ? (
-            <div className="rounded-xl bg-moss-soft/60 border border-moss/30 px-5 py-4 flex flex-wrap items-center justify-between gap-3 mb-5">
-              <span className="text-[14px] text-ink">
-                {isEditing ? "✓ Cart updated." : "✓ Added to your cart."}
-              </span>
-              <div className="flex items-center gap-3 text-[13px]">
-                <button
-                  type="button"
-                  onClick={() => router.push("/cart")}
-                  className="text-tangerine-deep font-medium border-b border-tangerine pb-0.5 hover:opacity-80"
-                >
-                  Go to cart →
-                </button>
-                {!isEditing ? (
-                  <button
-                    type="button"
-                    onClick={reset}
-                    className="text-slate hover:text-ink"
-                  >
-                    Add another configuration
-                  </button>
-                ) : null}
-                <Link href="/children" className="text-slate hover:text-ink">
-                  Browse more children
-                </Link>
-              </div>
-            </div>
-          ) : null}
-
-          {cartItemCount > 0 && !success ? (
-            <Link
-              href="/cart"
-              className="inline-flex items-center gap-2 text-[13px] text-slate hover:text-tangerine-deeper transition-colors"
-            >
-              View cart ({cartItemCount}{" "}
-              {cartItemCount === 1 ? "item" : "items"}) →
-            </Link>
-          ) : null}
+            ) : null}
+          </div>
+          <div className="shrink-0 pt-2">
+            <CurrencyPicker
+              current={{
+                code: rate.currency_code,
+                symbol: rate.symbol,
+                display_name: rate.display_name,
+              }}
+              options={currencyOptions}
+              fromPath={`/sponsor/${child.id}`}
+            />
+          </div>
         </div>
+
+        {child.photo ? (
+          <div className="mb-7 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200">
+            <div className="relative aspect-[16/9] w-full bg-stone-100">
+              <Image
+                src={child.photo}
+                alt={child.display_name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 720px"
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {selfActiveMonthly ? (
+          <SelfSponsoredCard
+            sponsorshipId={selfActiveMonthly.sponsorshipId}
+            scheduledEndDate={selfActiveMonthly.scheduledEndDate}
+            childName={child.display_name}
+          />
+        ) : isAlreadySponsoredByOther ? (
+          <AlreadySponsoredCard
+            childName={child.display_name}
+            comeBackAfter={queueFullThrough ?? queueJoin?.activeEndDate ?? null}
+          />
+        ) : (
+          <SponsorChildClient
+            childId={child.id}
+            childName={child.display_name}
+            packages={clientPackages}
+            donor_currency={{ code: rate.currency_code, symbol: rate.symbol }}
+            customAmountFloor={customAmountFloor}
+            customAmountBdtFloor={monthlyFloorBdt}
+            bdt_per_donor_unit={rate.bdt_per_unit}
+          />
+        )}
+
+        <p className="mt-8 text-center text-[13px] text-ink-soft">
+          <Link
+            href="/children"
+            className="hover:text-tangerine-deeper underline-offset-2 hover:underline"
+          >
+            <ArrowLeft className="inline h-3.5 w-3.5 mr-1" />
+            Browse more children
+          </Link>
+        </p>
       </div>
-    </section>
+    </main>
   );
 }
 
-function StepHeader({ n, title }: { n: number; title: string }) {
-  return (
-    <h2 className="font-display text-[20px] text-ink mb-3">
-      <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-tangerine-deep mr-2">
-        Step {n}
-      </span>
-      {title}
-    </h2>
-  );
-}
-
-// Banner shown at step 1 when the viewing donor would be JOINING THE
-// QUEUE (Session 14.7). Active sponsor exists, queue isn't full, and
-// the viewing donor is not the active sponsor. Tone: forward-looking
-// — sets the expectation that the donor's support starts later and
-// the upfront payment is real money committed today.
-function QueueJoinNote({
-  childFirstName,
-  activeEndDate,
-  estimatedStartsAt,
-  donorsAhead,
-}: {
-  childFirstName: string;
-  activeEndDate: string | null;
-  estimatedStartsAt: string | null;
-  donorsAhead: number;
-}) {
-  const activeEndStr = formatDate(activeEndDate);
-  const startStr = formatDate(estimatedStartsAt);
-  return (
-    <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3.5">
-      <p className="text-[13.5px] text-ink leading-[1.6]">
-        <span className="font-display font-medium">{childFirstName}</span>{" "}
-        currently has a monthly sponsor
-        {activeEndStr ? ` through ${activeEndStr}` : ""}. You can pay
-        upfront now to claim a future slot — your sponsorship will begin
-        {startStr ? ` around ${startStr}` : " when the current sub ends"}.
-      </p>
-      <p className="mt-1.5 text-[12.5px] text-slate-soft italic leading-snug">
-        Donors ahead of you: {donorsAhead}. You can also send a
-        one-time gift to support {childFirstName} today.
-      </p>
-    </div>
-  );
-}
-
-// Banner shown at step 1 when the queue is FULL (3 donors already
-// queued). Monthly tile is locked; donor can still send a one-time
-// gift. Phrasing nudges them to come back later.
-function QueueFullNote({
-  childFirstName,
-  queueFullThrough,
-}: {
-  childFirstName: string;
-  queueFullThrough: string | null;
-}) {
-  const throughStr = formatDate(queueFullThrough);
-  return (
-    <div className="mb-4 rounded-[14px] bg-moss-soft/40 border border-moss/30 px-4 py-3">
-      <p className="text-[13.5px] text-ink leading-[1.6]">
-        <span className="font-display font-medium">{childFirstName}</span>
-        &rsquo;s sponsor queue is full
-        {throughStr ? ` through ${throughStr}` : ""}.
-        {throughStr ? ` Check back after ${throughStr}.` : ""} You can
-        still send a one-time gift today.
-      </p>
-    </div>
-  );
-}
-
-// Friendly informational note shown at step 1 when the viewing donor
-// is ALREADY the active monthly sponsor of this child. Distinct from
-// the moss "locked by another donor" pill: this wants to feel like a
-// guided handoff to /dashboard/sponsorship/[id], while still letting
-// the donor add an additional one-time gift on top.
-function SelfActiveMonthlyNote({
-  childFirstName,
+function SelfSponsoredCard({
   sponsorshipId,
   scheduledEndDate,
+  childName,
 }: {
-  childFirstName: string;
   sponsorshipId: string;
   scheduledEndDate: string | null;
+  childName: string;
 }) {
-  // Format the end date readably; null (indefinite sub) → omit the
-  // "through [date]" clause entirely so the copy stays grammatical.
-  let throughClause = "";
-  if (scheduledEndDate) {
-    const d = new Date(scheduledEndDate);
-    if (!Number.isNaN(d.getTime())) {
-      throughClause = ` through ${d.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })}`;
-    }
-  }
   return (
-    <div className="mb-4 rounded-[14px] bg-tangerine-mist/60 border border-tangerine-soft px-4 py-3.5">
-      <p className="text-[13.5px] text-ink leading-[1.6]">
-        You&rsquo;re already sponsoring{" "}
-        <span className="font-display font-medium">{childFirstName}</span>{" "}
-        monthly{throughClause}. You can extend or modify your sponsorship
-        from your dashboard, or send an additional one-time gift below.
+    <div className="rounded-3xl bg-moss-soft/40 p-6 md:p-7 ring-1 ring-moss-soft">
+      <p className="font-serif text-xl text-moss-deep mb-2">
+        You're already sponsoring {childName}
+      </p>
+      <p className="text-[14.5px] text-ink-soft mb-4">
+        Thank you. Your active sponsorship continues to support {childName}.
+        {scheduledEndDate
+          ? ` Your fixed term runs through ${new Date(scheduledEndDate).toLocaleDateString("en-US", { dateStyle: "long" })}.`
+          : ""}
       </p>
       <Link
         href={`/dashboard/sponsorship/${sponsorshipId}`}
-        className="mt-2 inline-flex items-center gap-1 text-[13px] text-tangerine-deeper font-medium border-b-[1.5px] border-tangerine pb-0.5 hover:opacity-80"
+        className="inline-flex items-center rounded-full bg-moss-deep px-5 py-2.5 text-[14px] font-semibold text-white hover:opacity-90"
       >
-        Manage your monthly sponsorship →
+        View this sponsorship
       </Link>
     </div>
   );
 }
 
-function BackLink({ onClick, label }: { onClick: () => void; label: string }) {
+function AlreadySponsoredCard({
+  childName,
+  comeBackAfter,
+}: {
+  childName: string;
+  comeBackAfter: string | null;
+}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors mb-3"
-    >
-      ← {label}
-    </button>
+    <div className="rounded-3xl bg-white p-6 md:p-7 ring-1 ring-stone-200 shadow-sm">
+      <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-tangerine-mist">
+        <Lock className="h-5 w-5 text-tangerine-deep" />
+      </div>
+      <p className="font-serif text-xl text-ink mb-2">
+        {childName} already has a sponsor
+      </p>
+      <p className="text-[14.5px] text-slate leading-relaxed mb-4">
+        Each child has one active monthly sponsor at a time so support stays
+        personal.{" "}
+        {comeBackAfter
+          ? `This sponsorship runs through ${new Date(comeBackAfter).toLocaleDateString("en-US", { dateStyle: "long" })} — feel free to come back then.`
+          : "Please check back later, or browse other children who are waiting for a sponsor."}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/children"
+          className="inline-flex items-center rounded-full bg-orange-solid px-5 py-2.5 text-[14px] font-semibold text-white hover:bg-tangerine-deep"
+        >
+          Browse children waiting
+        </Link>
+        <Link
+          href="/donate"
+          className="inline-flex items-center rounded-full bg-white px-5 py-2.5 text-[14px] font-medium text-ink ring-1 ring-stone-200 hover:ring-tangerine"
+        >
+          Give to a cause instead
+        </Link>
+      </div>
+    </div>
   );
 }
