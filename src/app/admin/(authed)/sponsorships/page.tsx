@@ -27,6 +27,7 @@ import {
 import {
   listAdminSponsorships,
   type AdminSponsorshipSummary,
+  type SponsorshipListTypeFilter,
 } from "@/lib/admin-sponsorships";
 import type { SponsorshipStatus } from "@/lib/sponsorship-data";
 
@@ -43,6 +44,20 @@ const TABS: ReadonlyArray<{
   { value: "completed", label: "Ended" },
 ];
 
+// Session 61.5 hotfix — type filter chips parallel to the status
+// row. Distinct dimension (payment_mode vs status), so kept as a
+// second row of chips rather than collapsing into the existing
+// status set.
+const TYPE_TABS: ReadonlyArray<{
+  value: SponsorshipListTypeFilter;
+  label: string;
+}> = [
+  { value: "all", label: "All types" },
+  { value: "one_time", label: "One-time" },
+  { value: "monthly", label: "Monthly" },
+  { value: "prepaid", label: "Prepaid" },
+];
+
 function parseStatus(s: string | undefined): SponsorshipStatus | "all" {
   if (
     s === "all" ||
@@ -56,6 +71,13 @@ function parseStatus(s: string | undefined): SponsorshipStatus | "all" {
     return s;
   }
   return "active";
+}
+
+function parseType(s: string | undefined): SponsorshipListTypeFilter {
+  if (s === "one_time" || s === "monthly" || s === "prepaid" || s === "all") {
+    return s;
+  }
+  return "all";
 }
 
 function parsePage(s: string | undefined): number {
@@ -105,11 +127,15 @@ function formatMoney(
 
 function buildHref(opts: {
   status: SponsorshipStatus | "all";
+  type: SponsorshipListTypeFilter;
   q: string | null;
   page: number;
 }): string {
   const params = new URLSearchParams();
   params.set("filter", opts.status);
+  // Session 61.5 hotfix — type filter param. Omitted when "all" so
+  // the bare URL stays clean for the default view.
+  if (opts.type !== "all") params.set("type", opts.type);
   if (opts.q) params.set("q", opts.q);
   if (opts.page > 1) params.set("page", String(opts.page));
   const qs = params.toString();
@@ -121,18 +147,21 @@ export default async function AdminSponsorshipsListPage({
 }: {
   searchParams: Promise<{
     filter?: string;
+    type?: string;
     q?: string;
     page?: string;
   }>;
 }) {
   const sp = await searchParams;
   const activeStatus = parseStatus(sp.filter);
+  const activeType = parseType(sp.type);
   const activeQuery = sp.q?.trim() || null;
   const activePage = parsePage(sp.page);
 
   const { rows, total, page, pageSize, totalPages } =
     await listAdminSponsorships({
       status: activeStatus,
+      type: activeType,
       search: activeQuery,
       page: activePage,
       pageSize: 50,
@@ -166,6 +195,7 @@ export default async function AdminSponsorshipsListPage({
               key={tab.value}
               href={buildHref({
                 status: tab.value,
+                type: activeType,
                 q: activeQuery,
                 page: 1,
               })}
@@ -182,12 +212,51 @@ export default async function AdminSponsorshipsListPage({
         })}
       </nav>
 
+      {/* Session 61.5 hotfix — type filter row. Distinct dimension
+          from status (payment_mode vs lifecycle state), so kept as
+          a second row. Slightly softer styling (mist bg vs solid
+          tangerine when active) so the eye reads status as the
+          primary filter. */}
+      <nav
+        className="mb-3 flex flex-wrap gap-2"
+        aria-label="Sponsorship type filter"
+      >
+        {TYPE_TABS.map((tab) => {
+          const isActive = activeType === tab.value;
+          return (
+            <Link
+              key={tab.value}
+              href={buildHref({
+                status: activeStatus,
+                type: tab.value,
+                q: activeQuery,
+                page: 1,
+              })}
+              aria-current={isActive ? "page" : undefined}
+              className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium transition-colors ${
+                isActive
+                  ? "bg-tangerine-mist text-tangerine-deeper border border-tangerine-soft"
+                  : "bg-white border border-stone-200 text-ink-soft hover:border-tangerine-soft hover:text-tangerine-deeper"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
+
       {/* Search form */}
       <form
         method="get"
         className="mb-5 flex items-center gap-2 text-[13px]"
       >
         <input type="hidden" name="filter" value={activeStatus} />
+        {/* Session 61.5 hotfix — preserve the active type filter
+            across search submits. Omitted from the form when "all"
+            so the URL stays clean for the default view. */}
+        {activeType !== "all" ? (
+          <input type="hidden" name="type" value={activeType} />
+        ) : null}
         <div className="relative flex-1 max-w-md">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-soft pointer-events-none"
@@ -209,7 +278,12 @@ export default async function AdminSponsorshipsListPage({
         </button>
         {activeQuery ? (
           <Link
-            href={buildHref({ status: activeStatus, q: null, page: 1 })}
+            href={buildHref({
+              status: activeStatus,
+              type: activeType,
+              q: null,
+              page: 1,
+            })}
             className="text-[12px] text-ink-soft hover:text-tangerine-deeper underline-offset-2 hover:underline"
           >
             Clear
@@ -239,6 +313,7 @@ export default async function AdminSponsorshipsListPage({
                 <Link
                   href={buildHref({
                     status: activeStatus,
+                    type: activeType,
                     q: activeQuery,
                     page: Math.max(1, page - 1),
                   })}
@@ -258,6 +333,7 @@ export default async function AdminSponsorshipsListPage({
                 <Link
                   href={buildHref({
                     status: activeStatus,
+                    type: activeType,
                     q: activeQuery,
                     page: Math.min(totalPages, page + 1),
                   })}
@@ -300,6 +376,12 @@ function SponsorshipRow({ s }: { s: AdminSponsorshipSummary }) {
                 {s.child_label}
               </p>
               <StatusPill status={s.status} />
+              {/* Session 61.5 hotfix — type pill alongside status so
+                  admin can see at a glance whether this row is
+                  one-time / monthly / prepaid without parsing the
+                  meta line below. Uses payment_label which already
+                  encodes the "Prepaid (N mo left)" detail. */}
+              <TypePill label={s.payment_label} />
               {isQueued ? (
                 <span
                   className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-sky/30 text-sky-deep"
@@ -370,6 +452,22 @@ function ChildThumb({ photoUuid }: { photoUuid: string | null }) {
       height={44}
       className="shrink-0 w-11 h-11 rounded-xl object-cover bg-stone-100"
     />
+  );
+}
+
+// Session 61.5 hotfix — small neutral pill for payment type. Uses
+// the resolved `payment_label` from admin-sponsorships (already
+// encodes the "Prepaid (N mo left)" + "Monthly" + "One-time"
+// vocabulary) so the row's existing label string drives it. Soft
+// styling so it reads as secondary to StatusPill.
+function TypePill({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-stone-100 text-stone-700"
+      title={`Payment type: ${label}`}
+    >
+      {label}
+    </span>
   );
 }
 
