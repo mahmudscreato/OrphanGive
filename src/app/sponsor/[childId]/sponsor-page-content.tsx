@@ -7,15 +7,16 @@
 //
 // Access gates preserved from the legacy flow:
 //   selfActiveMonthly → viewer is the active sponsor; link to dashboard
-//   monthlyLocked     → child has an active sponsor (any donor),
-//                       queue feature deferred to 58.3 so we render
-//                       the "already sponsored" message instead of
-//                       offering a queue-join slot
-//   queueJoin         → same treatment as monthlyLocked for v1 — the
-//                       new endpoint doesn't yet honor trial_end +
-//                       queued_starts_at. Filed for 58.3. The donor
-//                       sees "already sponsored, come back later"
-//                       rather than a broken queue-join button.
+//   monthlyLocked     → child has an active sponsor AND queue is full
+//                       (3 donors already queued); show "come back
+//                       after [date]" message, no checkout offered
+//   queueJoin         → child has an active sponsor but a queue slot
+//                       is available. Donor sees the package picker
+//                       with a banner: "Sponsorship in progress —
+//                       you'll start on [date], position N in the
+//                       queue". /api/donate/init creates the
+//                       Subscription with trial_end pinned to
+//                       queued_starts_at (Task 1 of overnight build).
 //
 // Otherwise the picker renders monthly packages (open-ended + prepaid
 // bundles mixed, sorted by display_order), donor picks one, optionally
@@ -79,8 +80,14 @@ export async function SponsorPageContent({
   queueJoin,
   queueFullThrough,
 }: Props) {
-  const isAlreadySponsoredByOther = Boolean(monthlyLocked || queueJoin);
-  const canSponsor = !selfActiveMonthly && !isAlreadySponsoredByOther;
+  // Three gating states (in priority order):
+  //   selfActiveMonthly   → "you're sponsoring" card
+  //   monthlyLocked       → queue full; show come-back-after card
+  //   queueJoin           → packages render with a queue banner
+  //   none                → packages render normally
+  const isQueueFull = monthlyLocked;
+  const isQueueJoinable = Boolean(queueJoin) && !monthlyLocked;
+  const canSponsor = !selfActiveMonthly && !isQueueFull;
 
   const [packages, currencies, rate] = await Promise.all([
     canSponsor
@@ -174,21 +181,30 @@ export async function SponsorPageContent({
             scheduledEndDate={selfActiveMonthly.scheduledEndDate}
             childName={child.display_name}
           />
-        ) : isAlreadySponsoredByOther ? (
+        ) : isQueueFull ? (
           <AlreadySponsoredCard
             childName={child.display_name}
-            comeBackAfter={queueFullThrough ?? queueJoin?.activeEndDate ?? null}
+            comeBackAfter={queueFullThrough}
           />
         ) : (
-          <SponsorChildClient
-            childId={child.id}
-            childName={child.display_name}
-            packages={clientPackages}
-            donor_currency={{ code: rate.currency_code, symbol: rate.symbol }}
-            customAmountFloor={customAmountFloor}
-            customAmountBdtFloor={monthlyFloorBdt}
-            bdt_per_donor_unit={rate.bdt_per_unit}
-          />
+          <>
+            {isQueueJoinable && queueJoin ? (
+              <QueueJoinBanner
+                position={queueJoin.position}
+                estimatedStartsAt={queueJoin.estimatedStartsAt}
+                childName={child.display_name}
+              />
+            ) : null}
+            <SponsorChildClient
+              childId={child.id}
+              childName={child.display_name}
+              packages={clientPackages}
+              donor_currency={{ code: rate.currency_code, symbol: rate.symbol }}
+              customAmountFloor={customAmountFloor}
+              customAmountBdtFloor={monthlyFloorBdt}
+              bdt_per_donor_unit={rate.bdt_per_unit}
+            />
+          </>
         )}
 
         <p className="mt-8 text-center text-[13px] text-ink-soft">
@@ -271,6 +287,54 @@ function AlreadySponsoredCard({
           Give to a cause instead
         </Link>
       </div>
+    </div>
+  );
+}
+
+// Session 58.2-overnight Task 1 — queue-join banner shown above the
+// picker when the child has an active sponsor but a queue slot is
+// available. /api/donate/init creates the Subscription with trial_end
+// pinned to queued_starts_at so the donor's card is captured today
+// and the first invoice fires when the slot opens.
+function QueueJoinBanner({
+  position,
+  estimatedStartsAt,
+  childName,
+}: {
+  position: number;
+  estimatedStartsAt: string | null;
+  childName: string;
+}) {
+  const startCopy = estimatedStartsAt
+    ? new Date(estimatedStartsAt).toLocaleDateString("en-US", {
+        dateStyle: "long",
+      })
+    : null;
+  return (
+    <div className="mb-5 rounded-3xl bg-sky/15 p-5 md:p-6 ring-1 ring-sky/40">
+      <p className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-sky-deep font-medium mb-1.5">
+        Sponsorship in progress
+      </p>
+      <p className="font-serif text-lg text-ink mb-2 leading-snug">
+        {childName} is currently sponsored by another donor.
+      </p>
+      <p className="text-[13.5px] text-slate leading-relaxed">
+        You can pick up where they leave off. We'll save your card today
+        and start your sponsorship{" "}
+        {startCopy ? (
+          <>
+            on <span className="font-medium text-ink">{startCopy}</span>
+          </>
+        ) : (
+          "when the current term ends"
+        )}
+        {position > 1 ? (
+          <>
+            {" "}— you're <span className="font-medium text-ink">number {position}</span> in line.
+          </>
+        ) : null}{" "}
+        Your card isn't charged until then.
+      </p>
     </div>
   );
 }

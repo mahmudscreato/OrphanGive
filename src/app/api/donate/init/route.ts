@@ -45,6 +45,7 @@ import {
   validateCustomAmount,
   type SponsorshipRowDraft,
 } from "@/lib/donation-checkout";
+import { computeNextQueueSlot, QUEUE_DEPTH_LIMIT } from "@/lib/queue";
 
 export const runtime = "nodejs";
 
@@ -124,6 +125,13 @@ async function writePendingSponsorship(
     stripe_subscription_id?: string | null;
     stripe_payment_intent_id?: string | null;
     stripe_customer_id?: string | null;
+    // Queue fields (Session 58.2-overnight Task 1). Set when the row
+    // is being created in a queued slot (position 1..3). Null/absent
+    // means active-from-the-start, the unqueued default.
+    queue_position?: number | null;
+    queue_status?: string | null;
+    queued_starts_at?: string | null;
+    queued_ends_at?: string | null;
   },
 ): Promise<string> {
   const payload: Record<string, unknown> = {
@@ -145,6 +153,11 @@ async function writePendingSponsorship(
     donor_currency_code: draft.donor_currency_code ?? null,
     donor_currency_amount: draft.donor_currency_amount ?? null,
     bdt_per_unit_at_checkout: draft.bdt_per_unit_at_checkout ?? null,
+    // Queue columns (only populated when joining a queued slot):
+    queue_position: draft.queue_position ?? null,
+    queue_status: draft.queue_status ?? null,
+    queued_starts_at: draft.queued_starts_at ?? null,
+    queued_ends_at: draft.queued_ends_at ?? null,
   };
   const created = (await directusServer().request(
     createItem("sponsorship" as never, payload as never),
@@ -259,6 +272,61 @@ export async function POST(req: NextRequest) {
 
   const childIdNormalized: string | null = body.childId || null;
 
+  // ── Queue race-guard (Session 58.2-overnight Task 1) ────────────────
+  // Subscription mode (open-ended monthly) is the only path that
+  // queues. One-time + prepaid-bundle either don't have a queue
+  // concept (one-time) or are single-charge upfront (prepaid).
+  //
+  // Mirrors the pattern in /api/checkout/init/route.ts (~line 543):
+  //   position = 0   → no active sponsor; this donor goes active
+  //   position 1..3  → queued (sub created with trial_end pinned to
+  //                     queued_starts_at; Stripe holds in 'trialing'
+  //                     until the slot opens, then fires the first
+  //                     invoice; SetupIntent captures the card today)
+  //   position > 3   → queue is full; 409 conflict, donor is asked
+  //                     to choose another child or give one-time
+  //
+  // The /sponsor page renders queue UI off a SNAPSHOT of queue
+  // depth — two donors racing through can fill the slot between
+  // page render and checkout. Re-check here as the canonical gate.
+  type QueueSlot = {
+    position: number;
+    startsAt: Date | null;
+    endsAt: Date | null;
+  };
+  let queueSlot: QueueSlot | null = null;
+  const isOpenEndedSubscription =
+    pkg !== null &&
+    pkg.package_type === "monthly" &&
+    pkg.duration_months === null;
+  const isCustomMonthly =
+    pkg === null && body.customPackageType === "monthly";
+  const needsQueueCheck =
+    (isOpenEndedSubscription || isCustomMonthly) && childIdNormalized;
+
+  if (needsQueueCheck) {
+    const slot = await computeNextQueueSlot(childIdNormalized);
+    if (slot.position > QUEUE_DEPTH_LIMIT) {
+      return NextResponse.json(
+        {
+          error: "queue_full",
+          message:
+            "This child's sponsor queue filled while you were checking out. Please try another child, or send a one-time gift instead.",
+        },
+        { status: 409 },
+      );
+    }
+    // Open-ended subs leave endsAt null (the sub runs indefinitely).
+    // Fixed-term subs would compute endsAt = startsAt + duration —
+    // not relevant on this code path because the new model has no
+    // fixed-term-subscription type (prepaid-bundle is its replacement).
+    queueSlot = {
+      position: slot.position,
+      startsAt: slot.startsAt,
+      endsAt: null,
+    };
+  }
+
   // Compose the full donation payload (donor amount, Stripe amount,
   // metadata, sponsorship draft).
   const payload = buildDonationPayload({
@@ -282,18 +350,43 @@ export async function POST(req: NextRequest) {
   // Pre-write sponsorship row in pending_payment state so the
   // webhook has something to flip to active on success. Stripe refs
   // get attached in the second pass below.
+  //
+  // When queueSlot.position > 0, the row carries queue_position +
+  // queued_starts_at so promoteQueue() can find it later, and the
+  // status remains pending_payment until Stripe fires the invoice
+  // at trial_end. The existing queue-promotion cron flips it to
+  // active.
+  const isQueued = Boolean(queueSlot && queueSlot.position > 0);
   const sponsorshipId = await writePendingSponsorship({
     ...payload.sponsorshipRowDraft,
     stripe_customer_id: customerId,
+    ...(isQueued
+      ? {
+          queue_position: queueSlot!.position,
+          queue_status: "queued",
+          queued_starts_at: queueSlot!.startsAt
+            ? queueSlot!.startsAt.toISOString()
+            : null,
+          queued_ends_at: queueSlot!.endsAt
+            ? queueSlot!.endsAt.toISOString()
+            : null,
+        }
+      : {}),
   });
 
   // Mode dispatch.
   try {
     if (payload.mode === "subscription") {
-      // Open-ended monthly subscription, donor currency. We use
-      // price_data inline so we don't have to create a Product per
-      // donor — same pattern as the existing checkout/init monthly
-      // path but with the donor's currency instead of USD.
+      // Open-ended monthly subscription, donor currency.
+      //
+      // Queue handling (Task 1): when isQueued, pin trial_end to the
+      // donor's queued_starts_at — Stripe holds the sub in 'trialing'
+      // state with no charge until that date, then fires the first
+      // invoice. The donor still confirms a SetupIntent today to save
+      // their card; that's the clientSecret returned. When the queue
+      // slot opens, the existing promoteQueue cron flips the
+      // sponsorship row to active and Stripe's trial_end fires the
+      // invoice automatically.
       const product = await stripe.products.create({
         name: `Monthly sponsorship — ${donor.first_name ?? "Donor"}`,
         metadata: {
@@ -307,6 +400,12 @@ export async function POST(req: NextRequest) {
         currency: payload.stripeCurrency,
         recurring: { interval: "month" },
       });
+
+      const trialEndSec =
+        isQueued && queueSlot?.startsAt
+          ? Math.floor(queueSlot.startsAt.getTime() / 1000)
+          : undefined;
+
       const sub = await stripe.subscriptions.create({
         customer: customerId,
         items: [{ price: price.id }],
@@ -314,25 +413,56 @@ export async function POST(req: NextRequest) {
         payment_settings: {
           save_default_payment_method: "on_subscription",
         },
+        // For queued subs Stripe creates pending_setup_intent in lieu
+        // of latest_invoice; expand both so we can return whichever
+        // one the donor needs to confirm today.
         expand: [
           "latest_invoice.confirmation_secret",
           "latest_invoice.payment_intent",
+          "pending_setup_intent",
         ],
-        metadata: { ...payload.metadata, sponsorship_id: sponsorshipId },
+        ...(trialEndSec ? { trial_end: trialEndSec } : {}),
+        metadata: {
+          ...payload.metadata,
+          sponsorship_id: sponsorshipId,
+          ...(isQueued && queueSlot
+            ? { queue_position: String(queueSlot.position) }
+            : {}),
+        },
       });
 
       await attachStripeRefs(sponsorshipId, {
         stripe_subscription_id: sub.id,
       });
 
-      const inv = sub.latest_invoice as
-        | (Stripe_Invoice & {
-            confirmation_secret?: { client_secret?: string } | null;
-            payment_intent?: Stripe_PaymentIntent | string | null;
-          })
-        | string
-        | null;
-      const clientSecret = extractInvoiceClientSecret(inv);
+      // Pick the right client_secret:
+      //   - Unqueued: confirm the first invoice's PaymentIntent
+      //     (pi_…_secret_…)
+      //   - Queued (trialing): confirm the SetupIntent that Stripe
+      //     auto-generated (seti_…_secret_…). The /sponsor +
+      //     /donate clients already dispatch confirmCardSetup vs
+      //     confirmCardPayment by prefix.
+      let clientSecret: string | null = null;
+      if (isQueued) {
+        const psi = (sub as unknown as {
+          pending_setup_intent?:
+            | { client_secret?: string | null }
+            | string
+            | null;
+        }).pending_setup_intent;
+        if (psi && typeof psi !== "string") {
+          clientSecret = psi.client_secret ?? null;
+        }
+      } else {
+        const inv = sub.latest_invoice as
+          | (Stripe_Invoice & {
+              confirmation_secret?: { client_secret?: string } | null;
+              payment_intent?: Stripe_PaymentIntent | string | null;
+            })
+          | string
+          | null;
+        clientSecret = extractInvoiceClientSecret(inv);
+      }
       if (!clientSecret) {
         return bad(
           "Stripe subscription created but no client_secret returned",
@@ -348,6 +478,13 @@ export async function POST(req: NextRequest) {
         donorCurrency: rate.currency_code,
         donorAmount: payload.totalDonorAmount,
         amountBdtEquivalent: payload.totalBdt,
+        // Queue state surfaced to client so /donate/success can
+        // distinguish "you're sponsoring now" vs "you'll start on date".
+        queuePosition: isQueued && queueSlot ? queueSlot.position : 0,
+        queuedStartsAt:
+          isQueued && queueSlot?.startsAt
+            ? queueSlot.startsAt.toISOString()
+            : null,
       });
     }
 
