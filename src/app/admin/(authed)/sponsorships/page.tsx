@@ -90,8 +90,17 @@ function formatRelative(iso: string | null): string {
   return formatDate(iso);
 }
 
-function formatMoney(amount: number, currency: string): string {
-  return `${(amount ?? 0).toFixed(2)} ${currency || "USD"}`;
+// Session 61.1 hotfix — accept string|null|undefined alongside number
+// as defence in depth. The proper fix coerces at the boundary in
+// admin-sponsorships.ts (Postgres numeric(10,2) returns as string
+// over Directus REST), but this guard means a future caller passing
+// a raw Directus value can't blow this up again.
+function formatMoney(
+  amount: number | string | null | undefined,
+  currency: string,
+): string {
+  const n = typeof amount === "number" ? amount : Number(amount ?? 0);
+  return `${(Number.isFinite(n) ? n : 0).toFixed(2)} ${currency || "USD"}`;
 }
 
 function buildHref(opts: {

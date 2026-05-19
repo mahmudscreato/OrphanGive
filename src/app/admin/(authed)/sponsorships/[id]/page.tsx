@@ -62,8 +62,16 @@ function formatDate(iso: string | null): string {
   }).format(d);
 }
 
-function formatMoney(amount: number, currency: string): string {
-  return `${(amount ?? 0).toFixed(2)} ${currency || "USD"}`;
+// Session 61.1 hotfix — same defence-in-depth pattern as the list
+// page. See admin-sponsorships.ts for the proper boundary-coercion
+// fix; this guard keeps the page resilient if a fresh caller ever
+// pipes a raw Directus value through.
+function formatMoney(
+  amount: number | string | null | undefined,
+  currency: string,
+): string {
+  const n = typeof amount === "number" ? amount : Number(amount ?? 0);
+  return `${(Number.isFinite(n) ? n : 0).toFixed(2)} ${currency || "USD"}`;
 }
 
 export default async function AdminSponsorshipDetailPage({
