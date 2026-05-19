@@ -12,7 +12,9 @@ import { useState, useTransition } from "react";
 import {
   Bell,
   CheckCircle2,
+  Edit3,
   FileBarChart,
+  FileEdit,
   HeartHandshake,
   Loader2,
   Truck,
@@ -27,6 +29,9 @@ import type {
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
+  // Session 60 — change-request lands back in the DI's drafts queue;
+  // FileEdit signals "your turn to edit" rather than approve/reject.
+  admin_requested_proposal_changes: FileEdit,
   // Session 52b — same icon pairs for the new review queue actions.
   admin_approved_document: CheckCircle2,
   admin_rejected_document: XCircle,
@@ -40,6 +45,9 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
   admin_verified_delivery: Truck,
+  // Session 66 — re-upload requests.
+  admin_requested_document_reupload: Edit3,
+  admin_requested_intake_reupload: Edit3,
 };
 
 function formatLongDate(iso: string | null): string {

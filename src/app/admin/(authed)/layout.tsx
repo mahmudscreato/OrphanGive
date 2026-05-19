@@ -1,19 +1,12 @@
 // Session 51 — Admin Dashboard authed layout.
-//
-// Wraps everything under /admin/(authed)/. The route group `(authed)`
-// doesn't appear in the URL, so this layout applies to /admin (the
-// page below it) and any future /admin/<sub> pages added under this
-// route group. /admin/login lives OUTSIDE this group at
-// src/app/admin/login/page.tsx — that page does NOT see this
-// layout's auth check.
-//
-// Auth: requireAdminUser() returns null when there's no admin
-// session (it doesn't redirect — admin-auth.ts kept that semantic
-// for the API routes that pre-date the UI). We check + redirect
-// here in the layout, mirroring the DI layout's behavior.
 
 import { redirect } from "next/navigation";
 import { requireAdminUser } from "@/lib/admin-auth";
+import { getAdminHomeStats } from "@/lib/admin-home-stats";
+// Session 65 — donor pending count for the Donors nav badge.
+import { countPendingDonorApprovals } from "@/lib/admin-donors";
+// Session 66 — active-children count for the Children nav badge.
+import { countActiveChildrenForBadge } from "@/lib/admin-children";
 import { AdminBottomNav } from "@/components/admin/AdminBottomNav";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -29,19 +22,42 @@ export default async function AdminAuthedLayout({
     redirect("/admin/login");
   }
 
+  // Sessions 60 + 65 + 66 — pending counts for the nav badges,
+  // fetched in parallel.
+  const [stats, donorPending, activeChildren] = await Promise.all([
+    getAdminHomeStats(),
+    countPendingDonorApprovals(),
+    countActiveChildrenForBadge(),
+  ]);
+  const reviewsCount =
+    (stats.pendingMomentCount ?? 0) +
+    (stats.pendingIntakePhotoCount ?? 0) +
+    (stats.pendingDocumentCount ?? 0);
+  const badges = {
+    proposals: stats.pendingProposalCount,
+    reviews:
+      stats.pendingMomentCount === null &&
+      stats.pendingIntakePhotoCount === null &&
+      stats.pendingDocumentCount === null
+        ? null
+        : reviewsCount,
+    donors: donorPending,
+    children: activeChildren,
+  };
+
   return (
     <div className="bg-cream min-h-screen text-ink">
       {/* Mobile-only header */}
       <AdminHeader />
       {/* Desktop-only sidebar (240px wide, fixed left) */}
-      <AdminSidebar />
+      <AdminSidebar badges={badges} />
       <main className="md:pl-[240px] pb-24 md:pb-12 min-h-screen">
         {/* Desktop-only top bar with admin identity pill */}
         <AdminTopBar session={session} />
         {children}
       </main>
       {/* Mobile-only bottom nav */}
-      <AdminBottomNav />
+      <AdminBottomNav badges={badges} />
     </div>
   );
 }

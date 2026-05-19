@@ -108,7 +108,34 @@ export type AuditAction =
   // flow (admin uploads with status='approved' immediately). Same
   // shape as a DI upload at the audit level, but with admin actor.
   | "admin_uploaded_document"
-  | "admin_uploaded_intake_photo";
+  | "admin_uploaded_intake_photo"
+  // Session 65 — admin donor management.
+  | "admin_viewed_donor"
+  | "admin_approved_donor"
+  | "admin_rejected_donor"
+  | "admin_suspended_donor"
+  | "admin_reactivated_donor"
+  | "admin_triggered_password_reset"
+  // Session 66 — admin child management.
+  //   admin_viewed_child            logged on every detail page render
+  //   admin_edited_child            direct edit bypassing proposal queue;
+  //                                 diff stored in audit.diff (with the
+  //                                 Tier 3 redaction map applied)
+  //   admin_archived_child          status flip → 'withdrawn' (the
+  //                                 existing terminal status; until a
+  //                                 dedicated 'archived' enum value
+  //                                 ships, archive maps onto withdrawn)
+  //   admin_reactivated_child       status flip → 'active'
+  //   admin_requested_document_reupload    DI-facing nudge to re-upload
+  //   admin_requested_intake_reupload      same for intake photos
+  // Re-upload events carry their reason in audit.metadata.reason +
+  // the document/photo id in metadata.target_id.
+  | "admin_viewed_child"
+  | "admin_edited_child"
+  | "admin_archived_child"
+  | "admin_reactivated_child"
+  | "admin_requested_document_reupload"
+  | "admin_requested_intake_reupload";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -333,6 +360,26 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Admin removed a previously-approved intake photo`,
   admin_uploaded_document: () => `Admin uploaded a document directly`,
   admin_uploaded_intake_photo: () => `Admin uploaded an intake photo directly`,
+  // Session 65 — donor management events.
+  admin_viewed_donor: (a) => `${a} opened a donor profile`,
+  admin_approved_donor: (a) => `${a} approved a donor`,
+  admin_rejected_donor: (a) => `${a} rejected a donor`,
+  admin_suspended_donor: (a) => `${a} suspended a donor`,
+  admin_reactivated_donor: (a) => `${a} reactivated a donor`,
+  admin_triggered_password_reset: (a) => `${a} triggered a password reset for a donor`,
+  // Session 66 — child management. View / edit / archive / reactivate
+  // events never surface on DI-facing feeds (the per-child History
+  // tab filters di_* actions only). The re-upload requests DO need to
+  // reach the DI via the in-app notification system; the History tab
+  // also renders them once we wire the description side.
+  admin_viewed_child: (a) => `${a} opened a child profile`,
+  admin_edited_child: () => `Admin edited the child profile`,
+  admin_archived_child: () => `Admin archived this child`,
+  admin_reactivated_child: () => `Admin reactivated this child`,
+  admin_requested_document_reupload: () =>
+    `Admin asked for a document re-upload`,
+  admin_requested_intake_reupload: () =>
+    `Admin asked for an intake-photo re-upload`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

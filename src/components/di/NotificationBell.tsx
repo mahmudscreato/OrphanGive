@@ -18,7 +18,9 @@ import {
   Bell,
   Camera,
   CheckCircle2,
+  Edit3,
   FileBarChart,
+  FileEdit,
   HeartHandshake,
   Truck,
   XCircle,
@@ -34,6 +36,9 @@ const POLL_INTERVAL_MS = 60_000;
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_approved_proposal: CheckCircle2,
   admin_rejected_proposal: XCircle,
+  // Session 60 — change-request lands the proposal back in the DI's
+  // drafts queue; FileEdit signals "your turn to edit".
+  admin_requested_proposal_changes: FileEdit,
   // Session 52b — review queue notifications reuse the proposal pair's
   // approval/rejection icons for visual consistency.
   admin_approved_document: CheckCircle2,
@@ -48,6 +53,9 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
   admin_verified_delivery: Truck,
+  // Session 66 — re-upload requests. Edit3 reads as "needs revision".
+  admin_requested_document_reupload: Edit3,
+  admin_requested_intake_reupload: Edit3,
 };
 
 function relativeTime(iso: string | null): string {

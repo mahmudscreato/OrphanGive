@@ -306,6 +306,60 @@ function rowToSummary(
  * `pending` matches both new `pending` and legacy `pending_review`,
  * etc.
  */
+/**
+ * Session 60 — per-child documents reader used by the admin proposal
+ * detail page. Returns every status (admin sees pending alongside
+ * approved/rejected on the proposal review surface so they can
+ * audit the full uploaded set). No DI scope filter — admin sees
+ * everything.
+ */
+export async function listAdminDocumentsForChild(
+  childId: string,
+): Promise<AdminDocumentSummary[]> {
+  if (!childId) return [];
+  let rows: DocumentRow[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("child_document" as never, {
+        filter: { child: { _eq: childId } },
+        fields: ["*"],
+        limit: -1,
+      } as never),
+    )) as unknown as DocumentRow[] | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[admin-documents] listAdminDocumentsForChild failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  if (rows.length === 0) return [];
+
+  // Same date_created client-side sort logic as listAdminDocuments.
+  rows.sort((a, b) => {
+    const aT = a.date_created ? Date.parse(a.date_created) : 0;
+    const bT = b.date_created ? Date.parse(b.date_created) : 0;
+    return bT - aT; // newest first
+  });
+
+  const childIds = [childId];
+  const userIds = Array.from(
+    new Set(rows.map((r) => r.uploaded_by).filter((x): x is string => !!x)),
+  );
+  const fileIds = Array.from(
+    new Set(rows.map((r) => r.file).filter((x): x is string => !!x)),
+  );
+
+  const [childNames, userNames, fileMeta] = await Promise.all([
+    resolveChildNames(childIds),
+    resolveUserNames(userIds),
+    resolveFileMime(fileIds),
+  ]);
+
+  return rows.map((r) => rowToSummary(r, childNames, userNames, fileMeta));
+}
+
 export async function listAdminDocuments(opts?: {
   filter?: DocumentReviewFilter;
   limit?: number;
@@ -430,6 +484,55 @@ export async function getAdminDocumentDetail(
     row.file ? resolveFileMime([row.file]) : Promise.resolve(new Map()),
   ]);
   return rowToSummary(row, childNames, userNames, fileMeta);
+}
+
+// Session 66 — per-child documents listing for the admin child
+// detail page. Mirrors getIntakePhotosForChild's pattern in
+// admin-intake-photos.ts. Returns every document (any status), most
+// recent first; child detail page renders status pills so admin
+// sees the full picture in one read.
+export async function getDocumentsForChild(
+  childId: string,
+): Promise<AdminDocumentSummary[]> {
+  if (!childId) return [];
+  let rows: DocumentRow[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("child_document" as never, {
+        filter: { child: { _eq: childId } },
+        fields: ["*"],
+        limit: -1,
+      } as never),
+    )) as unknown as DocumentRow[] | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[admin-documents] getDocumentsForChild failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  if (rows.length === 0) return [];
+
+  // Newest first.
+  rows.sort((a, b) => {
+    const aT = a.date_created ? Date.parse(a.date_created) : 0;
+    const bT = b.date_created ? Date.parse(b.date_created) : 0;
+    return bT - aT;
+  });
+
+  const userIds = Array.from(
+    new Set(rows.map((r) => r.uploaded_by).filter((x): x is string => !!x)),
+  );
+  const fileIds = Array.from(
+    new Set(rows.map((r) => r.file).filter((x): x is string => !!x)),
+  );
+  const [childNames, userNames, fileMeta] = await Promise.all([
+    resolveChildNames([childId]),
+    resolveUserNames(userIds),
+    resolveFileMime(fileIds),
+  ]);
+  return rows.map((r) => rowToSummary(r, childNames, userNames, fileMeta));
 }
 
 // ─── Public API: mutations ──────────────────────────────────────────

@@ -44,6 +44,15 @@ export type NotificationType =
   // Wired in Session 47 — admin-proposals.ts approve/reject paths.
   | "admin_approved_proposal"
   | "admin_rejected_proposal"
+  // Session 60 — admin asks the DI to revise a proposal rather than
+  // outright reject it. The proposal flips back to status='draft' so
+  // the DI sees it in their drafts queue and can edit + resubmit
+  // without rebuilding from scratch. Distinct from rejection because
+  // the rejection terminates the proposal lifecycle ("we're not
+  // taking this"); a changes request keeps the door open ("almost
+  // there, please tweak X"). Notification body carries the admin's
+  // change-request reason verbatim.
+  | "admin_requested_proposal_changes"
   // Session 52b — admin review queues for documents, intake photos,
   // and moments. Each pair (approved/rejected) ships with its own
   // notification copy. Per-intake-photo notifications fire once per
@@ -75,7 +84,16 @@ export type NotificationType =
   // when admin delivery verification has a server-side handler
   // (currently admins flip aid_delivery.status='verified' via
   // Directus admin — no /api hook).
-  | "admin_verified_delivery";
+  | "admin_verified_delivery"
+  // Session 66 — admin "please re-upload this" request. Distinct
+  // from `admin_rejected_*` (which is a first-time decision on a
+  // pending item) and from `admin_removed_approved_*` (which is a
+  // reversal that hard-removes the file). Re-upload is a soft
+  // nudge — the existing row keeps its status='approved'; the DI
+  // just needs to upload a fresh version. The body carries
+  // admin's reason verbatim so the DI knows what to fix.
+  | "admin_requested_document_reupload"
+  | "admin_requested_intake_reupload";
 
 export interface NotificationPayload {
   title: string;
@@ -121,6 +139,8 @@ const NOTIFICATION_FIELDS = [
 const VALID_TYPES = new Set<string>([
   "admin_approved_proposal",
   "admin_rejected_proposal",
+  // Session 60 — change-request flow (back-to-draft instead of reject).
+  "admin_requested_proposal_changes",
   "admin_approved_document",
   "admin_rejected_document",
   "admin_approved_intake_photo",
@@ -132,6 +152,9 @@ const VALID_TYPES = new Set<string>([
   "admin_assigned_child",
   "admin_assigned_task",
   "admin_verified_delivery",
+  // Session 66
+  "admin_requested_document_reupload",
+  "admin_requested_intake_reupload",
 ]);
 
 function isNotificationType(s: string | null | undefined): s is NotificationType {

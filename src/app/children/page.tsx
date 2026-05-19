@@ -14,6 +14,8 @@ import {
   sortChildrenByCategory,
 } from "@/lib/children-data";
 import { getMonthlyQueueStateByChild } from "@/lib/sponsorship-data";
+// Session 64 — see faq/page.tsx for the same migration rationale.
+import { buildPageMetadata } from "@/lib/page-metadata";
 
 /**
  * Session 17 — public `/children` browse list, brand-aligned with
@@ -40,16 +42,12 @@ import { getMonthlyQueueStateByChild } from "@/lib/sponsorship-data";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+export const metadata = buildPageMetadata({
+  path: "/children",
   title: "Children waiting for sponsors",
   description:
     "Browse verified profiles of orphaned and vulnerable children in Bangladesh waiting for monthly sponsorship. Each profile is reviewed with their guardian's consent and verified by our field team.",
-  openGraph: {
-    title: "Children waiting for sponsors — OrphanGive",
-    description:
-      "Browse verified profiles of orphaned and vulnerable children in Bangladesh waiting for monthly sponsorship.",
-  },
-};
+});
 
 const CARD_PATH_KEYS: FramePathKey[] = [
   "circleA",

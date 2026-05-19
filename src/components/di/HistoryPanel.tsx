@@ -80,6 +80,20 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Session 52d — admin direct uploads (admin filling in for DI).
   admin_uploaded_document: FileText,
   admin_uploaded_intake_photo: ImagePlus,
+  // Session 65 — donor-management events. Type-safety placeholders.
+  admin_viewed_donor: HistoryIcon,
+  admin_approved_donor: CheckCircle2,
+  admin_rejected_donor: XCircle,
+  admin_suspended_donor: XCircle,
+  admin_reactivated_donor: CheckCircle2,
+  admin_triggered_password_reset: HistoryIcon,
+  // Session 66 — admin child management. Type-safety placeholders.
+  admin_viewed_child: HistoryIcon,
+  admin_edited_child: Edit3,
+  admin_archived_child: Trash2,
+  admin_reactivated_child: CheckCircle2,
+  admin_requested_document_reupload: Edit3,
+  admin_requested_intake_reupload: Edit3,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back

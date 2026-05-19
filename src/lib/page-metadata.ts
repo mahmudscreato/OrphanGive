@@ -19,16 +19,28 @@ const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://orphangive.org"
 ).replace(/\/$/, "");
 
-// Default OG image — the closing-CTA photo from the homepage.
-// Matches the asset specified in the Session 21 brief. Cloudinary
-// serves the asset at this version permanently; later versions
-// (e.g. v1778529921 from Session 16) supersede the canonical
-// reference but the version-pinned URL keeps social cards stable.
-const DEFAULT_OG_IMAGE =
-  "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490174/_OrphanGive_CG_V2_25_khxro8.png";
-
-const DEFAULT_OG_IMAGE_ALT =
-  "OrphanGive — sponsor a verified child in Bangladesh";
+// Session 64 — previously this helper hard-coded a Cloudinary
+// f_auto PNG as `DEFAULT_OG_IMAGE`. f_auto caused Cloudinary to
+// return image/jpeg from a .png URL, which some scrapers
+// cross-check and silently drop.
+//
+// New default: points at the layout's /opengraph-image route
+// (Next.js file convention — see src/app/opengraph-image.tsx).
+// That route serves a deterministic 1200×630 image/png with
+// no extension/content-type mismatch.
+//
+// Why not "leave images unset and let the file convention fill in":
+// Next.js merges metadata SHALLOWLY. When a page exports its own
+// openGraph block (even without an images key), the layout's
+// openGraph — including any file-convention images — is fully
+// replaced. So a page-level openGraph without images means NO
+// og:image renders on that page. Defensively naming the URL here
+// keeps every helper-built page wired correctly regardless.
+//
+// Callers can pass `imageUrl` to override per-page (useful when a
+// future per-child OG flow ships).
+const DEFAULT_OG_IMAGE_URL = `${SITE_URL}/opengraph-image`;
+const DEFAULT_OG_IMAGE_ALT = "OrphanGive — Sponsor an orphan in Bangladesh";
 
 type BuildArgs = {
   /** Page path including leading slash (e.g. "/about", "/children/abc"). */
@@ -38,8 +50,10 @@ type BuildArgs = {
   title: string;
   /** Description used by search engines + social cards. */
   description: string;
-  /** Optional OG image override (e.g. a child profile thumbnail).
-   * Falls back to `DEFAULT_OG_IMAGE`. */
+  /**
+   * Optional OG image override (e.g. a per-child generated card).
+   * Defaults to /opengraph-image (the root file-convention route).
+   */
   imageUrl?: string;
   /** Optional OG image alt text. */
   imageAlt?: string;
@@ -49,9 +63,8 @@ type BuildArgs = {
  * Build a fully-populated Next.js `Metadata` object for a page.
  *
  * Returns title + description + openGraph (title/description/url/
- * images/type/siteName/locale) + twitter (card/title/description/
- * images). The result is the union of layout defaults and per-page
- * specifics — you can drop the return value straight into
+ * type/siteName/locale/images) + twitter (card/title/description/
+ * images). Drop the return value straight into
  * `export const metadata = buildPageMetadata({ ... })`.
  */
 export function buildPageMetadata({
@@ -62,7 +75,7 @@ export function buildPageMetadata({
   imageAlt,
 }: BuildArgs): Metadata {
   const url = `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
-  const image = imageUrl ?? DEFAULT_OG_IMAGE;
+  const image = imageUrl ?? DEFAULT_OG_IMAGE_URL;
   const alt = imageAlt ?? DEFAULT_OG_IMAGE_ALT;
 
   return {

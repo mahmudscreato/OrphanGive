@@ -2,10 +2,14 @@
 //
 // Mirror of DiSidebar (Session 42) with:
 //   - Brand mark says "Admin" instead of "Data Inputter"
-//   - Different nav set: Home / Proposals / Reviews (placeholder) /
-//     Children. No Tasks/Submissions/Profile.
+//   - Different nav set: Home / Proposals / Reviews / Children /
+//     Sponsorships / Donors / Audit log.
 //   - Sign out POSTs to /api/admin/logout (separate cookie pair from
 //     DI/donor sessions — see admin-auth.ts).
+//
+// Session 67 — `group` distinguishes the daily-use cluster (primary)
+// from operational / forensic surfaces (secondary). The render below
+// inserts a divider between groups.
 
 "use client";
 
@@ -18,17 +22,81 @@ import {
   ClipboardCheck,
   ListChecks,
   Users,
+  HeartHandshake,
+  UserCircle,
+  ScrollText,
   LogOut,
 } from "lucide-react";
 
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
-const NAV_ITEMS = [
-  { href: "/admin", label: "Home", icon: Home, exact: true },
-  { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false },
-  { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false },
-  { href: "/admin/children", label: "Children", icon: Users, exact: false },
+// Sessions 60 + 65 + 66 — combined badge key union.
+type BadgeKey = "proposals" | "reviews" | "donors" | "children";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  exact: boolean;
+  badgeKey?: BadgeKey;
+  group: "primary" | "secondary";
+};
+
+const NAV_ITEMS: ReadonlyArray<NavItem> = [
+  { href: "/admin", label: "Home", icon: Home, exact: true, group: "primary" },
+  {
+    href: "/admin/proposals",
+    label: "Proposals",
+    icon: ClipboardCheck,
+    exact: false,
+    badgeKey: "proposals",
+    group: "primary",
+  },
+  {
+    href: "/admin/reviews",
+    label: "Reviews",
+    icon: ListChecks,
+    exact: false,
+    badgeKey: "reviews",
+    group: "primary",
+  },
+  // Session 66 — children gets an active-count badge.
+  {
+    href: "/admin/children",
+    label: "Children",
+    icon: Users,
+    exact: false,
+    badgeKey: "children",
+    group: "primary",
+  },
+  // Session 61 — live sponsorships management surface.
+  {
+    href: "/admin/sponsorships",
+    label: "Sponsorships",
+    icon: HeartHandshake,
+    exact: false,
+    group: "primary",
+  },
+  // Session 65 — donor management.
+  {
+    href: "/admin/donors",
+    label: "Donors",
+    icon: UserCircle,
+    exact: false,
+    badgeKey: "donors",
+    group: "primary",
+  },
+  // Session 67 — forensic surface. Secondary group; lives at the
+  // bottom of the nav above Sign out so it's accessible without
+  // crowding the daily-use cluster.
+  {
+    href: "/admin/audit",
+    label: "Audit log",
+    icon: ScrollText,
+    exact: false,
+    group: "secondary",
+  },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
@@ -36,7 +104,11 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  badges,
+}: {
+  badges?: Partial<Record<BadgeKey, number | null>>;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -81,11 +153,24 @@ export function AdminSidebar() {
 
       <nav className="flex-1">
         <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.map((item, idx) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
+            const count = item.badgeKey ? badges?.[item.badgeKey] ?? null : null;
+            const showBadge = typeof count === "number" && count > 0;
+            // Session 67 — divider before the first secondary item.
+            const previousItem = idx > 0 ? NAV_ITEMS[idx - 1] : null;
+            const showDivider =
+              item.group === "secondary" &&
+              (!previousItem || previousItem.group !== "secondary");
             return (
               <li key={item.href}>
+                {showDivider ? (
+                  <div
+                    className="my-2 border-t border-ink/[0.08]"
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
@@ -98,7 +183,15 @@ export function AdminSidebar() {
                   <Icon
                     className={`w-4 h-4 ${active ? "stroke-[2.25]" : "stroke-[1.75]"}`}
                   />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {showBadge ? (
+                    <span
+                      className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-tangerine text-white text-[11px] font-semibold tabular-nums"
+                      aria-label={`${count} pending`}
+                    >
+                      {count > 99 ? "99+" : count}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );
