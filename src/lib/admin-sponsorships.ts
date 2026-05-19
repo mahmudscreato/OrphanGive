@@ -331,8 +331,22 @@ function donorLabelFor(
  * grows past 10k rows, switch to a Directus filter for childId /
  * donorId server-side and keep the search client-side.
  */
+// Session 61.5 hotfix — type filter joining the existing status
+// filter. The three buckets map onto Directus column filters:
+//   one_time    → payment_mode = 'one_time'
+//   monthly     → payment_mode = 'monthly' AND payment_schedule = 'monthly'
+//   prepaid     → payment_schedule = 'monthly_prepaid'
+// The "monthly" bucket excludes prepaid (which is technically also
+// payment_mode='monthly' but conceptually a separate product).
+export type SponsorshipListTypeFilter =
+  | "all"
+  | "one_time"
+  | "monthly"
+  | "prepaid";
+
 export async function listAdminSponsorships(opts?: {
   status?: SponsorshipListFilter;
+  type?: SponsorshipListTypeFilter;
   childId?: string | null;
   donorId?: string | null;
   search?: string | null;
@@ -346,16 +360,33 @@ export async function listAdminSponsorships(opts?: {
   totalPages: number;
 }> {
   const status = opts?.status ?? "active";
+  const type = opts?.type ?? "all";
   const childId = opts?.childId ?? null;
   const donorId = opts?.donorId ?? null;
   const search = (opts?.search ?? "").trim().toLowerCase();
   const pageSize = Math.max(1, Math.min(opts?.pageSize ?? 50, 200));
   const page = Math.max(1, opts?.page ?? 1);
 
-  // Compose the Directus filter. Status + childId + donorId are
-  // cheap server-side. Search is in-memory.
+  // Compose the Directus filter. Status + childId + donorId + type
+  // are cheap server-side. Search is in-memory.
   const andClauses: Record<string, unknown>[] = [];
   if (status !== "all") andClauses.push({ status: { _eq: status } });
+  if (type === "one_time") {
+    andClauses.push({ payment_mode: { _eq: "one_time" } });
+  } else if (type === "monthly") {
+    // Monthly = monthly mode AND NOT prepaid schedule. Includes rows
+    // where payment_schedule is null (older rows that pre-date the
+    // schedule column).
+    andClauses.push({ payment_mode: { _eq: "monthly" } });
+    andClauses.push({
+      _or: [
+        { payment_schedule: { _null: true } },
+        { payment_schedule: { _eq: "monthly" } },
+      ],
+    });
+  } else if (type === "prepaid") {
+    andClauses.push({ payment_schedule: { _eq: "monthly_prepaid" } });
+  }
   if (childId) andClauses.push({ child: { _eq: childId } });
   if (donorId) andClauses.push({ donor: { _eq: donorId } });
   const filter =
@@ -566,6 +597,133 @@ export async function getAdminSponsorshipDetail(
         .prepaid_months_remaining,
     ),
   };
+}
+
+// ─── Public API: audit-log lookup for the Timeline panel ───────────
+//
+// Session 61.4 hotfix — the Timeline panel was rendering events
+// (Paused / Cancelled / etc.) with timestamps only; no actor
+// attribution. modification_history (a JSON column on sponsorship)
+// only tracks AMOUNT changes from the modify-amount route — the
+// shape is `{ from_amount, to_amount, at, reason? }` with no
+// actor field. The actor data lives in audit_log: every admin
+// mutation writes a row tagged `action: admin_*_sponsorship`,
+// `collection: 'sponsorship'`, `record_id: sponsorship.id`,
+// `actor` (uuid) + `actor_role` ('admin' | 'data_inputter' |
+// 'system' | 'donor'). This helper fetches those rows and resolves
+// actor names so the Timeline can render "Cancelled by admin
+// (Mahmud) — reason: testing".
+//
+// Donor self-cancel + self-pause via /api/sponsorship/[id]/* don't
+// currently write audit_log rows (the donor flow predates the
+// audit layer). For those, the timeline still shows the timestamp
+// without attribution and we add a "by donor" inference when the
+// audit_log lookup turns up empty for an event that has a column
+// timestamp set. Documented inline.
+
+export interface AdminSponsorshipAuditEvent {
+  id: string;
+  action: string;
+  actorRole: string;
+  actorName: string;
+  timestamp: string | null;
+  reason: string | null;
+}
+
+export async function listAuditEventsForSponsorship(
+  sponsorshipId: string,
+  limit = 50,
+): Promise<AdminSponsorshipAuditEvent[]> {
+  if (!sponsorshipId) return [];
+
+  type AuditRow = {
+    id: string;
+    action: string | null;
+    actor: string | null;
+    actor_role: string | null;
+    timestamp: string | null;
+    metadata: Record<string, unknown> | null;
+  };
+  let rows: AuditRow[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("audit_log" as never, {
+        filter: {
+          _and: [
+            { collection: { _eq: "sponsorship" } },
+            { record_id: { _eq: sponsorshipId } },
+          ],
+        },
+        fields: [
+          "id",
+          "action",
+          "actor",
+          "actor_role",
+          "timestamp",
+          "metadata",
+        ],
+        sort: ["timestamp"],
+        limit,
+      } as never),
+    )) as unknown as AuditRow[] | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[admin-sponsorships] listAuditEventsForSponsorship failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+
+  // Resolve actor first_name + last_name in one batched users read.
+  const actorIds = Array.from(
+    new Set(rows.map((r) => r.actor).filter((x): x is string => !!x)),
+  );
+  const nameByActor = new Map<string, string>();
+  if (actorIds.length > 0) {
+    try {
+      const users = (await directusServer().request(
+        readUsers({
+          filter: { id: { _in: actorIds } },
+          fields: ["id", "first_name", "last_name", "email"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+      }> | undefined;
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          const name =
+            [u.first_name, u.last_name]
+              .filter((s) => s && s.trim().length > 0)
+              .join(" ")
+              .trim() || u.email;
+          nameByActor.set(u.id, name);
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[admin-sponsorships] audit actor name lookup failed",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return rows.map((r) => {
+    const md = r.metadata && typeof r.metadata === "object" ? r.metadata : {};
+    const reason = (md as Record<string, unknown>).reason;
+    return {
+      id: r.id,
+      action: r.action ?? "unknown",
+      actorRole: r.actor_role ?? "unknown",
+      actorName: r.actor ? nameByActor.get(r.actor) ?? "Unknown" : "System",
+      timestamp: r.timestamp,
+      reason: typeof reason === "string" && reason.trim().length > 0 ? reason : null,
+    };
+  });
 }
 
 // ─── Public API: Stripe charges for refund flow ─────────────────────

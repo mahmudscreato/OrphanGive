@@ -92,6 +92,15 @@ export async function getDiDashboardStats(
     // 1. Drafts in progress — same shape getDraftCountForUser uses
     //    in di-proposals.ts; inlined here so we can issue all four
     //    counts in parallel rather than via four separate helpers.
+    //
+    // Session 68.1 hotfix — Directus REST rejects `_eq: ""` with
+    // HTTP 400 ("You can't filter for an empty string in _eq. Use
+    // _empty or _nempty instead."), which made safeCount swallow
+    // into null → the tile rendered "—". Swapped to `_empty: true`
+    // which Directus matches on null OR empty-string in one go,
+    // making the explicit `_null: true` branch redundant — kept
+    // anyway as belt-and-braces for any rows where _empty's
+    // semantics ever diverge from null+"" union.
     safeCount("child_proposal", {
       _and: [
         { created_by: { _eq: userId } },
@@ -103,7 +112,7 @@ export async function getDiDashboardStats(
         {
           _or: [
             { rejection_reason: { _null: true } },
-            { rejection_reason: { _eq: "" } },
+            { rejection_reason: { _empty: true } },
           ],
         },
       ],
@@ -135,12 +144,17 @@ export async function getDiDashboardStats(
     //    populated as the admin's comments. A plain draft has
     //    rejection_reason=null; we only count the ones with the
     //    admin note (the DI has something to read + act on).
+    //
+    // Session 68.1 hotfix — `_neq: ""` hits the same Directus 400
+    // as `_eq: ""` above. Swapped to `_nempty: true` which covers
+    // both not-null and not-empty-string in one operator. The
+    // explicit `_nnull` check becomes redundant — kept for clarity.
     safeCount("child_proposal", {
       _and: [
         { created_by: { _eq: userId } },
         { status: { _eq: "draft" } },
         { rejection_reason: { _nnull: true } },
-        { rejection_reason: { _neq: "" } },
+        { rejection_reason: { _nempty: true } },
       ],
     }),
   ]);

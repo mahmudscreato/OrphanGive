@@ -26,7 +26,9 @@ import {
 import { requireAdminUser } from "@/lib/admin-auth";
 import {
   getAdminSponsorshipDetail,
+  listAuditEventsForSponsorship,
   listChargesForSponsorship,
+  type AdminSponsorshipAuditEvent,
   type AdminSponsorshipDetail,
   type AdminStripeCharge,
 } from "@/lib/admin-sponsorships";
@@ -90,13 +92,18 @@ export default async function AdminSponsorshipDetailPage({
 
   // Parallel sub-reads. Charges list short-circuits when there's no
   // Stripe customer + no PaymentIntent — both null returns empty.
-  const [payments, charges] = await Promise.all([
+  //
+  // Session 61.4 hotfix — audit events for the timeline panel. Best-
+  // effort; failure returns empty array → timeline falls back to
+  // unattributed events.
+  const [payments, charges, auditEvents] = await Promise.all([
     getPaymentsForSponsorship(detail.id),
     listChargesForSponsorship(detail.id, {
       customerId: detail.raw.stripe_customer_id,
       paymentIntentId: detail.raw.stripe_payment_intent_id,
       limit: 5,
     }),
+    listAuditEventsForSponsorship(detail.id, 50),
   ]);
 
   return (
@@ -117,7 +124,7 @@ export default async function AdminSponsorshipDetailPage({
 
       <PaymentsPanel payments={payments} currency={detail.raw.currency} />
 
-      <TimelinePanel detail={detail} />
+      <TimelinePanel detail={detail} auditEvents={auditEvents} />
 
       <SponsorshipActionBar
         sponsorshipId={detail.id}
@@ -359,24 +366,106 @@ function PaymentsPanel({
  * row. We don't have a proper event-log so this is a reconstruction
  * from the persisted timestamps: created → started → modified →
  * paused → cancelled / ended. Empty events are silently skipped.
+ *
+ * Session 61.4 hotfix — actor attribution. The audit_log table is
+ * the source of truth for "who did this when"; we fetch matching
+ * rows in the page's parallel sub-reads and pass them in here. For
+ * each timeline event we look up the audit row with the closest
+ * timestamp to attach actor name + role + reason.
+ *
+ * Pause/cancel/resume admin endpoints write rows tagged
+ * admin_paused_sponsorship / admin_cancelled_sponsorship /
+ * admin_resumed_sponsorship. Donor-side pause/cancel don't audit
+ * today (predates the audit layer), so when an event has a column
+ * timestamp set but no audit match we infer "by donor".
  */
-function TimelinePanel({ detail }: { detail: AdminSponsorshipDetail }) {
+function TimelinePanel({
+  detail,
+  auditEvents,
+}: {
+  detail: AdminSponsorshipDetail;
+  auditEvents: AdminSponsorshipAuditEvent[];
+}) {
   const s = detail.raw;
-  type Event = { label: string; iso: string | null; muted?: boolean };
+  // Each column-derived timeline event is paired with an audit_log
+  // action prefix. When the timestamps roughly line up (within a
+  // 60s window — accounts for the DB write + audit write happening
+  // microseconds apart) we treat the audit row as authoritative for
+  // actor + reason.
+  type Event = {
+    label: string;
+    iso: string | null;
+    auditActionContains?: string;
+  };
   const events: Event[] = [
     { label: "Created", iso: s.date_created },
     { label: "Activated", iso: s.started_at },
-    { label: "Modified", iso: s.modified_at, muted: !s.modified_at },
-    { label: "Paused", iso: s.paused_at, muted: !s.paused_at },
+    { label: "Modified", iso: s.modified_at },
+    {
+      label: "Paused",
+      iso: s.paused_at,
+      auditActionContains: "paused_sponsorship",
+    },
     {
       label: "Cancellation scheduled",
       iso: s.cancellation_scheduled_at,
-      muted: !s.cancellation_scheduled_at,
     },
-    { label: "Cancelled", iso: s.cancelled_at, muted: !s.cancelled_at },
-    { label: "Ended", iso: s.ended_at, muted: !s.ended_at },
+    {
+      label: "Cancelled",
+      iso: s.cancelled_at,
+      auditActionContains: "cancelled_sponsorship",
+    },
+    { label: "Ended", iso: s.ended_at },
   ];
   const visible = events.filter((e) => e.iso);
+
+  // For each event, find the closest matching audit row (action
+  // suffix match + timestamp within 60s). Returns null when no
+  // plausible match exists — caller renders a "by donor"
+  // inference for actions admin owns but no audit row was found,
+  // or no attribution at all for create/activate events that
+  // don't correspond to an admin action.
+  function attribute(
+    event: Event,
+  ): { actorLabel: string; reason: string | null } | null {
+    if (!event.iso) return null;
+    if (!event.auditActionContains) return null;
+    const eventMs = Date.parse(event.iso);
+    if (Number.isNaN(eventMs)) return null;
+    let best: AdminSponsorshipAuditEvent | null = null;
+    let bestDelta = Infinity;
+    for (const a of auditEvents) {
+      if (!a.action.includes(event.auditActionContains)) continue;
+      if (!a.timestamp) continue;
+      const aMs = Date.parse(a.timestamp);
+      if (Number.isNaN(aMs)) continue;
+      const delta = Math.abs(aMs - eventMs);
+      if (delta <= 60_000 && delta < bestDelta) {
+        best = a;
+        bestDelta = delta;
+      }
+    }
+    if (best) {
+      const roleLabel =
+        best.actorRole === "admin"
+          ? `admin (${best.actorName})`
+          : best.actorRole === "data_inputter"
+            ? `DI (${best.actorName})`
+            : best.actorRole === "donor"
+              ? "donor"
+              : best.actorRole === "system"
+                ? "system"
+                : best.actorName;
+      return { actorLabel: roleLabel, reason: best.reason };
+    }
+    // The event has a timestamp but no matching admin audit row. The
+    // mutation must have come from somewhere — donor self-action via
+    // /api/sponsorship/[id]/* is the only other path that flips
+    // these columns. Donor flow doesn't currently audit, so the
+    // inference is reliable.
+    return { actorLabel: "donor", reason: null };
+  }
+
   return (
     <section
       aria-label="Status timeline"
@@ -392,17 +481,31 @@ function TimelinePanel({ detail }: { detail: AdminSponsorshipDetail }) {
         </p>
       ) : (
         <ol className="relative border-l border-stone-200 pl-5 space-y-3">
-          {visible.map((e) => (
-            <li key={e.label} className="relative">
-              <span className="absolute -left-[1.45rem] top-1.5 w-2.5 h-2.5 rounded-full bg-tangerine" />
-              <p className="text-[13px] text-ink">
-                <span className="font-medium">{e.label}</span>{" "}
-                <span className="text-ink-soft text-[12px]">
-                  · {formatTimestamp(e.iso)}
-                </span>
-              </p>
-            </li>
-          ))}
+          {visible.map((e) => {
+            const attribution = attribute(e);
+            return (
+              <li key={e.label} className="relative">
+                <span className="absolute -left-[1.45rem] top-1.5 w-2.5 h-2.5 rounded-full bg-tangerine" />
+                <p className="text-[13px] text-ink">
+                  <span className="font-medium">{e.label}</span>
+                  {attribution ? (
+                    <span className="text-ink-soft">
+                      {" "}
+                      by {attribution.actorLabel}
+                    </span>
+                  ) : null}{" "}
+                  <span className="text-ink-soft text-[12px]">
+                    · {formatTimestamp(e.iso)}
+                  </span>
+                </p>
+                {attribution?.reason ? (
+                  <p className="mt-0.5 text-[12px] text-ink-soft italic">
+                    &ldquo;{attribution.reason}&rdquo;
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       )}
 
