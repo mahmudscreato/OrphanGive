@@ -8,17 +8,27 @@
 // Stripe sub + flips local status back to 'active' + null
 // paused_at. Audit row tagged admin_resumed_sponsorship.
 //
-// We don't send a "resumed" donor email because the donor route
-// doesn't either (the next monthly invoice is the natural signal
-// that the sub is live again). Adding one here would surprise
-// donors with a notification they don't get from self-resume.
+// Session 61.3 hotfix — DOES send a "resumed" donor email now.
+// Previously the rationale was "the donor route doesn't either, so
+// admin shouldn't surprise the donor with a notification donors
+// don't get from self-resume." But admin-initiated resume IS a
+// surprise the donor needs to know about: from the donor's
+// perspective they paused their support, did nothing else, and
+// then started getting charged again. Without an email, that
+// reads as "OrphanGive started charging me without asking." The
+// email closes the loop. Donor self-resume still doesn't email —
+// the symmetry argument doesn't hold when the actor is different.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createItem } from "@directus/sdk";
 import { getStripe } from "@/lib/stripe-client";
 import { updateSponsorship } from "@/lib/sponsorship-data";
+import { sendEmail, siteUrl } from "@/lib/email";
+import { fetchChildById, formatTo } from "@/lib/email-data";
+import { SponsorshipResumedEmail } from "@/emails/SponsorshipResumedEmail";
 import {
   authedAdminSponsorship,
+  fetchDonorForEmail,
   unwrapChildId,
 } from "@/lib/admin-sponsorship-actions";
 import { directusServer } from "@/lib/directus";
@@ -110,6 +120,36 @@ export async function POST(
   } catch (err) {
     console.warn(
       "[admin/sponsorships/resume] audit write failed (swallowed)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Session 61.3 hotfix — donor email mirroring the pause + cancel
+  // pattern. Fire-and-await with non-fatal catch (same shape the
+  // other admin endpoints use). Resume endpoint has no body / no
+  // admin reason today, so adminReason is omitted; byAdmin=true
+  // drives the "by the OrphanGive team" copy.
+  try {
+    const donor = await fetchDonorForEmail(sponsorship.donor);
+    const childId = unwrapChildId(sponsorship);
+    const child = childId ? await fetchChildById(childId) : null;
+    if (donor) {
+      const firstName =
+        donor.first_name?.trim() || donor.email.split("@")[0]!;
+      await sendEmail({
+        to: formatTo(donor.email, firstName),
+        subject: `Your sponsorship of ${child?.display_name ?? "your sponsored child"} has been resumed`,
+        template: SponsorshipResumedEmail({
+          firstName,
+          childName: child?.display_name ?? "your sponsored child",
+          dashboardUrl: siteUrl(`/dashboard/sponsorship/${sponsorship.id}`),
+          byAdmin: true,
+        }),
+      });
+    }
+  } catch (err) {
+    console.warn(
+      "[admin/sponsorships/resume] email failed (non-fatal):",
       err instanceof Error ? err.message : err,
     );
   }

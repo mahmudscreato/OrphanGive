@@ -6,13 +6,27 @@ export type SponsorshipCancelledEmailProps = {
   firstName: string;
   childName: string;
   browseUrl: string;
+  // Session 61.3 hotfix — when admin initiated the cancel (vs the
+  // donor doing it from /dashboard), attribute the action +
+  // surface the admin's stated reason inline. The donor route's
+  // existing callsite omits both props so its behaviour is
+  // unchanged.
+  byAdmin?: boolean;
+  adminReason?: string | null;
 };
 
 export function SponsorshipCancelledEmail({
   firstName,
   childName,
   browseUrl,
+  byAdmin = false,
+  adminReason,
 }: SponsorshipCancelledEmailProps) {
+  const trimmedReason = adminReason?.trim();
+  const lead = byAdmin
+    ? "has been cancelled by the OrphanGive team. No more charges will occur."
+    : "has been cancelled. No more charges will occur.";
+
   return (
     <EmailLayout
       preview={`Your sponsorship of ${childName} has ended.`}
@@ -41,9 +55,22 @@ export function SponsorshipCancelledEmail({
         }}
       >
         Your sponsorship of{" "}
-        <strong style={{ color: tokens.ink }}>{childName}</strong> has been
-        cancelled. No more charges will occur.
+        <strong style={{ color: tokens.ink }}>{childName}</strong> {lead}
       </Text>
+
+      {byAdmin && trimmedReason ? (
+        <Text
+          style={{
+            fontSize: "14px",
+            lineHeight: 1.6,
+            color: tokens.inkSubtle,
+            fontStyle: "italic",
+            margin: "0 0 16px 0",
+          }}
+        >
+          Note from our team: {trimmedReason}
+        </Text>
+      ) : null}
 
       <Text
         style={{
@@ -70,8 +97,9 @@ export function SponsorshipCancelledEmail({
           margin: "24px 0 0 0",
         }}
       >
-        If you cancelled by mistake or want to discuss this with us, simply
-        reply to this email.
+        {byAdmin
+          ? "If you have questions about this decision, simply reply to this email."
+          : "If you cancelled by mistake or want to discuss this with us, simply reply to this email."}
       </Text>
     </EmailLayout>
   );

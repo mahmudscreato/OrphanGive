@@ -120,9 +120,13 @@ export async function POST(
     );
   }
 
-  // Donor email (best-effort) — same template + copy as the donor's
-  // self-pause flow so the recipient experience is identical
-  // regardless of who initiated the pause.
+  // Session 61.3 hotfix — donor email now attributes the pause to
+  // the OrphanGive team (was: same neutral copy as donor self-pause,
+  // which left the donor wondering who paused their support).
+  // byAdmin=true switches the template's lead copy + adds the
+  // "reply to this email if you have questions" line. No reason
+  // captured for admin pause today (the pause modal is body-less);
+  // the field stays optional in the template for the future.
   try {
     const donor = await fetchDonorForEmail(sponsorship.donor);
     const childId = unwrapChildId(sponsorship);
@@ -132,11 +136,12 @@ export async function POST(
         donor.first_name?.trim() || donor.email.split("@")[0]!;
       await sendEmail({
         to: formatTo(donor.email, firstName),
-        subject: `Your sponsorship of ${child?.display_name ?? "your sponsored child"} is paused`,
+        subject: `Your sponsorship of ${child?.display_name ?? "your sponsored child"} has been paused`,
         template: SponsorshipPausedEmail({
           firstName,
           childName: child?.display_name ?? "your sponsored child",
           resumeUrl: siteUrl(`/dashboard/sponsorship/${sponsorship.id}`),
+          byAdmin: true,
         }),
       });
     }
