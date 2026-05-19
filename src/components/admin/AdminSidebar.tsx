@@ -26,6 +26,8 @@ import {
   UserCircle,
   ScrollText,
   LogOut,
+  Gift,
+  Banknote,
 } from "lucide-react";
 
 const FAVICON_URL =
@@ -85,6 +87,24 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: UserCircle,
     exact: false,
     badgeKey: "donors",
+    group: "primary",
+  },
+  // Session 58.2 — donation_package + currency_rate admin. Sits in the
+  // primary cluster next to Donors since both are donor-side data;
+  // Mahmud touches these to adjust pricing presets and FX rates
+  // without needing a deploy.
+  {
+    href: "/admin/donation-packages",
+    label: "Packages",
+    icon: Gift,
+    exact: false,
+    group: "primary",
+  },
+  {
+    href: "/admin/currency-rates",
+    label: "Currency rates",
+    icon: Banknote,
+    exact: false,
     group: "primary",
   },
   // Session 67 — forensic surface. Secondary group; lives at the
