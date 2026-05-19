@@ -106,6 +106,58 @@ function diffPackage(
   return diff;
 }
 
+/**
+ * Bulk display_order update from the drag-and-drop reorder UI.
+ *
+ * Takes [{id, display_order}, ...]. Issues one updateItem per row
+ * (Directus doesn't have a "bulk patch by id with per-row payload"
+ * endpoint), then writes a single audit event with the affected
+ * ids + new orders in metadata. Any individual write failure
+ * throws; the route handler maps that to a 500 and the client
+ * shows an error + refetches the canonical order from the server.
+ *
+ * Section integrity: callers must validate that all ids in a single
+ * call belong to the same package_type (monthly XOR one_time), since
+ * the UI sorts those sections independently. We don't re-check
+ * here — the API route does that gate.
+ */
+export async function reorderDonationPackages(opts: {
+  actorUserId: string;
+  items: ReadonlyArray<{ id: string; display_order: number }>;
+  request?: Request;
+}): Promise<void> {
+  if (opts.items.length === 0) return;
+  const ds = directusServer();
+  for (const item of opts.items) {
+    if (!Number.isInteger(item.display_order)) {
+      throw new Error(
+        `display_order must be an integer (got ${item.display_order})`,
+      );
+    }
+    await ds.request(
+      updateItem(
+        "donation_package" as never,
+        item.id,
+        { display_order: item.display_order } as never,
+      ),
+    );
+  }
+  await recordAuditEvent({
+    actorUserId: opts.actorUserId,
+    actorRole: "admin",
+    action: "admin_reordered_donation_packages",
+    collection: "donation_package",
+    metadata: {
+      count: opts.items.length,
+      orders: opts.items.map((i) => ({
+        id: i.id,
+        display_order: i.display_order,
+      })),
+    },
+    request: opts.request,
+  });
+}
+
 export async function updateDonationPackage(opts: {
   actorUserId: string;
   id: string;

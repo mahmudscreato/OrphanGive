@@ -146,7 +146,11 @@ export type AuditAction =
   | "admin_edited_donation_package"
   | "admin_archived_donation_package"
   | "admin_reactivated_donation_package"
-  | "admin_edited_currency_rate";
+  | "admin_edited_currency_rate"
+  // Session 58.2-overnight Task 3 — bulk reorder via drag-and-drop on
+  // /admin/donation-packages. Logged once per drag with the affected
+  // ids + new display_order values in metadata.
+  | "admin_reordered_donation_packages";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -397,6 +401,8 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_reactivated_donation_package: () =>
     `Admin reactivated a donation package`,
   admin_edited_currency_rate: () => `Admin updated a currency rate`,
+  admin_reordered_donation_packages: () =>
+    `Admin reordered donation packages`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

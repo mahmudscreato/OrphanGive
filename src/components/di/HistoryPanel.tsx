@@ -102,6 +102,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_archived_donation_package: Trash2,
   admin_reactivated_donation_package: CheckCircle2,
   admin_edited_currency_rate: Edit3,
+  admin_reordered_donation_packages: ListChecks,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
