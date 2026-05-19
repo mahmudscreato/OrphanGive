@@ -206,6 +206,23 @@ type SponsorshipRow = {
   date_created: string | null;
 };
 
+// Session 65-66-61.2 hotfix — `date_created` removed.
+//
+// On this Directus install, the admin token returns HTTP 403 for
+// directus_users.date_created (the field either isn't on the
+// schema or isn't in the donor read policy). Including it in
+// `fields[]` made the WHOLE list query 403 → empty array → the
+// page rendered "Showing 0 of 0 donors" while the sidebar badge
+// (which only reads `id`) showed the real count of pending
+// approvals. Verified via direct REST probe — see commit message.
+//
+// Downstream: AdminDonorSummary.date_created falls back to null;
+// the "Signed up" column renders "—" until the column is granted
+// to the admin policy (or a Directus schema fix surfaces it). The
+// rest of the row still renders.
+//
+// Same drop applies to date_updated (also 403) — never asked for
+// here, noting for parity with admin-children's fix.
 const DONOR_FIELDS: ReadonlyArray<keyof DonorRow> = [
   "id",
   "email",
@@ -217,7 +234,6 @@ const DONOR_FIELDS: ReadonlyArray<keyof DonorRow> = [
   "og_admin_approval_status",
   "og_admin_approved_at",
   "og_agreed_to_terms_at",
-  "date_created",
   "last_access",
   "og_profile_photo_url",
   "og_stripe_customer_id",
@@ -296,7 +312,11 @@ function summarise(row: DonorRow): AdminDonorSummary {
     phone: row.og_phone?.trim() || null,
     approval_status: normaliseApproval(row.og_admin_approval_status),
     account_status: normaliseAccountStatus(row.status),
-    date_created: row.date_created,
+    // Session 65-66-61.2 hotfix — `row.date_created` is now
+    // undefined at runtime because the field was dropped from
+    // DONOR_FIELDS (403 on this Directus install). Coerce to null
+    // so the AdminDonorSummary's `string | null` type holds.
+    date_created: row.date_created ?? null,
     last_access: row.last_access,
     // Filled in by the caller when aggregates were fetched; default
     // null so the row is still renderable when aggregation is skipped.
@@ -393,18 +413,22 @@ export async function listAdminDonors(
   }
 
   // ── Sort ──
+  //
+  // Session 65-66-61.2 hotfix — `date_created` removed from every
+  // sort clause for the same reason it's removed from `fields[]`
+  // above. Directus rejects sort-on-unreadable-field with a 403
+  // too (verified). The "date_created_desc" sort option is kept on
+  // the user-visible API for forward compat (no caller passes it
+  // today besides the dropdown that may sort by it), but with the
+  // column unavailable it degrades to the same proxy sort as
+  // last_access_desc.
   const sortClause = ((): string[] => {
     switch (sort) {
       case "date_created_desc":
-        return ["-date_created"];
       case "lifetime_giving_desc":
-        // Lifetime giving lives on a separate collection; we sort by
-        // last_access here as the Directus-side proxy + re-sort after
-        // aggregate computation below.
-        return ["-last_access", "-date_created"];
       case "last_access_desc":
       default:
-        return ["-last_access", "-date_created"];
+        return ["-last_access"];
     }
   })();
 
@@ -686,7 +710,8 @@ export async function getAdminDonorDetail(
     account_status: summary.account_status,
     approval_decided_at: donorRow.og_admin_approved_at,
     agreed_to_terms_at: donorRow.og_agreed_to_terms_at,
-    date_created: donorRow.date_created,
+    // Session 65-66-61.2 hotfix — see summarise() for the same fix.
+    date_created: donorRow.date_created ?? null,
     last_access: donorRow.last_access,
     country_code: summary.country_code,
     country_name: summary.country_name,

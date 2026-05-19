@@ -294,6 +294,22 @@ type ChildPageRowRaw = {
   date_updated: string | null;
 };
 
+// Session 65-66-61.2 hotfix — `date_created` and `date_updated`
+// removed.
+//
+// On this Directus install, the admin token returns HTTP 403 for
+// both child.date_created and child.date_updated (the column
+// either isn't on the schema or isn't in the admin read policy).
+// Including either in `fields[]` made the WHOLE list query 403 →
+// empty array → /admin/children rendered "Showing 0 of 0 children"
+// while the sidebar badge (which only reads `id` filtered by
+// status='active') showed the real count of 10. Verified via
+// direct REST probe — see commit message.
+//
+// Downstream: the list page falls back to alphabetical sort by
+// display_name (was: -date_updated, -date_created); detail page's
+// "Created"/"Last updated" rows render "—" until the columns are
+// granted to the admin policy. Everything else still works.
 const CHILD_PAGE_FIELDS = [
   "id",
   "display_name",
@@ -305,8 +321,6 @@ const CHILD_PAGE_FIELDS = [
   "support_type",
   "status",
   "uploaded_by_di",
-  "date_created",
-  "date_updated",
 ] as const;
 
 /**
@@ -373,19 +387,19 @@ export async function listAdminChildrenPage(
     filters.push({ display_name: { _icontains: search } });
 
   // ── Sort ──
+  // Session 65-66-61.2 hotfix — date_updated / date_created are
+  // unreadable for the admin token on `child` (HTTP 403). Sorting
+  // on them returns the same 403, so every sort path falls back to
+  // alphabetical display_name. The sort enum stays for forward
+  // compat (UI dropdown keeps the options) but they all resolve
+  // to the same clause until the columns are added to the policy.
   const sortClause = ((): string[] => {
     switch (sort) {
       case "display_name_asc":
-        return ["display_name"];
       case "date_created_desc":
-        return ["-date_created"];
       case "date_updated_desc":
       default:
-        // date_updated may be null on legacy rows that pre-date the
-        // auto-fill; fall back to date_created so those rows still
-        // get a sensible position rather than always sinking to the
-        // bottom.
-        return ["-date_updated", "-date_created"];
+        return ["display_name"];
     }
   })();
 
@@ -571,8 +585,12 @@ function toAdminChildPageRow(
     uploaded_by_name: r.uploaded_by_di
       ? nameByDi.get(r.uploaded_by_di) ?? null
       : null,
-    date_created: r.date_created,
-    date_updated: r.date_updated,
+    // Session 65-66-61.2 hotfix — these are undefined at runtime
+    // because the columns were dropped from CHILD_PAGE_FIELDS
+    // (403 on this Directus install). Coerce to null so the
+    // AdminChildPageRow's `string | null` type holds.
+    date_created: r.date_created ?? null,
+    date_updated: r.date_updated ?? null,
   };
 }
 
@@ -908,8 +926,11 @@ export async function getAdminChildDetail(
     assigned_di_name: row.assigned_di
       ? nameByDi.get(row.assigned_di) ?? null
       : null,
-    date_created: row.date_created,
-    date_updated: row.date_updated,
+    // Session 65-66-61.2 hotfix — same as list path; columns 403
+    // so the spread of CHILD_PAGE_FIELDS into DETAIL_FIELDS no
+    // longer asks for them either. Coerce to null.
+    date_created: row.date_created ?? null,
+    date_updated: row.date_updated ?? null,
     active_sponsor_count: active,
     queued_sponsor_count: queued,
     sponsor_state: sponsorState,

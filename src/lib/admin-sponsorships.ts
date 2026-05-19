@@ -240,13 +240,35 @@ function unwrapChildId(c: SponsorshipRowFlat["child"]): string | null {
   return c.id ?? null;
 }
 
+// Session 65-66-61.2 hotfix — two bugs in DonorRow / resolveDonors:
+//
+//   1. `date_created` is HTTP 403 on this Directus install (the
+//      field either isn't on the schema or isn't in the admin read
+//      policy). Including it in `fields[]` made the WHOLE response
+//      fail → empty map → the /admin/sponsorships/[id] donor card
+//      rendered "—" for every field even though the page knew the
+//      donor existed (sponsorship.donor id was non-null). Verified
+//      via direct REST probe — see commit message.
+//
+//   2. `country` is the wrong field. Donors store country in
+//      `og_country` (verified — donor-data.ts FULL_FIELDS, the
+//      donor signup form, and the admin-donors helper all use
+//      og_country). `country` IS a valid directus_users column
+//      (one of Directus's built-in user fields) and reads HTTP
+//      200, but it's null on every donor row so the donor card's
+//      country slot rendered as null even when (1) wasn't crashing.
+//
+// Both fixed: dropped `date_created`, swapped `country` → `og_country`.
+// The detail page's `donor_signup_at` slot now reads null instead of
+// the donor's actual signup date; the only honest source for that
+// would be the Directus user record's date_created, which the
+// policy doesn't expose. Filed for a future policy fix.
 type DonorRow = {
   id: string;
   first_name: string | null;
   last_name: string | null;
   email: string;
-  date_created: string | null;
-  country: string | null;
+  og_country: string | null;
 };
 
 async function resolveDonors(
@@ -258,14 +280,7 @@ async function resolveDonors(
     const rows = (await directusServer().request(
       readUsers({
         filter: { id: { _in: donorIds } },
-        fields: [
-          "id",
-          "first_name",
-          "last_name",
-          "email",
-          "date_created",
-          "country",
-        ],
+        fields: ["id", "first_name", "last_name", "email", "og_country"],
         limit: -1,
       } as never),
     )) as unknown as DonorRow[] | undefined;
@@ -532,8 +547,12 @@ export async function getAdminSponsorshipDetail(
     donor_id: row.donor,
     donor_first_name: donor?.first_name ?? null,
     donor_last_name: donor?.last_name ?? null,
-    donor_country: donor?.country ?? null,
-    donor_signup_at: donor?.date_created ?? null,
+    // Session 65-66-61.2 hotfix — country lives on og_country, not
+    // the built-in `country` field (see DonorRow comment above).
+    // donor_signup_at can't be sourced honestly while date_created
+    // is locked behind the admin policy — render as null.
+    donor_country: donor?.og_country ?? null,
+    donor_signup_at: null,
     donor_total_sponsorships: donorTotalSponsorships,
     child_label: childObj?.display_name ?? "Unknown child",
     child_id: childId,
