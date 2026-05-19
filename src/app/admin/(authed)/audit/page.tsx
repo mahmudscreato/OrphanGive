@@ -226,11 +226,17 @@ export default async function AdminAuditPage({
         {/* Session 67.1 hotfix — checkbox list replaces the native
             <select multiple>. The new component writes its joined
             value into a hidden input named "actions" so this form's
-            existing GET submit handler keeps working unchanged. */}
+            existing GET submit handler keeps working unchanged.
+
+            Session 67.2 — pre-resolve labels on the server. Passing
+            formatActionLabel directly tripped the "Functions cannot
+            be passed directly to Client Components" RSC rule. */}
         <div className="md:col-span-4">
           <AuditActionsCheckboxFilter
-            options={result.available_actions}
-            labelFor={formatActionLabel}
+            options={result.available_actions.map((a) => ({
+              value: a,
+              label: formatActionLabel(a),
+            }))}
             defaultValue={actions}
           />
         </div>

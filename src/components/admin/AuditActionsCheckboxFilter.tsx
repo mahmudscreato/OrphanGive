@@ -20,26 +20,41 @@
 //   - "Clear all" link wipes selected set
 //   - On change, write the joined value into the hidden input so
 //     the parent form submission carries the right query string
+//
+// Session 67.2 hotfix — the original prop API took `options:
+// string[]` and `labelFor: (action) => string`. Functions can't
+// cross the RSC boundary, so React threw on render:
+//   "Functions cannot be passed directly to Client Components …"
+// Pre-resolve labels on the server now: `options` is an array of
+// {value, label} pairs and the component renders `opt.label`
+// directly with no function call.
 
 "use client";
 
 import { useState } from "react";
 import { Search } from "lucide-react";
 
+export interface AuditActionOption {
+  /** Underlying enum string written into the URL ?actions= param
+   * and matched against audit_log rows. */
+  value: string;
+  /** Pre-resolved human label, computed on the server via
+   * formatActionLabel before crossing the RSC boundary. */
+  label: string;
+}
+
 interface Props {
-  /** Every available action string from listAdminAuditPage. Already
-   * sorted alphabetically by the data layer; we render them in
-   * the same order. */
-  options: ReadonlyArray<string>;
-  /** Pre-resolved human labels keyed by action string. */
-  labelFor: (action: string) => string;
-  /** Initially-checked actions, from the URL `?actions=…` param. */
+  /** Every available action from listAdminAuditPage, paired with a
+   * server-resolved label. Already sorted alphabetically by the
+   * data layer; we render them in the same order. */
+  options: ReadonlyArray<AuditActionOption>;
+  /** Initially-checked action values, from the URL `?actions=…`
+   * param. */
   defaultValue: ReadonlyArray<string>;
 }
 
 export function AuditActionsCheckboxFilter({
   options,
-  labelFor,
   defaultValue,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(
@@ -49,9 +64,9 @@ export function AuditActionsCheckboxFilter({
   const trimmed = query.trim().toLowerCase();
   const filteredOptions = trimmed
     ? options.filter(
-        (a) =>
-          a.toLowerCase().includes(trimmed) ||
-          labelFor(a).toLowerCase().includes(trimmed),
+        (opt) =>
+          opt.value.toLowerCase().includes(trimmed) ||
+          opt.label.toLowerCase().includes(trimmed),
       )
     : options;
 
@@ -122,11 +137,11 @@ export function AuditActionsCheckboxFilter({
               : "No actions match."}
           </p>
         ) : (
-          filteredOptions.map((action) => {
-            const isChecked = selected.has(action);
+          filteredOptions.map((opt) => {
+            const isChecked = selected.has(opt.value);
             return (
               <label
-                key={action}
+                key={opt.value}
                 className={`flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer text-[12.5px] ${
                   isChecked ? "bg-tangerine-mist/40" : "hover:bg-stone-50"
                 }`}
@@ -134,11 +149,11 @@ export function AuditActionsCheckboxFilter({
                 <input
                   type="checkbox"
                   checked={isChecked}
-                  onChange={() => toggle(action)}
+                  onChange={() => toggle(opt.value)}
                   className="accent-tangerine"
                 />
-                <span className="text-ink truncate" title={action}>
-                  {labelFor(action)}
+                <span className="text-ink truncate" title={opt.value}>
+                  {opt.label}
                 </span>
               </label>
             );
