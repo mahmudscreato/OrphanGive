@@ -158,7 +158,7 @@ export async function SponsorPageContent({
           <div className="mb-7 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-stone-200">
             <div className="relative aspect-[16/9] w-full bg-stone-100">
               <Image
-                src={child.photo}
+                src={`/api/assets/${child.photo}`}
                 alt={child.display_name}
                 fill
                 className="object-cover"
