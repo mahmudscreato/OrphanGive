@@ -54,6 +54,18 @@ export interface DonationStripeMetadata {
   mode: string;
   /** Prepaid months count as string, or empty for non-prepaid. */
   duration_months: string;
+  /**
+   * Legacy key kept for the existing /api/webhooks/stripe handler,
+   * which gates handlePaymentIntentSucceeded on
+   * `pi.metadata.payment_mode IN ("one_time", "monthly_prepaid")`.
+   * Mapping:
+   *   mode = "one-time"       → payment_mode = "one_time"
+   *   mode = "prepaid-bundle" → payment_mode = "monthly_prepaid"
+   *   mode = "subscription"   → payment_mode = "" (subs flow via invoice.paid)
+   * Without this the existing webhook would silently skip donations
+   * coming from /api/donate/init.
+   */
+  payment_mode: string;
 }
 
 /**
@@ -174,6 +186,12 @@ export function buildDonationPayload(args: BuildArgs): DonationPayload {
     cause_tag: causeTag ?? "",
     mode,
     duration_months: mode === "prepaid-bundle" ? String(durationMonths) : "",
+    payment_mode:
+      mode === "one-time"
+        ? "one_time"
+        : mode === "prepaid-bundle"
+          ? "monthly_prepaid"
+          : "",
   };
 
   // USD-equivalent for the legacy sponsorship.amount_usd field. Derive

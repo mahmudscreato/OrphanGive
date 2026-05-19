@@ -444,8 +444,22 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
   // PI charge (one-time gifts and prepaid bundles get covered by
   // the welcome email instead, which is the canonical "your
   // sponsorship has begun" notification).
-  if (newlyActiveIds.length > 0) {
-    await fireWelcomeEmail(newlyActiveIds);
+  //
+  // Session 58.2: campaign one-time donations from /api/donate/init
+  // can have child=null (e.g. a "feed a child for a week" cause that
+  // isn't tied to a specific child). The welcome email template
+  // fetches the child by id and personalizes around it — null child
+  // would either break the lookup or produce a generic email with no
+  // child anchor. Filter those out here; campaign donations get a
+  // dedicated thank-you (Stripe receipt + /donate/success page) and
+  // skip the sponsorship-welcome template. Future: dedicated
+  // "thank you for your gift to X cause" template (Session 58.3).
+  const idsForWelcomeEmail = newlyActiveIds.filter((id) => {
+    const s = sponsorships.find((x) => x.id === id);
+    return s && s.child !== null && s.child !== undefined;
+  });
+  if (idsForWelcomeEmail.length > 0) {
+    await fireWelcomeEmail(idsForWelcomeEmail);
   }
 }
 
