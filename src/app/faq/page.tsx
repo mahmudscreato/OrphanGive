@@ -34,16 +34,19 @@ import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
+// Session 64 — switched to buildPageMetadata so the og:image flows
+// through. The inline {title, description}-only openGraph block above
+// was overriding the layout's file-convention images via Next.js's
+// shallow metadata merge, leaving no og:image meta tag at all on this
+// page. See src/lib/page-metadata.ts for the why.
+import { buildPageMetadata } from "@/lib/page-metadata";
+
+export const metadata = buildPageMetadata({
+  path: "/faq",
   title: "FAQ — OrphanGive",
   description:
     "Answers to common questions about sponsoring a child through OrphanGive — payments, updates, the organisation, and your account.",
-  openGraph: {
-    title: "FAQ — OrphanGive",
-    description:
-      "Answers to common questions about sponsoring a child through OrphanGive.",
-  },
-};
+});
 
 // ─── Data ────────────────────────────────────────────────────────────
 
