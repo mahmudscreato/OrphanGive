@@ -27,6 +27,7 @@ import {
   MissingRequiredFieldError,
   NoChangesError,
   OutOfScopeError,
+  ValidationError,
   type ProposalStatus,
 } from "@/lib/di-proposals";
 // Session 46 — audit + admin notification on every successful submission.
@@ -417,6 +418,24 @@ export async function POST(req: NextRequest) {
         { status: 403 },
       );
     }
+    // Session 63 — aggregate validation. Carries every problem at
+    // once; the form renders them as a summary panel + per-field
+    // highlights. Take this branch before the legacy
+    // MissingRequiredFieldError / InvalidValueError catches because
+    // the new collector throws ValidationError, not those.
+    if (err instanceof ValidationError) {
+      return NextResponse.json(
+        {
+          error: "validation_failed",
+          fields: err.fields,
+        },
+        { status: 400 },
+      );
+    }
+    // Legacy single-error catches kept as a defensive fallback —
+    // nothing in di-proposals.ts throws these directly anymore, but
+    // any future deep path that still does will degrade into the old
+    // "first error wins" UX rather than 500ing.
     if (err instanceof MissingRequiredFieldError) {
       return NextResponse.json(
         {
