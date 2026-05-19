@@ -173,7 +173,10 @@ export async function POST(
     );
   }
 
-  // Donor email (best-effort).
+  // Session 61.3 hotfix — donor email now attributes the cancel
+  // to the OrphanGive team and surfaces the admin's stated reason
+  // inline. Both threaded through the extended SponsorshipCancelled
+  // template's byAdmin + adminReason props.
   try {
     const donor = await fetchDonorForEmail(sponsorship.donor);
     const childId = unwrapChildId(sponsorship);
@@ -188,6 +191,8 @@ export async function POST(
           firstName,
           childName: child?.display_name ?? "your sponsored child",
           browseUrl: siteUrl("/children"),
+          byAdmin: true,
+          adminReason: reason,
         }),
       });
     }

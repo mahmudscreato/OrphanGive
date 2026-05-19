@@ -17,12 +17,11 @@
 // Side effects:
 //   - Stripe Refund created
 //   - audit_log row: admin_refunded_sponsorship_charge
-//   - donor email (best-effort): re-uses the existing
-//     SponsorshipCancelledEmail isn't right for a refund — we don't
-//     have a dedicated RefundEmail template yet. Documented in the
-//     ship report as a follow-up. For now we email a short plain
-//     subject via the same `sendEmail` helper without a template,
-//     so the donor at least knows a refund hit their card.
+//   - donor email (best-effort): SponsorshipRefundEmail (Session
+//     61.3 hotfix — replaces the inline minimal JSX placeholder
+//     that shipped in Session 61 with a proper React-Email
+//     template that includes the refund amount card + the standard
+//     "5-10 business days" line + the admin's reason inline).
 //
 // Does NOT cancel the sponsorship — admin can cancel + refund as
 // separate steps. This keeps the policy decision (was this a one-
@@ -35,6 +34,7 @@ import { createItem } from "@directus/sdk";
 import { getStripe } from "@/lib/stripe-client";
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
+import { SponsorshipRefundEmail } from "@/emails/SponsorshipRefundEmail";
 import {
   authedAdminSponsorship,
   fetchDonorForEmail,
@@ -211,7 +211,11 @@ export async function POST(
   // template; sending a short plain-text body via the same email
   // helper keeps the donor informed without us blocking on
   // template work. Follow-up: add a SponsorshipRefundEmail React-
-  // Email template that includes the receipt URL Stripe returns.
+  // Session 61.3 hotfix — swapped the inline placeholder for the
+  // proper React-Email SponsorshipRefundEmail. Currency defaults to
+  // USD because the refund endpoint operates on USD-denominated
+  // amounts (sponsorship.currency is the source of truth; refund
+  // shares that).
   try {
     const donor = await fetchDonorForEmail(sponsorship.donor);
     const childId = unwrapChildId(sponsorship);
@@ -219,18 +223,16 @@ export async function POST(
     if (donor) {
       const firstName =
         donor.first_name?.trim() || donor.email.split("@")[0]!;
-      // Inline minimal "template" — React-Email expects a
-      // ReactElement; an empty <p> with text content works for V1.
-      // Future: swap for SponsorshipRefundEmail when written.
       await sendEmail({
         to: formatTo(donor.email, firstName),
         subject: `A refund has been issued for your sponsorship of ${child?.display_name ?? "your sponsored child"}`,
-        template: refundEmailTemplate({
+        template: SponsorshipRefundEmail({
           firstName,
           childName: child?.display_name ?? "your sponsored child",
-          amountUsd,
+          amount: amountUsd,
+          currency: sponsorship.currency ?? "USD",
+          adminReason: reason ?? null,
           dashboardUrl: siteUrl(`/dashboard/sponsorship/${sponsorship.id}`),
-          adminNote: reason ?? null,
         }),
       });
     }
@@ -247,44 +249,4 @@ export async function POST(
     amountRefundedUsd: typeof refund.amount === "number" ? refund.amount / 100 : amountUsd,
     chargeId,
   });
-}
-
-// Tiny placeholder template — until we add a dedicated React-Email
-// component this returns a minimal JSX tree that the email pipeline
-// can render. Kept inline so the route file is self-contained.
-function refundEmailTemplate(args: {
-  firstName: string;
-  childName: string;
-  amountUsd: number;
-  dashboardUrl: string;
-  adminNote: string | null;
-}) {
-  // We intentionally avoid pulling a React-Email component because
-  // sendEmail accepts ANY React element; this minimal tree renders
-  // fine through @react-email/render's html() path.
-  return (
-    <div style={{ fontFamily: "Inter, sans-serif", lineHeight: 1.6 }}>
-      <p>Hi {args.firstName},</p>
-      <p>
-        We&apos;ve issued a refund of{" "}
-        <strong>${args.amountUsd.toFixed(2)} USD</strong> to your card for
-        your sponsorship of {args.childName}.
-      </p>
-      {args.adminNote ? (
-        <p>
-          Note from our team: <em>{args.adminNote}</em>
-        </p>
-      ) : null}
-      <p>
-        Refunds typically appear on your statement within 5–10 business
-        days. If you have any questions, reply to this email and
-        we&apos;ll get back to you quickly.
-      </p>
-      <p>
-        You can view this sponsorship&apos;s history any time:{" "}
-        <a href={args.dashboardUrl}>{args.dashboardUrl}</a>
-      </p>
-      <p>— OrphanGive</p>
-    </div>
-  );
 }
