@@ -1,13 +1,12 @@
 // Session 51 — Admin Dashboard mobile bottom navigation.
 //
-// Mirror of DiBottomNav with the admin's 4-tab set. Sign-out lives
+// Mirror of DiBottomNav with the admin's tab set. Sign-out lives
 // in the AdminHeader's overflow on mobile (vs the sidebar's anchored
 // bottom button on desktop) — admins use mobile rarely so the cost
 // of rebuilding a hamburger menu wasn't worth it for V1.
 //
-// Mobile nav is space-constrained; we still fit five tabs at 375px
-// because the labels are 10px font-mono. If a sixth tab gets added,
-// switch this to a horizontal scroller or icon-only mode.
+// Mobile nav is space-constrained. At 6+ tabs on 375px we icon-only
+// or scroll horizontally; today's 6 tabs still fit with 10px labels.
 
 "use client";
 
@@ -19,14 +18,17 @@ import {
   ListChecks,
   Users,
   HeartHandshake,
+  UserCircle,
 } from "lucide-react";
+
+type BadgeKey = "proposals" | "reviews" | "donors";
 
 type Tab = {
   href: string;
   label: string;
   icon: typeof Home;
   exact: boolean;
-  badgeKey?: "proposals" | "reviews";
+  badgeKey?: BadgeKey;
 };
 
 const TABS: ReadonlyArray<Tab> = [
@@ -48,6 +50,14 @@ const TABS: ReadonlyArray<Tab> = [
   { href: "/admin/children", label: "Children", icon: Users, exact: false },
   // Session 61
   { href: "/admin/sponsorships", label: "Sponsors", icon: HeartHandshake, exact: false },
+  // Session 65
+  {
+    href: "/admin/donors",
+    label: "Donors",
+    icon: UserCircle,
+    exact: false,
+    badgeKey: "donors",
+  },
 ];
 
 function isActive(pathname: string, href: string, exact: boolean): boolean {
@@ -60,7 +70,8 @@ export function AdminBottomNav({
 }: {
   // Session 60 — mirror the sidebar's badge-count plumbing for
   // mobile parity. Same shape, same null/0 = hide convention.
-  badges?: Partial<Record<"proposals" | "reviews", number | null>>;
+  // Session 65 — extended to include 'donors'.
+  badges?: Partial<Record<BadgeKey, number | null>>;
 } = {}) {
   const pathname = usePathname();
 

@@ -15,6 +15,8 @@
 import { redirect } from "next/navigation";
 import { requireAdminUser } from "@/lib/admin-auth";
 import { getAdminHomeStats } from "@/lib/admin-home-stats";
+// Session 65 — donor pending count for the Donors nav badge.
+import { countPendingDonorApprovals } from "@/lib/admin-donors";
 import { AdminBottomNav } from "@/components/admin/AdminBottomNav";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -37,7 +39,17 @@ export default async function AdminAuthedLayout({
   // (moments + intake-photos + documents) that hang off
   // /admin/reviews. Null values (fetch error) cause the badge to
   // hide gracefully.
-  const stats = await getAdminHomeStats();
+  //
+  // Session 65 — added the donor pending-approval count fetched in
+  // parallel with the home stats (Promise.all). Same null-on-error
+  // convention. countPendingDonorApprovals returns 0 on failure (not
+  // null) because the helper swallows internally — we can't
+  // distinguish "0 pending" from "fetch failed" here. That's
+  // acceptable for the badge: 0 hides it anyway.
+  const [stats, donorPending] = await Promise.all([
+    getAdminHomeStats(),
+    countPendingDonorApprovals(),
+  ]);
   const reviewsCount =
     (stats.pendingMomentCount ?? 0) +
     (stats.pendingIntakePhotoCount ?? 0) +
@@ -50,6 +62,7 @@ export default async function AdminAuthedLayout({
       stats.pendingDocumentCount === null
         ? null
         : reviewsCount,
+    donors: donorPending,
   };
 
   return (
