@@ -24,10 +24,32 @@ import {
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
-const NAV_ITEMS = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof Home;
+  exact: boolean;
+  // Session 60 — optional pending-count badge. Driven by the
+  // server-side layout fetch; rendered next to the label when > 0.
+  badgeKey?: "proposals" | "reviews";
+};
+
+const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: "/admin", label: "Home", icon: Home, exact: true },
-  { href: "/admin/proposals", label: "Proposals", icon: ClipboardCheck, exact: false },
-  { href: "/admin/reviews", label: "Reviews", icon: ListChecks, exact: false },
+  {
+    href: "/admin/proposals",
+    label: "Proposals",
+    icon: ClipboardCheck,
+    exact: false,
+    badgeKey: "proposals",
+  },
+  {
+    href: "/admin/reviews",
+    label: "Reviews",
+    icon: ListChecks,
+    exact: false,
+    badgeKey: "reviews",
+  },
   { href: "/admin/children", label: "Children", icon: Users, exact: false },
 ];
 
@@ -36,7 +58,14 @@ function isActive(pathname: string, href: string, exact: boolean): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar() {
+export function AdminSidebar({
+  badges,
+}: {
+  // Session 60 — optional per-key pending counts. Null = "still
+  // loading / fetch errored" (we hide the badge). 0 = "nothing
+  // pending" (also hidden so 0 doesn't read as noise).
+  badges?: Partial<Record<"proposals" | "reviews", number | null>>;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
@@ -84,6 +113,11 @@ export function AdminSidebar() {
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
+            const badgeCount = item.badgeKey
+              ? badges?.[item.badgeKey] ?? null
+              : null;
+            const showBadge =
+              typeof badgeCount === "number" && badgeCount > 0;
             return (
               <li key={item.href}>
                 <Link
@@ -98,7 +132,15 @@ export function AdminSidebar() {
                   <Icon
                     className={`w-4 h-4 ${active ? "stroke-[2.25]" : "stroke-[1.75]"}`}
                   />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {showBadge ? (
+                    <span
+                      className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-tangerine text-white text-[11px] font-semibold tabular-nums"
+                      aria-label={`${badgeCount} pending`}
+                    >
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );

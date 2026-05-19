@@ -14,6 +14,7 @@
 
 import { redirect } from "next/navigation";
 import { requireAdminUser } from "@/lib/admin-auth";
+import { getAdminHomeStats } from "@/lib/admin-home-stats";
 import { AdminBottomNav } from "@/components/admin/AdminBottomNav";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -29,19 +30,41 @@ export default async function AdminAuthedLayout({
     redirect("/admin/login");
   }
 
+  // Session 60 — pending counts for the nav badges. Same source
+  // of truth as the admin home stat tiles (getAdminHomeStats),
+  // so the sidebar badge and the home counter can't drift.
+  // Reviews badge = combined pending for the three review queues
+  // (moments + intake-photos + documents) that hang off
+  // /admin/reviews. Null values (fetch error) cause the badge to
+  // hide gracefully.
+  const stats = await getAdminHomeStats();
+  const reviewsCount =
+    (stats.pendingMomentCount ?? 0) +
+    (stats.pendingIntakePhotoCount ?? 0) +
+    (stats.pendingDocumentCount ?? 0);
+  const badges = {
+    proposals: stats.pendingProposalCount,
+    reviews:
+      stats.pendingMomentCount === null &&
+      stats.pendingIntakePhotoCount === null &&
+      stats.pendingDocumentCount === null
+        ? null
+        : reviewsCount,
+  };
+
   return (
     <div className="bg-cream min-h-screen text-ink">
       {/* Mobile-only header */}
       <AdminHeader />
       {/* Desktop-only sidebar (240px wide, fixed left) */}
-      <AdminSidebar />
+      <AdminSidebar badges={badges} />
       <main className="md:pl-[240px] pb-24 md:pb-12 min-h-screen">
         {/* Desktop-only top bar with admin identity pill */}
         <AdminTopBar session={session} />
         {children}
       </main>
       {/* Mobile-only bottom nav */}
-      <AdminBottomNav />
+      <AdminBottomNav badges={badges} />
     </div>
   );
 }
