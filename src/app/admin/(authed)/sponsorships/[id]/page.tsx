@@ -37,6 +37,9 @@ import {
   type PaymentRow,
 } from "@/lib/sponsorship-data";
 import { SponsorshipActionBar } from "@/components/admin/SponsorshipActionBar";
+// Session 69.1 hotfix — wire the standalone StripeLink helper into
+// payment-row charge / payment-intent id renders.
+import { StripeLink } from "@/components/admin/StripeLink";
 
 export const dynamic = "force-dynamic";
 
@@ -343,8 +346,21 @@ function PaymentsPanel({
                   {formatTimestamp(p.paid_at ?? p.date_created)}
                 </span>
               </div>
-              <p className="mt-1 text-[11.5px] text-slate-soft font-mono break-all">
-                {p.stripe_charge_id ?? p.stripe_payment_intent_id ?? "—"}
+              {/* Session 69.1 hotfix — charge / payment-intent ids
+                  now link to the matching Stripe dashboard view.
+                  Prefer charge id (deeper route) when present;
+                  fall back to payment intent id. */}
+              <p className="mt-1 text-[11.5px] break-all">
+                {p.stripe_charge_id ? (
+                  <StripeLink kind="charge" id={p.stripe_charge_id} />
+                ) : p.stripe_payment_intent_id ? (
+                  <StripeLink
+                    kind="payment_intent"
+                    id={p.stripe_payment_intent_id}
+                  />
+                ) : (
+                  <span className="text-slate-soft font-mono">—</span>
+                )}
               </p>
               {p.failure_reason ? (
                 <p className="mt-1 text-[12px] text-[#A02020] italic">

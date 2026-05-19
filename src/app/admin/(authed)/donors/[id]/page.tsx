@@ -43,6 +43,9 @@ import {
 } from "@/lib/admin-donors";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { DonorActionBar } from "@/components/admin/DonorActionBar";
+// Session 69.1 hotfix — wire the standalone StripeLink helper into
+// the donor's Stripe customer id render.
+import { StripeLink } from "@/components/admin/StripeLink";
 
 export const dynamic = "force-dynamic";
 
@@ -264,13 +267,18 @@ function ContactPanel({ detail }: { detail: AdminDonorDetail }) {
           icon={<CreditCard className="w-3.5 h-3.5 stroke-[1.75]" aria-hidden="true" />}
           label="Stripe customer"
           value={
-            detail.stripe_customer_id ? (
-              <code className="text-[12.5px] bg-stone-50 px-1.5 py-0.5 rounded border border-stone-200">
-                {detail.stripe_customer_id}
-              </code>
-            ) : (
-              <span className="text-ink-soft italic">none yet</span>
-            )
+            // Session 69.1 hotfix — StripeLink renders the id as a
+            // monospace link to the test/live Stripe dashboard (the
+            // helper picks the right base via STRIPE_SECRET_KEY).
+            // Falls back to the previous "none yet" italic when the
+            // donor has no customer record yet.
+            <StripeLink
+              kind="customer"
+              id={detail.stripe_customer_id}
+              fallback={
+                <span className="text-ink-soft italic">none yet</span>
+              }
+            />
           }
         />
       </dl>
