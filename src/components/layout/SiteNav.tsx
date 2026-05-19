@@ -48,6 +48,7 @@ export function SiteNav({ signedIn, firstName }: Props) {
   if (
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/di") ||
+    pathname.startsWith("/admin") ||
     pathname === "/maintenance" ||
     pathname === "/offline"
   ) {
