@@ -157,6 +157,58 @@ const DETAIL_FIELDS = [
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
+// Session 61.1 hotfix — Directus REST returns Postgres NUMERIC /
+// DECIMAL columns (amount_usd, total_paid_usd) as STRINGS to preserve
+// precision, despite our TS types declaring them `number`. Passing a
+// string straight through to `.toFixed()` downstream blew up with
+// "(amount ?? 0).toFixed is not a function" because `??` only handles
+// null/undefined, so "15.00" survived unchanged and String.prototype
+// has no .toFixed. Coerce at the boundary so the rest of the code
+// sees real numbers — the formatMoney functions in the pages have
+// also been hardened as defence-in-depth, but THIS is the proper fix.
+//
+// Same boundary applies to integer columns like payment_count: TS
+// says `number`, runtime says string for some pg drivers, and a
+// comparison like `payment_count === 1` would silently fail.
+function toMoney(v: unknown): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (typeof v === "string") {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+function toIntCount(v: unknown): number {
+  if (typeof v === "number") {
+    return Number.isFinite(v) ? Math.trunc(v) : 0;
+  }
+  if (typeof v === "string") {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+// Coerce monetary fields inside the modification_history JSON blob.
+// Each entry's from_amount / to_amount come back as strings for the
+// same NUMERIC-column reason. The detail page renders these via
+// formatMoney(m.from_amount, ...) so they'd hit the same crash.
+function coerceModificationHistory(
+  raw: unknown,
+): Array<{ from_amount: number; to_amount: number; at: string; reason?: string | null }> | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.map((entry) => {
+    const e = (entry ?? {}) as Record<string, unknown>;
+    return {
+      from_amount: toMoney(e.from_amount),
+      to_amount: toMoney(e.to_amount),
+      at: typeof e.at === "string" ? e.at : "",
+      reason: typeof e.reason === "string" ? e.reason : null,
+    };
+  });
+}
+
 function isStatus(s: string | null): s is SponsorshipStatus {
   return (
     s === "pending_payment" ||
@@ -351,7 +403,11 @@ export async function listAdminSponsorships(opts?: {
         (r as { prepaid_months_remaining?: number | null })
           .prepaid_months_remaining,
       ),
-      amount_usd: r.amount_usd ?? 0,
+      // Session 61.1 hotfix — Directus REST returns numeric(10,2)
+      // columns as strings. toMoney / toIntCount coerce at the
+      // boundary so downstream `.toFixed()` + numeric comparisons
+      // work.
+      amount_usd: toMoney(r.amount_usd),
       currency: r.currency ?? "USD",
       started_at: r.started_at,
       // Without a per-payment cron we don't track last_payment_at on
@@ -359,8 +415,8 @@ export async function listAdminSponsorships(opts?: {
       // (next charge → most recent charge was 30 days ago). For one-
       // time / prepaid, started_at IS the last payment time.
       last_payment_at: r.started_at ?? r.date_created,
-      total_paid_usd: r.total_paid_usd ?? 0,
-      payment_count: r.payment_count ?? 0,
+      total_paid_usd: toMoney(r.total_paid_usd),
+      payment_count: toIntCount(r.payment_count),
       queue_position: r.queue_position,
     };
   });
@@ -445,9 +501,32 @@ export async function getAdminSponsorshipDetail(
       ? childObj.bd_district.name ?? null
       : null;
 
+  // Session 61.1 hotfix — coerce the monetary + count fields on the
+  // raw row before exposing it via `raw`. The detail page reads
+  // `detail.raw.amount_usd`, `detail.raw.total_paid_usd`, and walks
+  // `detail.raw.modification_history` to render `formatMoney(...)`
+  // for each entry's from_amount / to_amount. All three are
+  // Postgres numeric(10,2) → string-typed at runtime.
+  const coercedRaw = {
+    ...(row as unknown as Sponsorship),
+    amount_usd: toMoney(
+      (row as unknown as { amount_usd?: unknown }).amount_usd,
+    ),
+    total_paid_usd: toMoney(
+      (row as unknown as { total_paid_usd?: unknown }).total_paid_usd,
+    ),
+    payment_count: toIntCount(
+      (row as unknown as { payment_count?: unknown }).payment_count,
+    ),
+    modification_history: coerceModificationHistory(
+      (row as unknown as { modification_history?: unknown })
+        .modification_history,
+    ),
+  } as Sponsorship;
+
   return {
     id: row.id,
-    raw: row as unknown as Sponsorship,
+    raw: coercedRaw,
     donor_label: donorLabelFor(donor, row.visibility),
     donor_email: donor?.email ?? null,
     donor_id: row.donor,
