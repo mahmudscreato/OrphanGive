@@ -135,7 +135,18 @@ export type AuditAction =
   | "admin_archived_child"
   | "admin_reactivated_child"
   | "admin_requested_document_reupload"
-  | "admin_requested_intake_reupload";
+  | "admin_requested_intake_reupload"
+  // Session 58.2 — donation_package + currency_rate admin CRUD.
+  // Mahmud's edits to packages and rates land via /admin pages
+  // and must be auditable for after-the-fact reconstruction (e.g.
+  // "why did the GBP rate change last Tuesday?"). Every mutation
+  // captures the field-level diff in audit.diff per the standard
+  // pattern.
+  | "admin_created_donation_package"
+  | "admin_edited_donation_package"
+  | "admin_archived_donation_package"
+  | "admin_reactivated_donation_package"
+  | "admin_edited_currency_rate";
 
 export type ActorRole = "data_inputter" | "admin" | "system";
 
@@ -380,6 +391,12 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Admin asked for a document re-upload`,
   admin_requested_intake_reupload: () =>
     `Admin asked for an intake-photo re-upload`,
+  admin_created_donation_package: () => `Admin created a donation package`,
+  admin_edited_donation_package: () => `Admin edited a donation package`,
+  admin_archived_donation_package: () => `Admin archived a donation package`,
+  admin_reactivated_donation_package: () =>
+    `Admin reactivated a donation package`,
+  admin_edited_currency_rate: () => `Admin updated a currency rate`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

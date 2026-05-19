@@ -30,6 +30,17 @@ export interface DonationPackage {
   cause_tag: string | null;
   /** Lucide icon name (e.g. "BookOpen"). Optional. */
   icon: string | null;
+  /**
+   * Session 58.2 — recurring vs prepaid disambiguation on monthly packages.
+   *   null   = open-ended monthly subscription (Stripe Subscription, no end)
+   *   N > 0  = prepaid bundle of N months as a single upfront charge
+   *            (Stripe PaymentIntent for amount_bdt * N at checkout;
+   *            the existing prepaid_months_remaining decrement cron
+   *            continues drawing from this on the sponsorship row).
+   * Only meaningful when package_type === 'monthly'. Always null on
+   * package_type === 'one_time'.
+   */
+  duration_months: number | null;
   date_created: string | null;
   date_updated: string | null;
 }
@@ -47,6 +58,7 @@ const FIELDS = [
   "support_types",
   "cause_tag",
   "icon",
+  "duration_months",
   "date_created",
   "date_updated",
 ] as const;
@@ -69,6 +81,7 @@ interface RawRow {
   support_types: unknown;
   cause_tag: string | null;
   icon: string | null;
+  duration_months: number | string | null;
   date_created: string | null;
   date_updated: string | null;
 }
@@ -94,6 +107,19 @@ function coerceSupportTypes(v: unknown): string[] {
   return [];
 }
 
+function coerceDurationMonths(
+  v: number | string | null,
+  type: PackageType,
+): number | null {
+  // Only meaningful on monthly; defensively null-out on one_time even
+  // if a row has it set, so downstream code never has to special-case.
+  if (type !== "monthly") return null;
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number.parseInt(v, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 function narrow(row: RawRow): DonationPackage {
   const type = row.package_type === "one_time" ? "one_time" : "monthly";
   return {
@@ -109,9 +135,53 @@ function narrow(row: RawRow): DonationPackage {
     support_types: coerceSupportTypes(row.support_types),
     cause_tag: row.cause_tag,
     icon: row.icon,
+    duration_months: coerceDurationMonths(row.duration_months, type),
     date_created: row.date_created,
     date_updated: row.date_updated,
   };
+}
+
+// ─── Package-type predicates (Session 58.2) ─────────────────────────
+//
+// Three Stripe modes correspond to three predicates:
+//   isOpenEndedMonthlyPackage(p)  → mode: subscription
+//   isPrepaidPackage(p)           → mode: prepaid-bundle
+//   p.package_type === 'one_time' → mode: one-time
+//
+// Centralized here so UI + endpoint + webhook + admin all share the
+// same definition of "what kind of charge does this row represent".
+
+export function isOpenEndedMonthlyPackage(p: DonationPackage): boolean {
+  return p.package_type === "monthly" && p.duration_months === null;
+}
+
+export function isPrepaidPackage(p: DonationPackage): boolean {
+  return (
+    p.package_type === "monthly" &&
+    p.duration_months !== null &&
+    p.duration_months > 0
+  );
+}
+
+/**
+ * For prepaid bundles the donor pays amount_bdt × duration_months in a
+ * single charge. For open-ended subscriptions and one-time gifts, the
+ * total IS amount_bdt. UI and checkout call this so nobody has to
+ * remember the multiplier rule.
+ */
+export function totalBdtForPackage(p: DonationPackage): number {
+  if (isPrepaidPackage(p) && p.duration_months) {
+    return p.amount_bdt * p.duration_months;
+  }
+  return p.amount_bdt;
+}
+
+export type DonationMode = "subscription" | "prepaid-bundle" | "one-time";
+
+export function modeForPackage(p: DonationPackage): DonationMode {
+  if (p.package_type === "one_time") return "one-time";
+  if (isPrepaidPackage(p)) return "prepaid-bundle";
+  return "subscription";
 }
 
 /**

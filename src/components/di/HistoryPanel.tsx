@@ -94,6 +94,14 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_reactivated_child: CheckCircle2,
   admin_requested_document_reupload: Edit3,
   admin_requested_intake_reupload: Edit3,
+  // Session 58.2 donation_package + currency_rate admin events. DI
+  // never sees these on /di History (action.collection !== child) so
+  // the icon choice is cosmetic; pick neutral document/edit glyphs.
+  admin_created_donation_package: FileText,
+  admin_edited_donation_package: Edit3,
+  admin_archived_donation_package: Trash2,
+  admin_reactivated_donation_package: CheckCircle2,
+  admin_edited_currency_rate: Edit3,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
