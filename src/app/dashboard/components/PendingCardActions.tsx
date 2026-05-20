@@ -10,11 +10,21 @@ type Props = {
 
 // Two inline links for an "awaiting first payment" sponsorship card on
 // the dashboard:
-//   • Complete payment → /checkout?resume={id}  (link, no JS needed)
+//   • Complete payment → /resume/{id}  (Session 58.6 — re-mounts
+//                         Stripe Elements against the EXISTING
+//                         PI/sub, not a new one)
 //   • Cancel attempt   → POST /api/sponsorship/[id]/cancel + refresh
 //
 // "Awaiting first payment" is shown until the user clicks Cancel —
 // then the card disappears on refresh.
+//
+// Session 58.6 — the resume link previously pointed at
+// /checkout?resume={id} which routed through the legacy /api/checkout/
+// init (USD-only cart hydration). That path would have created a
+// duplicate Stripe object in USD for rows the new flow created in
+// donor currency. /resume/{id} reuses the original Stripe object via
+// /api/donate/resume — no duplicate row, no duplicate charge, no
+// currency mismatch.
 export function PendingCardActions({ sponsorshipId }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -54,7 +64,7 @@ export function PendingCardActions({ sponsorshipId }: Props) {
       </span>
       <span className="flex-1" />
       <Link
-        href={`/checkout?resume=${sponsorshipId}`}
+        href={`/resume/${sponsorshipId}`}
         className="text-[12.5px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
       >
         Complete payment →

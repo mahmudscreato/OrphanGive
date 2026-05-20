@@ -19,24 +19,31 @@ type Props = {
   } | null;
 };
 
-const COPY_DEFAULT: Record<PaymentMode, { title: string; body: string; sub: string }> = {
+// Session 58.6 — `sub` lines no longer carry hardcoded "$" amounts.
+// Previously: "From $10/month. Cancel anytime." / "From $25." which
+// (a) showed USD even when the donor's selected currency was BDT/GBP/
+// etc., and (b) contradicted the real package floors (admin-controlled
+// monthly minimum from donation_package; one-time floor 1500 BDT).
+// Step 1 is purely the mode choice — actual amounts (in the donor's
+// currency, sourced from Directus) are presented in Step 2.
+const COPY_DEFAULT: Record<PaymentMode, { title: string; body: string; sub: string | null }> = {
   monthly: {
     title: "Sponsor monthly",
     body: "Stay with this child for the long term — funds reach them every month.",
-    sub: "From $10/month. Cancel anytime.",
+    sub: "Cancel anytime.",
   },
   one_time: {
     title: "One-time gift",
     body: "A single contribution that goes directly to this child's care.",
-    sub: "From $25.",
+    sub: null,
   },
 };
 
 // Queue-join framing for the monthly tile only.
-const COPY_QUEUE_JOIN = {
+const COPY_QUEUE_JOIN: { title: string; body: string; sub: string | null } = {
   title: "Get in line",
   body: "Pay upfront now. Your sponsorship begins when the current sponsor's term ends.",
-  sub: "From $10/month. Refundable until your turn.",
+  sub: "Refundable until your turn.",
 };
 
 export function ModeSelector({
@@ -82,9 +89,11 @@ export function ModeSelector({
               {copy.title}
             </div>
             <p className="mt-2 text-[14px] text-slate leading-[1.6]">{copy.body}</p>
-            <div className="mt-3 font-mono text-[11px] tracking-[0.12em] uppercase text-tangerine-deep">
-              {copy.sub}
-            </div>
+            {copy.sub ? (
+              <div className="mt-3 font-mono text-[11px] tracking-[0.12em] uppercase text-tangerine-deep">
+                {copy.sub}
+              </div>
+            ) : null}
             {locked ? (
               <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-moss-soft/40 border border-moss/30 px-2.5 py-1 font-mono text-[10.5px] tracking-[0.10em] uppercase text-moss-deep">
                 <span aria-hidden="true">●</span>
