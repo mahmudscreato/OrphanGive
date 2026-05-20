@@ -37,6 +37,11 @@ import {
   getPaymentsForSponsorship,
   type PaymentRow,
 } from "@/lib/sponsorship-data";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 import { SponsorshipActionBar } from "@/components/admin/SponsorshipActionBar";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // payment-row charge / payment-intent id renders.
@@ -171,16 +176,20 @@ function HeaderCard({ detail }: { detail: AdminSponsorshipDetail }) {
             className="w-3.5 h-3.5 stroke-[1.75]"
             aria-hidden="true"
           />
-          {/* Session 58.7 — donor-currency-first when present. */}
+          {/* Session 58.7 → 58.8.1 — symbol-prefixed donor-currency
+              primary; USD-equivalent suffix in parentheses (suppressed
+              when the donor's own currency IS USD). */}
           {detail.donor_currency_code && detail.donor_currency_amount != null ? (
             <>
-              {formatMoney(
+              {formatDonorAmount(
                 detail.donor_currency_amount,
                 detail.donor_currency_code,
               )}
-              <span className="text-stone-400">
-                {" "}(≈ {formatMoney(detail.raw.amount_usd, "USD")})
-              </span>
+              {shouldShowUsdEquivalent(detail.donor_currency_code) ? (
+                <span className="text-stone-400">
+                  {" "}(≈ {formatUsdEquivalent(detail.raw.amount_usd)})
+                </span>
+              ) : null}
             </>
           ) : (
             formatMoney(detail.raw.amount_usd, detail.raw.currency)
@@ -278,10 +287,18 @@ function DonationContextPanel({
     detail.cause_tag != null;
   if (!hasNewFlowContext) return null;
 
+  // Session 58.8.1 — symbol-prefixed donor amount (matches the public
+  // site rendering). formatDonorAmount handles locale separators +
+  // suppresses decimals on whole-unit amounts (৳2,000 not ৳2,000.00).
   const donorCurrencyLine =
     detail.donor_currency_code && detail.donor_currency_amount != null
-      ? `${detail.donor_currency_amount.toFixed(2)} ${detail.donor_currency_code}`
+      ? formatDonorAmount(
+          detail.donor_currency_amount,
+          detail.donor_currency_code,
+        )
       : null;
+  // FX rate: e.g. "112.00 BDT / 1 USD" or "1.00 BDT / 1 BDT" (the
+  // identity rate when the donor was on BDT — present for symmetry).
   const rateLine =
     detail.bdt_per_unit_at_checkout != null
       ? `${detail.bdt_per_unit_at_checkout.toFixed(2)} BDT / 1 ${detail.donor_currency_code ?? "unit"}`

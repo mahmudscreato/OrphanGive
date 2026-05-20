@@ -30,6 +30,11 @@ import {
   type SponsorshipListTypeFilter,
 } from "@/lib/admin-sponsorships";
 import type { SponsorshipStatus } from "@/lib/sponsorship-data";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 
 export const dynamic = "force-dynamic";
 
@@ -407,21 +412,23 @@ function SponsorshipRow({ s }: { s: AdminSponsorshipSummary }) {
                   className="w-3 h-3 stroke-[1.75]"
                   aria-hidden="true"
                 />
-                {/* Session 58.7 — render the donor-currency amount when
-                    available (new-flow rows), fall back to amount_usd
-                    for legacy rows. The amount the donor actually saw
-                    and paid is the primary signal; admin keeps the USD
-                    equivalent in parentheses for finance reconciliation. */}
+                {/* Session 58.7 → 58.8.1 — render the donor's actual
+                    currency with the proper symbol (৳, $, £, …) +
+                    locale-aware thousands separators. USD-equivalent
+                    suffix is suppressed when the donor's currency IS
+                    USD (avoids the redundant "$18 (≈ $18 USD)"). */}
                 {s.donor_currency_code &&
                 s.donor_currency_amount != null ? (
                   <>
-                    {formatMoney(
+                    {formatDonorAmount(
                       s.donor_currency_amount,
                       s.donor_currency_code,
                     )}
-                    <span className="text-stone-400">
-                      {" "}(≈ {formatMoney(s.amount_usd, "USD")})
-                    </span>
+                    {shouldShowUsdEquivalent(s.donor_currency_code) ? (
+                      <span className="text-stone-400">
+                        {" "}(≈ {formatUsdEquivalent(s.amount_usd)})
+                      </span>
+                    ) : null}
                   </>
                 ) : (
                   formatMoney(s.amount_usd, s.currency)
