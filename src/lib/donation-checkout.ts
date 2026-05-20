@@ -52,7 +52,8 @@ export interface DonationStripeMetadata {
   cause_tag: string;
   /** "subscription" | "prepaid-bundle" | "one-time". */
   mode: string;
-  /** Prepaid months count as string, or empty for non-prepaid. */
+  /** Months count as string. Stamped for prepaid-bundle AND
+   *  finite-term subscriptions; empty for open-ended subs + one-time. */
   duration_months: string;
   /**
    * Legacy key kept for the existing /api/webhooks/stripe handler,
@@ -66,6 +67,12 @@ export interface DonationStripeMetadata {
    * coming from /api/donate/init.
    */
   payment_mode: string;
+  /**
+   * Session 58.3.1 — Donor-chosen payment schedule, stamped for
+   * finance reconciliation. "monthly" or "monthly_prepaid" for
+   * monthly modes; empty for one-time.
+   */
+  payment_schedule: string;
 }
 
 /**
@@ -79,10 +86,11 @@ export interface SponsorshipRowDraft {
   child: string | null;
   payment_mode: "monthly" | "one_time";
   /**
-   * USD-equivalent of the charge. Kept populated for backward compat
-   * with admin reports + the existing dashboard. The real donor
-   * truth lives in donor_currency_amount + donor_currency_code below.
-   * Treat as a legacy reporting field.
+   * USD-equivalent of the PER-CHARGE rate (per-month for monthly +
+   * monthly_prepaid; gift amount for one-time). Matches legacy
+   * semantics so the existing dashboard's "$25/mo prepaid for 6
+   * months" copy + admin reports still compute correctly. Real
+   * donor-currency truth is in donor_currency_amount.
    */
   amount_usd: number;
   stripe_subscription_id?: string | null;
@@ -91,26 +99,41 @@ export interface SponsorshipRowDraft {
   payment_schedule?: "monthly" | "monthly_prepaid" | null;
   prepaid_months_total?: number | null;
   prepaid_months_remaining?: number | null;
+  /** Session 58.3.1 — fixed-term monthly: written for both
+   *  monthly_prepaid and finite "Pay monthly" subscriptions so the
+   *  dashboard can show a committed end date. */
+  duration_months?: number | null;
+  /** Session 58.3.1 — calculated end date for finite-term sponsorships.
+   *  Null on open-ended subs and one-time gifts. */
+  scheduled_end_date?: string | null;
   // Session 58.2 columns.
   cause_tag?: string | null;
   donation_package?: string | null;
   donor_currency_code?: string | null;
+  /** Per-charge donor amount (per-month for monthly modes). */
   donor_currency_amount?: number | null;
   bdt_per_unit_at_checkout?: number | null;
 }
 
 export interface DonationPayload {
   mode: DonationMode;
-  /** Whole BDT total (already × duration_months for prepaid). */
+  /** Whole BDT charged TODAY (perCharge × N for prepaid; perCharge
+   *  for subscription first invoice + one-time). */
   totalBdt: number;
-  /** Whole units in donor currency. */
+  /** Whole units in donor currency, charged TODAY. */
   totalDonorAmount: number;
-  /** Smallest unit for Stripe (cents/pence/etc.). */
+  /** Smallest unit for Stripe TODAY (cents/pence/etc.). For
+   *  subscriptions this is the recurring per-month unit_amount;
+   *  for prepaid + one-time this is the upfront PI amount. */
   stripeAmount: number;
   /** Lowercased ISO 4217 — what Stripe expects on the API. */
   stripeCurrency: string;
   /** Snapshot of the rate used for this checkout. */
   bdtPerUnitSnapshot: number;
+  /** Resolved finite term in months, or null for open-ended /
+   *  one-time. Endpoint uses this to set Stripe cancel_at on
+   *  finite subscriptions. */
+  durationMonths: number | null;
   metadata: DonationStripeMetadata;
   sponsorshipRowDraft: SponsorshipRowDraft;
 }
@@ -120,11 +143,35 @@ export interface BuildArgs {
   pkg: DonationPackage | null;
   /** Active currency rate row, fetched fresh inside the request handler. */
   rate: CurrencyRate;
-  /** Per-donation amount in whole BDT. For prepaid this is the per-MONTH amount; the builder multiplies by duration_months automatically. */
+  /** Per-charge BDT amount: per-MONTH for monthly modes, the
+   *  gift amount for one-time. The builder multiplies by N for
+   *  prepaid bundles automatically. */
   perChargeAmountBdt: number;
-  /** Required for subscription / prepaid-bundle. Optional for one-time (campaign donations have no child). */
+  /** Required for subscription / prepaid-bundle. Optional for one-time
+   *  (campaign donations have no child). */
   childId: string | null;
   donorId: string;
+  /**
+   * Session 58.3.1 — donor-chosen duration + schedule from the
+   * restored /sponsor flow Steps 3 + 4. When present, OVERRIDES the
+   * package-based mode dispatch (modeForPackage). When absent,
+   * falls back to the package's own duration_months (legacy 58.2
+   * behaviour).
+   *
+   * Ignored for one-time packages (those always force mode='one-time').
+   *
+   * Valid combinations:
+   *   { paymentSchedule: 'monthly',           durationMonths: null }
+   *     → open-ended subscription
+   *   { paymentSchedule: 'monthly',           durationMonths: N>0 }
+   *     → subscription with cancel_at = today + N months
+   *   { paymentSchedule: 'monthly_prepaid',   durationMonths: N>0 }
+   *     → single PI for perCharge × N upfront
+   */
+  override?: {
+    paymentSchedule: "monthly" | "monthly_prepaid";
+    durationMonths: number | null;
+  };
 }
 
 /**
@@ -141,43 +188,101 @@ export interface BuildArgs {
  *   affect this row's reconciliation.
  */
 export function buildDonationPayload(args: BuildArgs): DonationPayload {
-  const { pkg, rate, perChargeAmountBdt, childId, donorId } = args;
+  const { pkg, rate, perChargeAmountBdt, childId, donorId, override } = args;
 
-  const mode: DonationMode = pkg
-    ? modeForPackage(pkg)
-    : "one-time"; // custom amount default — subscription/prepaid require a package
+  // ── Mode dispatch ──────────────────────────────────────────────
+  // One-time packages always win (gifts + quick amounts + one-time
+  // custom). For monthly + custom-monthly, the donor's choice in
+  // Steps 3+4 (override) drives the mode; if no override is supplied
+  // we fall back to the package's own duration_months (legacy 58.2
+  // builder behavior).
+  const isOneTimeIntent =
+    pkg?.package_type === "one_time" || (!pkg && !override);
 
-  const durationMonths =
-    mode === "prepaid-bundle" && pkg?.duration_months
-      ? pkg.duration_months
-      : 1;
+  let mode: DonationMode;
+  let durationMonths: number | null;
 
-  // Total in BDT for THIS charge: per-month × N for prepaid bundles,
-  // otherwise just the per-charge amount.
-  const totalBdt =
-    mode === "prepaid-bundle" ? perChargeAmountBdt * durationMonths : perChargeAmountBdt;
+  if (isOneTimeIntent) {
+    mode = "one-time";
+    durationMonths = null;
+  } else if (override) {
+    if (override.paymentSchedule === "monthly_prepaid") {
+      if (!override.durationMonths || override.durationMonths < 1) {
+        throw new Error(
+          "buildDonationPayload: paymentSchedule='monthly_prepaid' requires durationMonths >= 1",
+        );
+      }
+      mode = "prepaid-bundle";
+      durationMonths = override.durationMonths;
+    } else {
+      // override.paymentSchedule === 'monthly'
+      mode = "subscription";
+      durationMonths = override.durationMonths ?? null;
+    }
+  } else if (pkg) {
+    // Legacy package-driven dispatch.
+    mode = modeForPackage(pkg);
+    durationMonths =
+      mode === "prepaid-bundle" && pkg.duration_months
+        ? pkg.duration_months
+        : null;
+  } else {
+    // Custom amount without override — only legitimate for one-time.
+    mode = "one-time";
+    durationMonths = null;
+  }
 
-  // Donor-currency amount (rounded to whole units to match what the
-  // preset card showed).
-  const display = convertBdtToCurrency(totalBdt, rate);
-  const totalDonorAmount = display.amount;
+  // ── Amount math ───────────────────────────────────────────────
+  // Charge TODAY in BDT: perCharge × N for prepaid; perCharge for
+  // subscription (first invoice) + one-time.
+  const totalBdtToday =
+    mode === "prepaid-bundle" && durationMonths
+      ? perChargeAmountBdt * durationMonths
+      : perChargeAmountBdt;
 
-  // Re-derive the BDT-equivalent FROM the donor amount so the two
-  // numbers reconcile exactly. This is what we stamp into metadata
-  // and onto the sponsorship row — not the theoretical totalBdt
-  // (which can drift by ±1 BDT due to rounding).
-  const reconciledBdt = convertCurrencyToBdt(totalDonorAmount, rate);
+  const displayToday = convertBdtToCurrency(totalBdtToday, rate);
+  const totalDonorAmountToday = displayToday.amount;
 
-  const stripeAmount = toStripeAmount(totalDonorAmount, rate.currency_code);
+  // Reconcile BDT from the rounded donor amount so the metadata
+  // matches what was actually charged (±0 BDT, not ±1).
+  const reconciledTodayBdt = convertCurrencyToBdt(totalDonorAmountToday, rate);
+
+  // Per-charge donor amount (per-month for monthly modes, the gift
+  // amount for one-time). For prepaid this is derived by reversing
+  // the total back to per-month so the donor-currency rate snapshot
+  // is consistent with what the dashboard shows.
+  const perChargeDonorAmount =
+    mode === "prepaid-bundle" && durationMonths
+      ? Math.max(1, Math.round(totalDonorAmountToday / durationMonths))
+      : totalDonorAmountToday;
+
+  const stripeAmount = toStripeAmount(
+    // Subscription's per-month unit_amount = perCharge.
+    // Prepaid + one-time = the full upfront amount.
+    mode === "subscription" ? perChargeDonorAmount : totalDonorAmountToday,
+    rate.currency_code,
+  );
   const stripeCurrency = toStripeCurrency(rate.currency_code);
 
+  // ── Metadata + row draft ──────────────────────────────────────
   const causeTag = pkg?.cause_tag ?? null;
   const packageType = pkg?.package_type ?? "one_time";
 
+  // payment_schedule for Stripe metadata + sponsorship row:
+  //   prepaid-bundle → 'monthly_prepaid'
+  //   subscription   → 'monthly'
+  //   one-time       → null
+  const paymentScheduleEnum: "monthly" | "monthly_prepaid" | null =
+    mode === "prepaid-bundle"
+      ? "monthly_prepaid"
+      : mode === "subscription"
+        ? "monthly"
+        : null;
+
   const metadata: DonationStripeMetadata = {
-    amount_donor_currency: String(totalDonorAmount),
+    amount_donor_currency: String(totalDonorAmountToday),
     donor_currency_code: rate.currency_code,
-    amount_bdt_equivalent: String(reconciledBdt),
+    amount_bdt_equivalent: String(reconciledTodayBdt),
     bdt_per_unit_rate_used: rate.bdt_per_unit.toFixed(2),
     package_id: pkg?.id ?? "",
     package_type: packageType,
@@ -185,51 +290,73 @@ export function buildDonationPayload(args: BuildArgs): DonationPayload {
     donor_id: donorId,
     cause_tag: causeTag ?? "",
     mode,
-    duration_months: mode === "prepaid-bundle" ? String(durationMonths) : "",
+    // 58.3.1: stamp duration_months for BOTH prepaid AND finite
+    // subscriptions so the webhook + finance can see committed term.
+    duration_months: durationMonths ? String(durationMonths) : "",
     payment_mode:
       mode === "one-time"
         ? "one_time"
         : mode === "prepaid-bundle"
           ? "monthly_prepaid"
           : "",
+    payment_schedule: paymentScheduleEnum ?? "",
   };
 
-  // USD-equivalent for the legacy sponsorship.amount_usd field. Derive
-  // by going through BDT so the rate snapshots are consistent. If USD
-  // rate is missing (shouldn't happen — BDT always present), fall back
-  // to dividing by the env preview rate to avoid a write failure.
-  const usdEquivalent = computeUsdEquivalentBdt(reconciledBdt, rate);
+  // amount_usd is PER-CHARGE (per-month for monthly modes; gift
+  // amount for one-time) — matches legacy semantics. Use perCharge BDT
+  // so the rate snapshot ties to what donor_currency_amount shows.
+  const perChargeBdt =
+    mode === "prepaid-bundle"
+      ? perChargeAmountBdt // per-month BDT
+      : reconciledTodayBdt;
+  const usdEquivalentPerCharge = computeUsdEquivalentBdt(perChargeBdt, rate);
+
+  // scheduled_end_date for finite terms (monthly_prepaid + finite
+  // "Pay monthly"). Open-ended subs and one-time leave it null.
+  let scheduledEndIso: string | null = null;
+  if (mode !== "one-time" && durationMonths) {
+    scheduledEndIso = calculateScheduledEndDateIso(durationMonths);
+  }
 
   const sponsorshipRowDraft: SponsorshipRowDraft = {
     donor: donorId,
     child: childId,
     payment_mode: mode === "one-time" ? "one_time" : "monthly",
-    amount_usd: usdEquivalent,
-    payment_schedule:
-      mode === "prepaid-bundle"
-        ? "monthly_prepaid"
-        : mode === "subscription"
-          ? "monthly"
-          : null,
+    amount_usd: usdEquivalentPerCharge,
+    payment_schedule: paymentScheduleEnum,
     prepaid_months_total: mode === "prepaid-bundle" ? durationMonths : null,
     prepaid_months_remaining: mode === "prepaid-bundle" ? durationMonths : null,
+    duration_months: durationMonths,
+    scheduled_end_date: scheduledEndIso,
     cause_tag: causeTag,
     donation_package: pkg?.id ?? null,
     donor_currency_code: rate.currency_code,
-    donor_currency_amount: totalDonorAmount,
+    donor_currency_amount: perChargeDonorAmount,
     bdt_per_unit_at_checkout: rate.bdt_per_unit,
   };
 
   return {
     mode,
-    totalBdt: reconciledBdt,
-    totalDonorAmount,
+    totalBdt: reconciledTodayBdt,
+    totalDonorAmount: totalDonorAmountToday,
     stripeAmount,
     stripeCurrency,
     bdtPerUnitSnapshot: rate.bdt_per_unit,
+    durationMonths,
     metadata,
     sponsorshipRowDraft,
   };
+}
+
+/**
+ * Match legacy pricing.calculateScheduledEndDate's 30.44-days-per-month
+ * convention without taking a runtime dep on it (keeps this module
+ * standalone for testing). Returns ISO string for direct write into
+ * the sponsorship.scheduled_end_date column.
+ */
+function calculateScheduledEndDateIso(durationMonths: number): string {
+  const ms = durationMonths * 30.44 * 24 * 60 * 60 * 1000;
+  return new Date(Date.now() + ms).toISOString();
 }
 
 /**

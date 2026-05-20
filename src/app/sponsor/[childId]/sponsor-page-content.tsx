@@ -333,6 +333,26 @@ export function SponsorPageContent({
     setError(null);
     setIniting(true);
     try {
+      // Session 58.3.1 — for monthly intent, the endpoint requires
+      // explicit durationMonths + paymentSchedule reflecting the
+      // donor's Step 3 + Step 4 choices. One-time intent leaves
+      // both undefined.
+      //
+      // Mapping:
+      //   "Continue until I cancel" → durationMonths=null, schedule='monthly'
+      //   "N months" + "Pay monthly" → durationMonths=N, schedule='monthly'
+      //   "N months" + "Pay full upfront" → durationMonths=N, schedule='monthly_prepaid'
+      const monthlyFields =
+        mode === "monthly"
+          ? {
+              durationMonths: duration.months,
+              paymentSchedule:
+                duration.months === null
+                  ? "monthly"
+                  : schedule ?? "monthly",
+            }
+          : {};
+
       let body: Record<string, unknown>;
       if (mode === "one_time" && giftId) {
         // Specific gift — packageId path.
@@ -347,6 +367,7 @@ export function SponsorPageContent({
           packageId: tierId,
           currencyCode: currency.code,
           childId: child.id,
+          ...monthlyFields,
         };
       } else {
         // Custom amount — translate donor amount back to BDT and
@@ -357,6 +378,7 @@ export function SponsorPageContent({
           customPackageType: mode === "monthly" ? "monthly" : "one_time",
           currencyCode: currency.code,
           childId: child.id,
+          ...monthlyFields,
         };
       }
       const res = await fetch("/api/donate/init", {

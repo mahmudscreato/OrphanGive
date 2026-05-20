@@ -58,6 +58,17 @@ interface DonateInitBody {
   customPackageType?: "monthly" | "one_time" | null;
   currencyCode: string;
   childId?: string | null;
+  /**
+   * Session 58.3.1 — donor's choice from /sponsor Steps 3+4.
+   * Required for monthly intent (packageId pointing at monthly_tier
+   * OR customPackageType="monthly"). Ignored for one-time intent.
+   *
+   *   durationMonths=null + paymentSchedule='monthly' → open-ended sub
+   *   durationMonths=N    + paymentSchedule='monthly' → sub with cancel_at
+   *   durationMonths=N    + paymentSchedule='monthly_prepaid' → single PI
+   */
+  durationMonths?: number | null;
+  paymentSchedule?: "monthly" | "monthly_prepaid" | null;
 }
 
 function bad(message: string, status = 400) {
@@ -134,6 +145,13 @@ async function writePendingSponsorship(
     queued_ends_at?: string | null;
   },
 ): Promise<string> {
+  // For queued donors, scheduled_end_date stays null until promoteQueue
+  // copies queued_ends_at over (mirrors legacy /api/checkout/init). The
+  // builder computed scheduled_end_date as today+duration assuming the
+  // sponsorship starts today; that's only true for unqueued donors.
+  const isQueued = (draft.queue_position ?? 0) > 0;
+  const scheduledEndForWrite = isQueued ? null : draft.scheduled_end_date ?? null;
+
   const payload: Record<string, unknown> = {
     donor: draft.donor,
     child: draft.child, // nullable for campaign one-time gifts
@@ -147,6 +165,9 @@ async function writePendingSponsorship(
     payment_schedule: draft.payment_schedule ?? null,
     prepaid_months_total: draft.prepaid_months_total ?? null,
     prepaid_months_remaining: draft.prepaid_months_remaining ?? null,
+    // 58.3.1: finite-term subs + prepaid bundles carry these.
+    duration_months: draft.duration_months ?? null,
+    scheduled_end_date: scheduledEndForWrite,
     // 58.2 columns:
     cause_tag: draft.cause_tag ?? null,
     donation_package: draft.donation_package ?? null,
@@ -272,39 +293,70 @@ export async function POST(req: NextRequest) {
 
   const childIdNormalized: string | null = body.childId || null;
 
-  // ── Queue race-guard (Session 58.2-overnight Task 1) ────────────────
-  // Subscription mode (open-ended monthly) is the only path that
-  // queues. One-time + prepaid-bundle either don't have a queue
-  // concept (one-time) or are single-charge upfront (prepaid).
+  // ── Build the override (Session 58.3.1) ─────────────────────────────
+  // Donor's choice from /sponsor Steps 3 + 4 drives the mode, NOT the
+  // package's duration_months. The override is only meaningful when
+  // the intent is monthly (subscription OR prepaid). One-time intent
+  // ignores it.
   //
-  // Mirrors the pattern in /api/checkout/init/route.ts (~line 543):
-  //   position = 0   → no active sponsor; this donor goes active
-  //   position 1..3  → queued (sub created with trial_end pinned to
-  //                     queued_starts_at; Stripe holds in 'trialing'
-  //                     until the slot opens, then fires the first
-  //                     invoice; SetupIntent captures the card today)
-  //   position > 3   → queue is full; 409 conflict, donor is asked
-  //                     to choose another child or give one-time
-  //
-  // The /sponsor page renders queue UI off a SNAPSHOT of queue
-  // depth — two donors racing through can fill the slot between
-  // page render and checkout. Re-check here as the canonical gate.
+  // Required for monthly intent — without it, we'd fall back to the
+  // package's own duration_months (legacy 58.2 behavior) which would
+  // be wrong for monthly_tier packages (they always have
+  // duration_months=null) and silently treat "Pay full upfront, 6
+  // months" as an open-ended subscription.
+  const isMonthlyIntent =
+    packageTypeForRow === "monthly" ||
+    (pkg !== null && pkg.package_type === "monthly");
+  const isOneTimeIntent = !isMonthlyIntent;
+
+  let override:
+    | { paymentSchedule: "monthly" | "monthly_prepaid"; durationMonths: number | null }
+    | undefined;
+
+  if (isMonthlyIntent) {
+    const sched = body.paymentSchedule;
+    const dur = body.durationMonths;
+    if (sched !== "monthly" && sched !== "monthly_prepaid") {
+      return bad(
+        "paymentSchedule ('monthly' | 'monthly_prepaid') required for monthly intent",
+      );
+    }
+    if (sched === "monthly_prepaid") {
+      if (typeof dur !== "number" || !Number.isInteger(dur) || dur < 1) {
+        return bad(
+          "durationMonths (positive integer) required when paymentSchedule='monthly_prepaid'",
+        );
+      }
+      override = { paymentSchedule: "monthly_prepaid", durationMonths: dur };
+    } else {
+      // 'monthly' recurring. Duration may be null (open-ended) or a
+      // positive integer (finite term, sub auto-cancels at the end).
+      let durationMonths: number | null = null;
+      if (dur !== null && dur !== undefined) {
+        if (!Number.isInteger(dur) || dur < 1) {
+          return bad(
+            "durationMonths must be a positive integer or null when paymentSchedule='monthly'",
+          );
+        }
+        durationMonths = dur;
+      }
+      override = { paymentSchedule: "monthly", durationMonths };
+    }
+  }
+
+  // ── Queue race-guard (Session 58.2-overnight Task 1 + 58.3.1) ───────
+  // ANY monthly intent occupies the child's active monthly slot, so
+  // the queue gate fires whenever we're about to create a subscription
+  // OR prepaid bundle. (Prepaid bundles occupy the slot for N months
+  // even though they charge upfront — same scheduled coverage as a
+  // finite-recurring sub.)
   type QueueSlot = {
     position: number;
     startsAt: Date | null;
     endsAt: Date | null;
   };
   let queueSlot: QueueSlot | null = null;
-  const isOpenEndedSubscription =
-    pkg !== null &&
-    pkg.package_type === "monthly" &&
-    pkg.duration_months === null;
-  const isCustomMonthly =
-    pkg === null && body.customPackageType === "monthly";
-  const needsQueueCheck =
-    (isOpenEndedSubscription || isCustomMonthly) && childIdNormalized;
-
-  if (needsQueueCheck) {
+  if (isMonthlyIntent && childIdNormalized) {
     const slot = await computeNextQueueSlot(childIdNormalized);
     if (slot.position > QUEUE_DEPTH_LIMIT) {
       return NextResponse.json(
@@ -316,16 +368,22 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
-    // Open-ended subs leave endsAt null (the sub runs indefinitely).
-    // Fixed-term subs would compute endsAt = startsAt + duration —
-    // not relevant on this code path because the new model has no
-    // fixed-term-subscription type (prepaid-bundle is its replacement).
+    // Compute endsAt for finite-term donors so the queue tracks the
+    // committed coverage window. Open-ended donors leave endsAt null.
+    let endsAt: Date | null = null;
+    const duration = override?.durationMonths ?? null;
+    if (slot.startsAt && duration && duration > 0) {
+      const ms = duration * 30.44 * 24 * 60 * 60 * 1000;
+      endsAt = new Date(slot.startsAt.getTime() + ms);
+    }
     queueSlot = {
       position: slot.position,
       startsAt: slot.startsAt,
-      endsAt: null,
+      endsAt,
     };
   }
+  // Silence unused warning when one-time
+  void isOneTimeIntent;
 
   // Compose the full donation payload (donor amount, Stripe amount,
   // metadata, sponsorship draft).
@@ -335,6 +393,7 @@ export async function POST(req: NextRequest) {
     perChargeAmountBdt,
     childId: childIdNormalized,
     donorId: donor.id,
+    override,
   });
 
   // Stripe customer.
@@ -406,6 +465,25 @@ export async function POST(req: NextRequest) {
           ? Math.floor(queueSlot.startsAt.getTime() / 1000)
           : undefined;
 
+      // Session 58.3.1 — cancel_at for finite-term subscriptions.
+      // Donor picked "N months + Pay monthly" → sub bills monthly
+      // then auto-cancels after N payments. For queued donors we
+      // anchor to queueSlot.endsAt (queued_starts_at + duration);
+      // for non-queued we use today + duration via the builder's
+      // scheduled_end_date computation (which used the same 30.44-
+      // days/month convention as the legacy /api/checkout/init).
+      let cancelAtSec: number | undefined;
+      if (payload.durationMonths) {
+        const cancelAtDate = isQueued && queueSlot?.endsAt
+          ? queueSlot.endsAt
+          : payload.sponsorshipRowDraft.scheduled_end_date
+            ? new Date(payload.sponsorshipRowDraft.scheduled_end_date)
+            : null;
+        if (cancelAtDate && !Number.isNaN(cancelAtDate.getTime())) {
+          cancelAtSec = Math.floor(cancelAtDate.getTime() / 1000);
+        }
+      }
+
       const sub = await stripe.subscriptions.create({
         customer: customerId,
         items: [{ price: price.id }],
@@ -421,6 +499,7 @@ export async function POST(req: NextRequest) {
           "latest_invoice.payment_intent",
           "pending_setup_intent",
         ],
+        ...(cancelAtSec ? { cancel_at: cancelAtSec } : {}),
         ...(trialEndSec ? { trial_end: trialEndSec } : {}),
         metadata: {
           ...payload.metadata,
