@@ -13,6 +13,16 @@ import { directusServer } from "./directus";
 
 export type PackageType = "monthly" | "one_time";
 
+// Session 58.3 — refines PackageType for the multi-step /sponsor flow.
+//   monthly_tier      → the monthly amount presets (Step 2 of monthly)
+//   one_time_quick    → open-amount one-time tiles (Step 2 zone A)
+//   one_time_gift     → fixed-amount one-time gifts with cause + icon
+//                       (Step 2 zone B). Cause_tag is also set.
+export type PackageSubtype =
+  | "monthly_tier"
+  | "one_time_quick"
+  | "one_time_gift";
+
 export interface DonationPackage {
   id: string;
   package_type: PackageType;
@@ -39,8 +49,17 @@ export interface DonationPackage {
    *            continues drawing from this on the sponsorship row).
    * Only meaningful when package_type === 'monthly'. Always null on
    * package_type === 'one_time'.
+   *
+   * Session 58.3 — kept for backward compat with the data path but
+   * the restored multi-step /sponsor flow puts duration in its own
+   * step instead. Admin can still create a prepaid package via
+   * /admin if needed, but the recommended path is to leave this
+   * null and let the sponsor flow's Step 3/4 collect duration +
+   * schedule from the donor.
    */
   duration_months: number | null;
+  /** Session 58.3 — see PackageSubtype above. */
+  package_subtype: PackageSubtype | null;
   date_created: string | null;
   date_updated: string | null;
 }
@@ -59,6 +78,7 @@ const FIELDS = [
   "cause_tag",
   "icon",
   "duration_months",
+  "package_subtype",
   "date_created",
   "date_updated",
 ] as const;
@@ -82,6 +102,7 @@ interface RawRow {
   cause_tag: string | null;
   icon: string | null;
   duration_months: number | string | null;
+  package_subtype: string | null;
   date_created: string | null;
   date_updated: string | null;
 }
@@ -120,8 +141,23 @@ function coerceDurationMonths(
   return n;
 }
 
+function coerceSubtype(
+  v: string | null,
+  type: PackageType,
+): PackageSubtype | null {
+  if (v === "monthly_tier" || v === "one_time_quick" || v === "one_time_gift") {
+    return v;
+  }
+  // Defensive defaults so legacy rows without a subtype still slot
+  // into the flow's section grouping. Monthly → tier; one-time with
+  // cause_tag is a gift; otherwise quick.
+  if (type === "monthly") return "monthly_tier";
+  return null;
+}
+
 function narrow(row: RawRow): DonationPackage {
   const type = row.package_type === "one_time" ? "one_time" : "monthly";
+  const subtype = coerceSubtype(row.package_subtype, type);
   return {
     id: row.id,
     package_type: type,
@@ -136,6 +172,7 @@ function narrow(row: RawRow): DonationPackage {
     cause_tag: row.cause_tag,
     icon: row.icon,
     duration_months: coerceDurationMonths(row.duration_months, type),
+    package_subtype: subtype,
     date_created: row.date_created,
     date_updated: row.date_updated,
   };
@@ -187,22 +224,43 @@ export function modeForPackage(p: DonationPackage): DonationMode {
 /**
  * Active packages of a given type, sorted by display_order ASC.
  * Public-facing — never returns is_active=false rows.
+ *
+ * Optional `subtype` narrows further. The restored multi-step
+ * /sponsor flow uses this to fetch monthly_tier rows for Step 2
+ * monthly, and one_time_quick + one_time_gift separately for
+ * the two zones in Step 2 one-time.
  */
 export async function listActivePackages(
   type: PackageType,
+  opts: { subtype?: PackageSubtype } = {},
 ): Promise<DonationPackage[]> {
+  const filter: Record<string, unknown> = {
+    package_type: { _eq: type },
+    is_active: { _eq: true },
+  };
+  if (opts.subtype) {
+    filter.package_subtype = { _eq: opts.subtype };
+  }
   const rows = (await directusServer().request(
     readItems("donation_package" as never, {
-      filter: {
-        package_type: { _eq: type },
-        is_active: { _eq: true },
-      },
+      filter,
       sort: ["display_order"],
       fields: FIELDS as unknown as string[],
       limit: 100,
     } as never),
   )) as unknown as RawRow[];
   return rows.map(narrow);
+}
+
+/** Convenience reads for the restored /sponsor flow Step 2. */
+export function listActiveMonthlyTiers(): Promise<DonationPackage[]> {
+  return listActivePackages("monthly", { subtype: "monthly_tier" });
+}
+export function listOneTimeQuickAmounts(): Promise<DonationPackage[]> {
+  return listActivePackages("one_time", { subtype: "one_time_quick" });
+}
+export function listOneTimeGifts(): Promise<DonationPackage[]> {
+  return listActivePackages("one_time", { subtype: "one_time_gift" });
 }
 
 /**

@@ -50,6 +50,8 @@ export interface SortableRow {
   is_active: boolean;
   duration_months: number | null;
   cause_tag: string | null;
+  /** Session 58.3 — surfaced as a small badge in the list row. */
+  package_subtype: string | null;
 }
 
 interface Props {
@@ -206,6 +208,16 @@ function SortableItem({ row }: { row: SortableRow }) {
           <div className="min-w-0 flex-1">
             <p className="text-[14.5px] font-medium text-ink truncate">
               {row.name_en}
+              {row.package_subtype === "one_time_quick" ? (
+                <span className="ml-2 rounded-full bg-sky/15 px-2 py-0.5 text-[11px] font-normal text-sky-deep">
+                  quick
+                </span>
+              ) : null}
+              {row.package_subtype === "one_time_gift" ? (
+                <span className="ml-2 rounded-full bg-moss-soft/50 px-2 py-0.5 text-[11px] font-normal text-moss-deep">
+                  gift
+                </span>
+              ) : null}
               {row.duration_months ? (
                 <span className="ml-2 rounded-full bg-tangerine-mist px-2 py-0.5 text-[11px] font-normal text-tangerine-deeper">
                   {row.duration_months}mo prepaid

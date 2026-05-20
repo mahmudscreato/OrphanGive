@@ -23,6 +23,12 @@ import { type CurrencyRate, getCurrencyById } from "./currency-rates";
 
 export interface PackageInput {
   package_type: "monthly" | "one_time";
+  /**
+   * Session 58.3 — refines the multi-step /sponsor flow's section
+   * grouping. Optional on create; defaults to monthly_tier (monthly)
+   * or one_time_quick (one_time) inside validate when omitted.
+   */
+  package_subtype: "monthly_tier" | "one_time_quick" | "one_time_gift" | null;
   display_order: number;
   is_active: boolean;
   name_en: string;
@@ -51,6 +57,24 @@ function validatePackage(input: PackageInput): string | null {
   if (input.package_type === "one_time" && input.duration_months !== null) {
     return "duration_months only applies to monthly packages";
   }
+  // Subtype must match package_type. monthly_tier ↔ monthly;
+  // one_time_quick + one_time_gift ↔ one_time. Null is allowed
+  // (legacy / unmigrated) but the data layer will default it.
+  if (input.package_subtype !== null) {
+    if (
+      input.package_type === "monthly" &&
+      input.package_subtype !== "monthly_tier"
+    ) {
+      return "monthly packages must use subtype 'monthly_tier'";
+    }
+    if (
+      input.package_type === "one_time" &&
+      input.package_subtype !== "one_time_quick" &&
+      input.package_subtype !== "one_time_gift"
+    ) {
+      return "one-time packages must use subtype 'one_time_quick' or 'one_time_gift'";
+    }
+  }
   return null;
 }
 
@@ -62,6 +86,16 @@ export async function createDonationPackage(opts: {
   const v = validatePackage(opts.input);
   if (v) throw new Error(v);
 
+  // Default subtype when omitted so admin creates from minimal forms
+  // still produce well-categorized rows.
+  const subtype: PackageInput["package_subtype"] =
+    opts.input.package_subtype ??
+    (opts.input.package_type === "monthly"
+      ? "monthly_tier"
+      : opts.input.cause_tag
+        ? "one_time_gift"
+        : "one_time_quick");
+
   const created = (await directusServer().request(
     createItem("donation_package" as never, {
       ...opts.input,
@@ -71,6 +105,7 @@ export async function createDonationPackage(opts: {
       cause_tag: opts.input.cause_tag ?? null,
       icon: opts.input.icon ?? null,
       duration_months: opts.input.duration_months ?? null,
+      package_subtype: subtype,
     } as never),
   )) as unknown as { id: string };
 
@@ -170,6 +205,7 @@ export async function updateDonationPackage(opts: {
   // Re-validate the FULL row after the patch.
   const merged: PackageInput = {
     package_type: before.package_type,
+    package_subtype: before.package_subtype,
     display_order: before.display_order,
     is_active: before.is_active,
     name_en: before.name_en,

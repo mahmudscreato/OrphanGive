@@ -33,6 +33,7 @@ export default async function AdminDonationPackagesPage() {
     is_active: p.is_active,
     duration_months: p.duration_months,
     cause_tag: p.cause_tag,
+    package_subtype: p.package_subtype,
   });
   const monthly = all
     .filter((p) => p.package_type === "monthly")

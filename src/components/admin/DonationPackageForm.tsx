@@ -33,6 +33,7 @@ type Props = CreateProps | EditProps;
 
 const EMPTY: PackageInput = {
   package_type: "monthly",
+  package_subtype: "monthly_tier",
   display_order: 0,
   is_active: true,
   name_en: "",
@@ -52,6 +53,7 @@ export function DonationPackageForm(props: Props) {
     if (props.mode === "edit") {
       return {
         package_type: props.initial.package_type,
+        package_subtype: props.initial.package_subtype,
         display_order: props.initial.display_order,
         is_active: props.initial.is_active,
         name_en: props.initial.name_en,
@@ -141,12 +143,55 @@ export function DonationPackageForm(props: Props) {
           onChange={(e) => {
             const v = e.target.value as PackageInput["package_type"];
             set("package_type", v);
-            if (v === "one_time") set("duration_months", null);
+            // Keep subtype consistent with type.
+            if (v === "monthly") {
+              set("package_subtype", "monthly_tier");
+              set("duration_months", null);
+            } else {
+              // Default new one-time rows to gift if there's a cause
+              // tag, otherwise quick.
+              set(
+                "package_subtype",
+                state.cause_tag ? "one_time_gift" : "one_time_quick",
+              );
+            }
           }}
           className={inputCls}
         >
           <option value="monthly">Monthly</option>
           <option value="one_time">One-time</option>
+        </select>
+      </Row>
+
+      <Row label="Subtype (drives /sponsor flow grouping)">
+        <select
+          value={state.package_subtype ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (
+              v === "monthly_tier" ||
+              v === "one_time_quick" ||
+              v === "one_time_gift"
+            ) {
+              set("package_subtype", v);
+            } else {
+              set("package_subtype", null);
+            }
+          }}
+          className={inputCls}
+        >
+          {state.package_type === "monthly" ? (
+            <option value="monthly_tier">Monthly tier</option>
+          ) : (
+            <>
+              <option value="one_time_quick">
+                One-time quick amount (open preset)
+              </option>
+              <option value="one_time_gift">
+                One-time specific gift (fixed amount + cause)
+              </option>
+            </>
+          )}
         </select>
       </Row>
 
