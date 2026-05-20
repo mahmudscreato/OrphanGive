@@ -1,23 +1,61 @@
+// Session 58.3 — restored multi-step /sponsor/[childId] flow.
+//
+// State machine (mirrors the pre-58.2 original):
+//
+//   MONTHLY (6 steps; no cause step — package implies it):
+//     1 mode → 2 amount → 3 duration → 4 schedule → 5 visibility → 6 review
+//     (Step 4 skipped when duration = "until I cancel" — schedule
+//      defaults to recurring monthly.)
+//
+//   ONE-TIME (4-5 steps depending on selection):
+//     1 mode → 2 amount-or-gift → [3 cause] → 4 visibility → 5 review
+//     Step 3 (cause) is SKIPPED when the donor picked a specific gift
+//     in Step 2 — the gift's cause_tag IS the cause.
+//
+// Mode mapping for /api/donate/init:
+//   monthly + schedule="monthly"        → mode='subscription'
+//     (subscription auto-cancels at N months via Stripe cancel_at when
+//      duration is finite; open-ended when null)
+//   monthly + schedule="monthly_prepaid" → mode='prepaid-bundle'
+//     (single PI for amount × months upfront)
+//   one_time                             → mode='one-time'
+//     (single PI for the gift / quick amount)
+//
+// The Review step ends in INLINE Stripe Elements — no cart, no
+// separate /checkout page. POST /api/donate/init, mount Elements
+// with the returned clientSecret, confirm, navigate to
+// /donate/success.
+
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+import {
+  CardElement,
+  Elements,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
+// Session 58.4 — framer-motion (already in deps, ^12.38.0) drives the
+// step cross-fade. AnimatePresence mode="wait" sequences exit → enter
+// so steps don't overlap; motion.div keyed by step number triggers
+// the swap.
+import { AnimatePresence, motion } from "framer-motion";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import {
-  CUSTOM_DURATION_MAX,
-  CUSTOM_DURATION_MIN,
-  isPaymentMode,
-  isPaymentSchedule,
-  isValidAmount,
-  SPONSORSHIP_TIERS,
   type PaymentMode,
   type PaymentSchedule,
 } from "@/lib/pricing";
 import type { DonorState } from "@/lib/donor-data";
 import { ModeSelector } from "@/components/sponsor/ModeSelector";
-import { TierGrid } from "@/components/sponsor/TierGrid";
+import {
+  TierGrid,
+  packagesToTierItems,
+} from "@/components/sponsor/TierGrid";
+import { GiftGrid, type GiftItem } from "@/components/sponsor/GiftGrid";
 import { AmountInput } from "@/components/sponsor/AmountInput";
 import {
   DurationPicker,
@@ -28,12 +66,18 @@ import { PaymentSchedulePicker } from "@/components/sponsor/PaymentSchedulePicke
 import { CausePicker } from "@/components/sponsor/CausePicker";
 import { VisibilityPicker } from "@/components/sponsor/VisibilityPicker";
 import { SponsorReviewCard } from "@/components/sponsor/SponsorReviewCard";
-import { DEFAULT_CAUSE, isValidCause, type CauseEnum } from "@/lib/cause";
+import { CurrencyPicker } from "@/components/donate/CurrencyPicker";
+import {
+  DEFAULT_CAUSE,
+  labelForCause,
+  type CauseEnum,
+} from "@/lib/cause";
 import {
   DEFAULT_VISIBILITY,
-  isValidVisibility,
   type VisibilityEnum,
 } from "@/lib/visibility";
+
+// ─── Prop types — page.tsx passes pre-fetched Directus data ────────
 
 type ChildProps = {
   id: string;
@@ -45,55 +89,70 @@ type ChildProps = {
   story_truncated: boolean;
 };
 
-type Props = {
+interface PackageData {
+  id: string;
+  name_en: string;
+  description_en: string;
+  amount_bdt: number;
+  cause_tag: string | null;
+  icon: string | null;
+}
+
+interface CurrencyOption {
+  code: string;
+  symbol: string;
+  display_name: string;
+}
+
+export interface SponsorPageContentProps {
   child: ChildProps;
   signedIn: boolean;
   donorState: DonorState;
   initialCartItemCount: number;
-  // Session 14.6: when true, this child already has an active monthly
-  // sponsor (any donor). The 'monthly' tile in step 1 renders disabled
-  // and the donor can only build a one-time gift here. The /sponsor
-  // server page sets this from getActiveMonthlySponsorForChild.
   monthlyLocked: boolean;
-  // Donor's first name (when signed in). Surfaced as a preview in the
-  // step 6 'Show my name' option so the donor sees what's about to go
-  // public. Null for guests.
   donorFirstName: string | null;
-  // Session 14.6 — same-donor exemption: when the active monthly
-  // sponsor IS the current donor, monthlyLocked is false and this
-  // carries the existing sponsorship's id + end date so the page can
-  // show a friendly note and a "Manage your monthly sponsorship →"
-  // link instead of silently letting them re-create a duplicate.
-  // Null in the normal (no-active-monthly OR locked-by-other-donor)
-  // path.
   selfActiveMonthly: {
     sponsorshipId: string;
     scheduledEndDate: string | null;
   } | null;
-  // Session 14.7 — queue join: child has another donor's active
-  // monthly sponsor and the queue isn't full. Monthly tile stays
-  // enabled but shows "Get in line" framing; review surfaces
-  // estimated start + queue position. Null otherwise.
   queueJoin: {
     position: number;
     estimatedStartsAt: string | null;
     activeEndDate: string | null;
     donorsAhead: number;
   } | null;
-  // Session 14.7 — queue is full (3 donors already queued).
-  // monthlyLocked is true; this carries the date through which the
-  // queue is committed so the locked-state copy can show
-  // "come back after [date]".
   queueFullThrough: string | null;
-};
+  // Session 58.3 — Directus data passed from server page.
+  monthlyTiers: ReadonlyArray<PackageData>;
+  oneTimeQuick: ReadonlyArray<PackageData>;
+  oneTimeGifts: ReadonlyArray<PackageData>;
+  currency: { code: string; symbol: string; display_name: string };
+  currencyOptions: ReadonlyArray<CurrencyOption>;
+  /** BDT per donor unit (e.g. 110 for USD). Powers client-side
+   *  conversion of custom amounts + per-card totals. */
+  bdtPerDonorUnit: number;
+  /** Smallest active monthly tier amount in whole BDT. Drives the
+   *  custom-amount floor for monthly. */
+  monthlyMinBdt: number;
+  /** Hardcoded one-time floor (1500 BDT per brief). */
+  oneTimeMinBdt: number;
+  /** Session 58.3.2 — when true, the donor's Stripe customer already
+   *  has objects in this currency; the picker renders disabled. */
+  currencyLocked: boolean;
+}
 
 const OTHER_TIER_ID = "other" as const;
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
+const ONE_TIME_MIN_BDT_DEFAULT = 1500;
 
-// Step machine.
-//   1 mode → 2 amount → 3 duration → 4 schedule → 5 cause → 6 visibility → 7 review
-// One-time skips 3 and 4. Indefinite monthly skips 4. Cause (5) and
-// visibility (6) always render — including for one-time gifts.
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+// Cached Stripe.js per publishable key.
+const stripePromiseCache = new Map<string, Promise<StripeJs | null>>();
+function getStripePromise(key: string): Promise<StripeJs | null> {
+  if (!stripePromiseCache.has(key)) {
+    stripePromiseCache.set(key, loadStripe(key));
+  }
+  return stripePromiseCache.get(key)!;
+}
 
 function pickFirstSentence(s: string | null): string | null {
   if (!s) return null;
@@ -101,9 +160,6 @@ function pickFirstSentence(s: string | null): string | null {
   return m ? m[0] : s.trim().slice(0, 160);
 }
 
-// Shared "Mar 27, 2026"-style formatter for queue-state banners and
-// the review card. Returns null on missing/invalid input so callers
-// can omit clauses gracefully.
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -115,267 +171,214 @@ function formatDate(iso: string | null): string | null {
   });
 }
 
-// Derive the DurationSelection from a numeric months value (or null).
-// Used when prefilling state from URL search params (edit-from-cart).
-function durationSelectionFromMonths(
-  months: number | null,
-): DurationSelection {
-  if (months === null) return { optionId: "d_indef", months: null };
-  if (months === 3) return { optionId: "d_3", months: 3 };
-  if (months === 6) return { optionId: "d_6", months: 6 };
-  if (months === 12) return { optionId: "d_12", months: 12 };
-  return { optionId: "d_custom", months };
-}
-
-// Read just the mode= URL param when the caller wants to pre-select
-// step 1 without prefilling the rest. Used by the dashboard's
-// re-support buttons (Session 14.7c): the donor clicks "Sponsor again
-// monthly" or "Send a one-time gift" and lands on step 2 (amount)
-// with the mode chosen for them. Returns null if the param is absent
-// or invalid.
-function readModeOnlyParam(
-  searchParams: URLSearchParams,
-): PaymentMode | null {
-  const m = searchParams.get("mode");
-  if (!m || !isPaymentMode(m)) return null;
-  // If amount is also present, the FULL prefill path (readPrefilledState)
-  // owns this URL — defer to it.
-  if (searchParams.get("amount")) return null;
-  return m;
-}
-
-// Pull a prefilled state out of search params if all-required-keys are
-// present and valid. Returns null if the URL is a plain visit.
-function readPrefilledState(searchParams: URLSearchParams): {
-  mode: PaymentMode;
-  amount: number;
-  duration: DurationSelection;
-  schedule: PaymentSchedule | null;
-  cause: CauseEnum;
-  visibility: VisibilityEnum;
-} | null {
-  const m = searchParams.get("mode");
-  const a = searchParams.get("amount");
-  const d = searchParams.get("duration"); // "indef" or integer string
-  const s = searchParams.get("schedule"); // optional for one_time / indef
-  const cRaw = searchParams.get("cause"); // optional; defaults to general_care
-  const vRaw = searchParams.get("visibility"); // optional; defaults to anonymous
-
-  if (!m || !a) return null;
-  if (!isPaymentMode(m)) return null;
-  const amount = Number(a);
-  if (!isValidAmount(m, amount)) return null;
-
-  // Cause is optional in the URL. When provided, it must be a recognised
-  // enum; an invalid value rejects the entire prefill (donor lands on
-  // step 1 fresh) so we never silently swallow a tampered query string.
-  let cause: CauseEnum;
-  if (cRaw === null) {
-    cause = DEFAULT_CAUSE;
-  } else if (isValidCause(cRaw)) {
-    cause = cRaw;
-  } else {
-    return null;
-  }
-
-  // Same shape for visibility (Session 14.6) — optional, validated
-  // strictly when present, defaults to anonymous (privacy-preserving).
-  let visibility: VisibilityEnum;
-  if (vRaw === null) {
-    visibility = DEFAULT_VISIBILITY;
-  } else if (isValidVisibility(vRaw)) {
-    visibility = vRaw;
-  } else {
-    return null;
-  }
-
-  if (m === "one_time") {
-    return {
-      mode: "one_time",
-      amount,
-      duration: { optionId: "d_indef", months: null },
-      schedule: null,
-      cause,
-      visibility,
-    };
-  }
-
-  // monthly
-  let months: number | null;
-  if (d === "indef" || d === null) {
-    months = null;
-  } else {
-    const n = Number(d);
-    if (
-      !Number.isInteger(n) ||
-      n < CUSTOM_DURATION_MIN ||
-      n > CUSTOM_DURATION_MAX
-    ) {
-      return null;
-    }
-    months = n;
-  }
-  let schedule: PaymentSchedule;
-  if (months === null) {
-    schedule = "monthly";
-  } else {
-    if (!s || !isPaymentSchedule(s)) return null;
-    schedule = s;
-  }
-  return {
-    mode: "monthly",
-    amount,
-    duration: durationSelectionFromMonths(months),
-    schedule,
-    cause,
-    visibility,
-  };
+function bdtFloorToDonor(bdt: number, bdtPerDonorUnit: number): number {
+  if (bdtPerDonorUnit <= 0) return bdt;
+  return Math.max(1, Math.ceil(bdt / bdtPerDonorUnit));
 }
 
 export function SponsorPageContent({
   child,
   signedIn,
   donorState,
-  initialCartItemCount,
   monthlyLocked,
   donorFirstName,
   selfActiveMonthly,
   queueJoin,
   queueFullThrough,
-}: Props) {
-  const router = useRouter();
-  const search = useSearchParams();
-  const [pending, startTransition] = useTransition();
-
-  // ── State machine ─────────────────────────────────────────────────────
-  const prefill = useMemo(
-    () => readPrefilledState(new URLSearchParams(search.toString())),
-    [search],
-  );
-  // Session 14.7c: when only ?mode= is present (no amount), the
-  // dashboard re-support buttons want to skip step 1 and land the
-  // donor on step 2 (amount picker) with the chosen mode locked in.
-  // The full-prefill path above takes precedence when both are set.
-  const modeOnly = useMemo(
-    () => readModeOnlyParam(new URLSearchParams(search.toString())),
-    [search],
-  );
-  const isEditing = search.get("edit") === "1";
-
-  const [mode, setMode] = useState<PaymentMode | null>(
-    prefill?.mode ?? modeOnly ?? null,
-  );
-  const [tierId, setTierId] = useState<string | null>(() => {
-    if (!prefill) return null;
-    const tier = SPONSORSHIP_TIERS[prefill.mode].find(
-      (t) => t.amount === prefill.amount,
-    );
-    return tier ? tier.id : OTHER_TIER_ID;
+  monthlyTiers,
+  oneTimeQuick,
+  oneTimeGifts,
+  currency,
+  currencyOptions,
+  bdtPerDonorUnit,
+  monthlyMinBdt,
+  oneTimeMinBdt,
+  currencyLocked,
+}: SponsorPageContentProps) {
+  // ── State machine ─────────────────────────────────────────────────
+  const [mode, setMode] = useState<PaymentMode | null>(null);
+  const [tierId, setTierId] = useState<string | null>(null);
+  const [giftId, setGiftId] = useState<string | null>(null);
+  const [customAmount, setCustomAmount] = useState<number | "">("");
+  const [duration, setDuration] = useState<DurationSelection>({
+    optionId: "d_indef",
+    months: null,
   });
-  const [customAmount, setCustomAmount] = useState<number | "">(() => {
-    if (!prefill) return "";
-    const tier = SPONSORSHIP_TIERS[prefill.mode].find(
-      (t) => t.amount === prefill.amount,
-    );
-    return tier ? "" : prefill.amount;
-  });
-  const [duration, setDuration] = useState<DurationSelection>(
-    prefill?.duration ?? { optionId: "d_indef", months: null },
-  );
-  const [schedule, setSchedule] = useState<PaymentSchedule | null>(
-    prefill?.schedule ?? null,
-  );
-  // Cause defaults to general_care so a donor who doesn't engage the
-  // picker still produces a valid value.
-  const [cause, setCause] = useState<CauseEnum>(prefill?.cause ?? DEFAULT_CAUSE);
-  // Visibility defaults to anonymous (faith-conscious / hidden-sadaqah
-  // baseline). Donors opt INTO 'named'.
-  const [visibility, setVisibility] = useState<VisibilityEnum>(
-    prefill?.visibility ?? DEFAULT_VISIBILITY,
-  );
-  // Initial step:
-  //   - Full URL prefill (mode + amount + …) → step 7 review
-  //   - Mode-only URL prefill (?mode=monthly|one_time) → step 2 amount,
-  //     EXCEPT when mode='monthly' AND the child's monthly slot has a
-  //     queue affordance (queue-join or queue-full) — those banners live
-  //     in step 1 and we force the donor through it so they see the
-  //     context (committed start date, position N, queue-full message).
-  //     mode='one_time' always goes straight to step 2 (queue doesn't
-  //     affect one-time gifts).
-  const skipModeOnly =
-    modeOnly === "monthly" && (monthlyLocked || queueJoin !== null);
-  const [step, setStep] = useState<Step>(
-    prefill ? 7 : modeOnly && !skipModeOnly ? 2 : 1,
-  );
-
+  const [schedule, setSchedule] = useState<PaymentSchedule | null>(null);
+  const [cause, setCause] = useState<CauseEnum>(DEFAULT_CAUSE);
+  const [visibility, setVisibility] = useState<VisibilityEnum>(DEFAULT_VISIBILITY);
+  const [step, setStep] = useState<Step>(1);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [cartItemCount, setCartItemCount] = useState(initialCartItemCount);
+
+  // Inline Stripe state — only present on Step 6 review when the
+  // donor has clicked "Continue to payment".
+  const [initing, setIniting] = useState(false);
+  const [initData, setInitData] = useState<{
+    clientSecret: string;
+    sponsorshipId: string;
+    publishableKey: string;
+  } | null>(null);
 
   const subhead = pickFirstSentence(child.story);
   const photoSrc = directusAssetUrl(child.photo);
 
-  // Resolve effective amount from selected tier OR custom input.
-  const amount = useMemo<number | null>(() => {
+  // Session 58.3.2 Bug 3a — when the donor picks a tile/gift/custom
+  // amount in Step 2, the Continue button can be below the fold
+  // (especially with the one-time GiftGrid which adds another 8
+  // tiles). Scroll the Continue button into view on selection so the
+  // donor sees the next action.
+  const step2ContinueRef = useRef<HTMLButtonElement | null>(null);
+
+  // Session 58.4 — anchor for scroll-to-step-top on advance. Sits on
+  // the outer right-column wrapper; on step change we smooth-scroll
+  // its top into view so the donor always starts reading the new
+  // panel from its heading (mobile especially — the photo + header
+  // can otherwise be off-screen above).
+  const stepFlowRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Resolve effective amount in DONOR currency (whole units) ─────
+  const donorAmount = useMemo<number | null>(() => {
     if (!mode) return null;
+    if (mode === "one_time" && giftId) {
+      const gift = oneTimeGifts.find((g) => g.id === giftId);
+      if (!gift) return null;
+      return convertBdtToDonor(gift.amount_bdt, bdtPerDonorUnit);
+    }
     if (tierId === OTHER_TIER_ID) {
-      if (typeof customAmount === "number" && isValidAmount(mode, customAmount)) {
+      if (typeof customAmount === "number" && customAmount > 0) {
         return customAmount;
       }
       return null;
     }
     if (tierId) {
-      const found = SPONSORSHIP_TIERS[mode].find((t) => t.id === tierId);
-      return found ? found.amount : null;
+      const source = mode === "monthly" ? monthlyTiers : oneTimeQuick;
+      const found = source.find((t) => t.id === tierId);
+      return found ? convertBdtToDonor(found.amount_bdt, bdtPerDonorUnit) : null;
     }
     return null;
-  }, [mode, tierId, customAmount]);
+  }, [
+    mode,
+    tierId,
+    giftId,
+    customAmount,
+    monthlyTiers,
+    oneTimeQuick,
+    oneTimeGifts,
+    bdtPerDonorUnit,
+  ]);
 
-  function reset() {
-    setMode(null);
+  // Mirror BDT for display in review.
+  const perChargeBdt = useMemo<number>(() => {
+    if (donorAmount === null) return 0;
+    return Math.round(donorAmount * bdtPerDonorUnit);
+  }, [donorAmount, bdtPerDonorUnit]);
+
+  // Session 58.4 — on step change, smooth-scroll the right-column
+  // top into view so the donor lands at the new step's heading.
+  // Mobile-first: the photo + child header stack above the flow, so
+  // without this the donor reads halfway down the panel after the
+  // fade. Desktop is a no-op when already visible (block:'start' +
+  // browser's natural anchor).
+  //
+  // Timing: 60ms delay lets the AnimatePresence exit + the new
+  // motion.div's initial state settle so we're scrolling to the
+  // actual rendered position. Skip on the very first render (step
+  // starts at 1; no transition).
+  const previousStepRef = useRef<number>(1);
+  useEffect(() => {
+    if (previousStepRef.current === step) return;
+    previousStepRef.current = step;
+    const id = setTimeout(() => {
+      stepFlowRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 60);
+    return () => clearTimeout(id);
+  }, [step]);
+
+  // Session 58.3.2 Bug 3a — keep the in-step "scroll Continue into
+  // view after Step 2 selection" behaviour. It only fires when step
+  // === 2 AND donorAmount becomes non-null (post-selection), so it
+  // never competes with the 58.4 step-top scroll on advance (which
+  // fires on step CHANGE while donorAmount is still null right after
+  // mode pick).
+  useEffect(() => {
+    if (step !== 2) return;
+    if (donorAmount === null) return;
+    const id = requestAnimationFrame(() => {
+      step2ContinueRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [step, donorAmount, tierId, giftId]);
+
+  // Track whether the donor selected a specific GIFT (controls
+  // cause-step skip). Gift defines the cause_tag implicitly.
+  const isGiftSelected = mode === "one_time" && giftId !== null;
+
+  // Session 58.4 — compute the step sequence + progress for the
+  // donor's current path. Recomputed any time the path-defining
+  // inputs change so the dot indicator stays accurate.
+  const stepSequence = useMemo(
+    () => getStepSequence(mode, isGiftSelected, duration.months),
+    [mode, isGiftSelected, duration.months],
+  );
+  const stepProgress = useMemo(
+    () => getStepProgress(step as StepNum, stepSequence),
+    [step, stepSequence],
+  );
+
+  // Floors for AmountInput in donor currency.
+  const monthlyMinDonor = bdtFloorToDonor(monthlyMinBdt, bdtPerDonorUnit);
+  const oneTimeMinDonor = bdtFloorToDonor(
+    oneTimeMinBdt || ONE_TIME_MIN_BDT_DEFAULT,
+    bdtPerDonorUnit,
+  );
+
+  // ── Step transitions ─────────────────────────────────────────────
+  function pickMode(next: PaymentMode) {
+    setError(null);
+    setMode(next);
     setTierId(null);
+    setGiftId(null);
     setCustomAmount("");
     setDuration({ optionId: "d_indef", months: null });
     setSchedule(null);
-    setCause(DEFAULT_CAUSE);
-    setVisibility(DEFAULT_VISIBILITY);
-    setStep(1);
-    setError(null);
-    setSuccess(false);
-  }
-
-  // ── Transitions ───────────────────────────────────────────────────────
-  function pickMode(next: PaymentMode) {
-    setError(null);
-    setSuccess(false);
-    setMode(next);
-    setTierId(null);
-    setCustomAmount("");
-    // Reset downstream state.
-    setDuration({ optionId: "d_indef", months: null });
-    setSchedule(next === "monthly" ? null : null);
     setStep(2);
   }
 
   function selectTier(id: string) {
     setError(null);
-    setSuccess(false);
     setTierId(id);
+    setGiftId(null);
     if (id !== OTHER_TIER_ID) setCustomAmount("");
+  }
+
+  function selectGift(id: string) {
+    setError(null);
+    setGiftId(id);
+    setTierId(null);
+    setCustomAmount("");
   }
 
   function confirmAmount() {
     if (mode === "one_time") {
-      // One-time skips duration + schedule, jumps straight to cause picker.
-      setStep(5);
+      // One-time: if a gift was selected, skip cause (gift defines it).
+      // Otherwise next step is cause.
+      setStep(isGiftSelected ? 5 : 3);
     } else {
+      // Monthly: next step is duration. No cause step in monthly path
+      // — the package implies the support.
       setStep(3);
     }
   }
 
   function confirmDuration() {
     if (duration.months === null) {
-      // Indefinite → schedule is implicitly "monthly", skip step 4.
+      // Indefinite → schedule is implicitly recurring, skip Step 4.
       setSchedule("monthly");
       setStep(5);
     } else {
@@ -388,78 +391,129 @@ export function SponsorPageContent({
   }
 
   function confirmCause() {
-    setStep(6);
+    setStep(5);
   }
 
   function confirmVisibility() {
-    setStep(7);
+    setStep(6);
   }
 
-  // Edit selections from review screen → restart at step 1 but preserve
-  // the existing values so the donor can quickly pivot.
   function editSelections() {
     setStep(1);
     setError(null);
-    setSuccess(false);
+    setInitData(null);
   }
 
-  // ── Add to cart ───────────────────────────────────────────────────────
-  async function addToCart() {
-    if (!mode || amount === null) return;
+  // ── Continue to payment: call /api/donate/init ──────────────────
+  async function handleContinue() {
+    if (!mode || donorAmount === null) return;
     setError(null);
-    setSuccess(false);
-    startTransition(async () => {
-      try {
-        const body =
-          mode === "one_time"
-            ? {
-                childId: child.id,
-                paymentMode: mode,
-                amountUsd: amount,
-                durationMonths: null,
-                paymentSchedule: null,
-                cause,
-                visibility,
-              }
-            : {
-                childId: child.id,
-                paymentMode: mode,
-                amountUsd: amount,
-                durationMonths: duration.months,
-                paymentSchedule:
-                  duration.months === null ? "monthly" : schedule,
-                cause,
-                visibility,
-              };
-        const res = await fetch("/api/cart/add", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          cart?: { items?: unknown[] };
-          error?: string;
+    setIniting(true);
+    try {
+      // Session 58.3.1 — for monthly intent, the endpoint requires
+      // explicit durationMonths + paymentSchedule reflecting the
+      // donor's Step 3 + Step 4 choices. One-time intent leaves
+      // both undefined.
+      //
+      // Mapping:
+      //   "Continue until I cancel" → durationMonths=null, schedule='monthly'
+      //   "N months" + "Pay monthly" → durationMonths=N, schedule='monthly'
+      //   "N months" + "Pay full upfront" → durationMonths=N, schedule='monthly_prepaid'
+      const monthlyFields =
+        mode === "monthly"
+          ? {
+              durationMonths: duration.months,
+              paymentSchedule:
+                duration.months === null
+                  ? "monthly"
+                  : schedule ?? "monthly",
+            }
+          : {};
+
+      let body: Record<string, unknown>;
+      if (mode === "one_time" && giftId) {
+        // Specific gift — packageId path.
+        body = {
+          packageId: giftId,
+          currencyCode: currency.code,
+          childId: child.id,
         };
-        if (!res.ok) {
-          setError(json.error ?? "Could not add to cart.");
+      } else if (tierId && tierId !== OTHER_TIER_ID) {
+        // Preset tile selected (monthly tier or one-time quick).
+        body = {
+          packageId: tierId,
+          currencyCode: currency.code,
+          childId: child.id,
+          ...monthlyFields,
+        };
+      } else {
+        // Custom amount — translate donor amount back to BDT and
+        // send as custom. The endpoint enforces floors server-side.
+        const bdt = Math.round(donorAmount * bdtPerDonorUnit);
+        body = {
+          customAmountBdt: bdt,
+          customPackageType: mode === "monthly" ? "monthly" : "one_time",
+          currencyCode: currency.code,
+          childId: child.id,
+          ...monthlyFields,
+        };
+      }
+      const res = await fetch("/api/donate/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        // Session 58.3.2 — currency-lock safety net. The page-load
+        // lock should have prevented this, but race conditions can
+        // still send us here. Switch the og_currency cookie to the
+        // locked currency and reload so the picker pre-locks and the
+        // amounts re-convert.
+        if (
+          res.status === 409 &&
+          json.error === "currency_locked" &&
+          typeof json.lockedCurrency === "string"
+        ) {
+          const locked = json.lockedCurrency as string;
+          setError(
+            `Showing prices in ${locked} — the currency linked to your account. Reloading…`,
+          );
+          // Cookie name + attrs mirror src/lib/geo-currency.ts (30-day,
+          // sameSite=lax, not httpOnly so the client can read it back).
+          document.cookie = `og_currency=${locked}; path=/; max-age=${30 * 24 * 3600}; samesite=lax`;
+          setTimeout(() => window.location.reload(), 1200);
+          setIniting(false);
           return;
         }
-        setSuccess(true);
-        setCartItemCount(
-          Array.isArray(json.cart?.items)
-            ? json.cart.items.length
-            : cartItemCount + 1,
-        );
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("og:cart-changed"));
-        }
-      } catch {
-        setError("Network error. Please try again.");
+        setError(json.error || json.message || "Could not start checkout");
+        setIniting(false);
+        return;
       }
-    });
+      setInitData({
+        clientSecret: json.clientSecret,
+        sponsorshipId: json.sponsorshipId,
+        publishableKey: json.stripePublishableKey,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setIniting(false);
+    }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────
+  // Resolve cause label for review (only when cause step was visited
+  // — i.e. one-time custom or one-time quick amount, never monthly).
+  const causeLabel = useMemo<string | null>(() => {
+    if (mode !== "one_time") return null;
+    if (giftId) {
+      const g = oneTimeGifts.find((x) => x.id === giftId);
+      return g ? g.name_en : null;
+    }
+    return labelForCause(cause);
+  }, [mode, giftId, oneTimeGifts, cause]);
+
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <section className="px-6 pt-8 pb-24 max-md:pt-6 max-md:pb-16">
       <div className="max-w-[1100px] mx-auto grid grid-cols-[1fr_1.4fr] gap-12 items-start max-lg:grid-cols-1 max-lg:gap-8">
@@ -501,28 +555,69 @@ export function SponsorPageContent({
         </aside>
 
         {/* Right: stepped flow */}
-        <div>
+        <div ref={stepFlowRef} className="scroll-mt-6">
+          {/* Currency picker pinned top-right of the flow column.
+              Session 58.3.2 — locked when the donor's Stripe customer
+              already has objects in this currency; we surface a small
+              note below the picker so they understand why it's fixed. */}
+          <div className="flex flex-col items-end gap-1 mb-5">
+            <CurrencyPicker
+              current={currency}
+              options={currencyOptions}
+              fromPath={`/sponsor/${child.id}`}
+              locked={currencyLocked}
+            />
+            {currencyLocked ? (
+              <p className="text-[11.5px] text-slate-soft italic max-w-[280px] text-right">
+                Showing prices in {currency.code} — the currency linked to
+                your account.
+              </p>
+            ) : null}
+          </div>
+
           {donorState === "pending_approval" ? (
             <div className="rounded-[18px] bg-[#FEF6EC] border border-tangerine-soft border-l-[4px] border-l-tangerine px-5 py-4 mb-6">
               <div className="font-display text-[17px] text-ink font-medium">
-                You can build your cart now.
+                You can complete your sponsorship once approved.
               </div>
               <p className="mt-1.5 text-[13.5px] text-slate leading-[1.6]">
-                You&apos;ll be able to complete checkout once your account is
-                approved (usually 1–2 business days).
+                You&apos;ll be able to pay once your account is approved
+                (usually 1–2 business days).
               </p>
             </div>
           ) : null}
           {!signedIn ? (
             <p className="text-[13.5px] text-slate-soft mb-5">
-              You&apos;ll sign in at checkout — no account needed yet.
+              You&apos;ll sign in to complete payment.
             </p>
           ) : null}
 
+          {/* Session 58.4 — cross-fade between steps. AnimatePresence
+              mode="wait" sequences exit→enter so steps don't overlap;
+              motion.div keyed by step number triggers the swap. Subtle
+              ~220ms opacity + 6px y on enter, -4px y on exit for a
+              calm transition (charity flow tone, not flashy). The
+              parent persistent shell (currency picker, child photo,
+              gating banners above) stays mounted and doesn't flicker. */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{
+                duration: 0.22,
+                ease: [0.22, 0.61, 0.36, 1],
+              }}
+            >
           {/* Step 1: mode */}
           {step === 1 ? (
             <div className="mb-7">
-              <StepHeader n={1} title="How would you like to give?" />
+              <StepHeader
+                n={1}
+                title="How would you like to give?"
+                progress={stepProgress}
+              />
               {selfActiveMonthly ? (
                 <SelfActiveMonthlyNote
                   childFirstName={child.display_name.split(" ")[0]!}
@@ -558,16 +653,38 @@ export function SponsorPageContent({
             </div>
           ) : null}
 
-          {/* Step 2: amount */}
+          {/* Step 2: amount (monthly = single TierGrid; one-time = two
+              zones — TierGrid for quick amounts + GiftGrid for specific
+              gifts) */}
           {step === 2 && mode ? (
             <div className="mb-7">
-              <StepHeader n={2} title="Choose an amount" />
-              <BackLink onClick={() => setStep(1)} label="Back to give type" />
-              <TierGrid
-                mode={mode}
-                selectedTierId={tierId === OTHER_TIER_ID ? null : tierId}
-                onSelect={selectTier}
+              <StepHeader
+                n={2}
+                title={
+                  mode === "monthly"
+                    ? "Choose an amount"
+                    : "Choose an amount or a gift"
+                }
+                progress={stepProgress}
               />
+              <BackLink onClick={() => setStep(1)} label="Back to give type" />
+
+              {/* Quick amounts (zone A on one-time; the only zone on monthly) */}
+              <TierGrid
+                items={packagesToTierItems(
+                  mode === "monthly" ? monthlyTiers : oneTimeQuick,
+                  bdtPerDonorUnit,
+                )}
+                selectedTierId={
+                  tierId === OTHER_TIER_ID ? null : tierId
+                }
+                onSelect={selectTier}
+                perMonth={mode === "monthly"}
+                currencySymbol={currency.symbol}
+                currencyCode={currency.code}
+              />
+
+              {/* Custom amount, collapsed under the tiles */}
               <details
                 open={tierId === OTHER_TIER_ID}
                 className="mt-4 rounded-[14px] bg-white border border-ink/[0.08] px-4 py-3"
@@ -580,140 +697,166 @@ export function SponsorPageContent({
                 </summary>
                 <div className="mt-3">
                   <AmountInput
-                    mode={mode}
+                    perMonth={mode === "monthly"}
+                    minDonorAmount={
+                      mode === "monthly" ? monthlyMinDonor : oneTimeMinDonor
+                    }
+                    currencySymbol={currency.symbol}
+                    currencyCode={currency.code}
                     value={customAmount}
                     onChange={(v) => {
                       setCustomAmount(v);
                       setTierId(OTHER_TIER_ID);
-                      setSuccess(false);
+                      setGiftId(null);
                     }}
                   />
                 </div>
               </details>
-              <div className="mt-5">
-                <button
-                  type="button"
+
+              {/* Zone B — specific gifts (one-time only) */}
+              {mode === "one_time" && oneTimeGifts.length > 0 ? (
+                <div className="mt-7">
+                  <h3 className="font-mono text-[11px] tracking-[0.12em] uppercase text-slate font-medium mb-3">
+                    Or give a specific gift
+                  </h3>
+                  <GiftGrid
+                    items={oneTimeGifts.map<GiftItem>((g) => ({
+                      id: g.id,
+                      name: g.name_en,
+                      description: g.description_en,
+                      icon: g.icon,
+                      donorAmount: convertBdtToDonor(
+                        g.amount_bdt,
+                        bdtPerDonorUnit,
+                      ),
+                      amountBdt: g.amount_bdt,
+                    }))}
+                    selectedGiftId={giftId}
+                    onSelect={selectGift}
+                    currencySymbol={currency.symbol}
+                    currencyCode={currency.code}
+                  />
+                </div>
+              ) : null}
+
+              <div className="mt-6">
+                <ContinueButton
+                  innerRef={step2ContinueRef}
                   onClick={confirmAmount}
-                  disabled={amount === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
+                  disabled={donorAmount === null}
+                />
               </div>
             </div>
           ) : null}
 
-          {/* Step 3: duration (monthly only) */}
+          {/* Step 3 (monthly): duration */}
           {step === 3 && mode === "monthly" ? (
             <div className="mb-7">
-              <StepHeader n={3} title="How long?" />
+              <StepHeader
+                n={3}
+                title="How long?"
+                progress={stepProgress}
+              />
               <BackLink onClick={() => setStep(2)} label="Back to amount" />
               <DurationPicker value={duration} onChange={setDuration} />
-              <div className="mt-5">
-                <button
-                  type="button"
+              <div className="mt-6">
+                <ContinueButton
                   onClick={confirmDuration}
                   disabled={!isDurationSelectionValid(duration)}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
+                />
               </div>
             </div>
           ) : null}
 
-          {/* Step 4: payment schedule (fixed-term monthly only) */}
+          {/* Step 3 (one-time, cause): shown only when no gift selected */}
+          {step === 3 && mode === "one_time" && !isGiftSelected && donorAmount !== null ? (
+            <div className="mb-7">
+              <StepHeader
+                n={3}
+                title="What is this gift for?"
+                progress={stepProgress}
+              />
+              <BackLink onClick={() => setStep(2)} label="Back to amount" />
+              <CausePicker value={cause} onChange={setCause} />
+              <div className="mt-6">
+                <ContinueButton onClick={confirmCause} />
+              </div>
+            </div>
+          ) : null}
+
+          {/* Step 4 (monthly): payment schedule (finite-duration only) */}
           {step === 4 &&
           mode === "monthly" &&
           duration.months !== null &&
-          amount !== null ? (
+          donorAmount !== null ? (
             <div className="mb-7">
-              <StepHeader n={4} title="How would you like to pay?" />
+              <StepHeader
+                n={4}
+                title="How would you like to pay?"
+                progress={stepProgress}
+              />
               <BackLink onClick={() => setStep(3)} label="Back to duration" />
               <PaymentSchedulePicker
-                amountUsd={amount}
+                perMonthDonorAmount={donorAmount}
                 durationMonths={duration.months}
+                currencySymbol={currency.symbol}
+                currencyCode={currency.code}
                 value={schedule}
                 onChange={setSchedule}
               />
-              <div className="mt-5">
-                <button
-                  type="button"
+              <div className="mt-6">
+                <ContinueButton
                   onClick={confirmSchedule}
                   disabled={schedule === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
+                />
               </div>
             </div>
           ) : null}
 
-          {/* Step 5: cause picker (always shown). Back-link target depends
-              on the previous active step — fixed-term → schedule (4),
-              indefinite monthly → duration (3), one-time → amount (2). */}
-          {step === 5 && mode && amount !== null ? (
+          {/* Step 5: visibility (always renders for both modes) */}
+          {step === 5 && mode && donorAmount !== null ? (
             <div className="mb-7">
               <StepHeader
                 n={5}
-                title="What would you like this to support?"
+                title="Should your name appear publicly?"
+                progress={stepProgress}
               />
               <BackLink
                 onClick={() => {
-                  if (mode === "one_time") setStep(2);
-                  else if (duration.months === null) setStep(3);
-                  else setStep(4);
+                  // Smart back: jump to whichever was the previous
+                  // visited step.
+                  if (mode === "one_time") {
+                    setStep(isGiftSelected ? 2 : 3);
+                  } else if (duration.months === null) {
+                    setStep(3);
+                  } else {
+                    setStep(4);
+                  }
                 }}
                 label="Back"
               />
-              <CausePicker value={cause} onChange={setCause} />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmCause}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Step 6: visibility (named / anonymous). Always renders for
-              every mode — Islamic hidden-charity preference applies
-              equally to one-time and monthly. Default state is
-              'anonymous'. */}
-          {step === 6 && mode && amount !== null ? (
-            <div className="mb-7">
-              <StepHeader
-                n={6}
-                title="Should your name appear publicly?"
-              />
-              <BackLink onClick={() => setStep(5)} label="Back to cause" />
               <VisibilityPicker
                 value={visibility}
                 onChange={setVisibility}
                 donorFirstName={donorFirstName}
               />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmVisibility}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
-                >
-                  Continue →
-                </button>
+              <div className="mt-6">
+                <ContinueButton onClick={confirmVisibility} />
               </div>
             </div>
           ) : null}
 
-          {/* Step 7: review */}
-          {step === 7 && mode && amount !== null ? (
-            <div className="mb-5">
-              <StepHeader n={7} title="Review" />
+          {/* Step 6: review + inline payment */}
+          {step === 6 && mode && donorAmount !== null ? (
+            <div className="mb-5 space-y-5">
+              <StepHeader
+                n={6}
+                title="Review"
+                progress={stepProgress}
+              />
               <SponsorReviewCard
                 paymentMode={mode}
-                amountUsd={amount}
+                perChargeDonorAmount={donorAmount}
                 durationMonths={mode === "monthly" ? duration.months : null}
                 paymentSchedule={
                   mode === "monthly"
@@ -722,14 +865,13 @@ export function SponsorPageContent({
                       : schedule
                     : null
                 }
-                cause={cause}
+                causeLabel={causeLabel}
                 visibility={visibility}
                 donorFirstName={donorFirstName}
+                currencySymbol={currency.symbol}
+                currencyCode={currency.code}
+                perChargeBdt={perChargeBdt}
                 queueJoin={
-                  // Queue-join framing only applies when this is a
-                  // monthly join. One-time gifts are unaffected by
-                  // the lock; surfacing a queue position there would
-                  // be confusing.
                   mode === "monthly" && queueJoin
                     ? {
                         position: queueJoin.position,
@@ -738,74 +880,164 @@ export function SponsorPageContent({
                     : null
                 }
                 onEdit={editSelections}
-                onAddToCart={addToCart}
-                pending={pending}
+                onContinue={handleContinue}
+                pending={initing || initData !== null}
                 error={error}
-                ctaLabel={isEditing ? "Save changes" : "Add to cart"}
               />
+
+              {initData ? (
+                <div className="rounded-[20px] bg-white border border-ink/[0.08] px-6 py-5 shadow-warm">
+                  <h3 className="font-display text-[18px] text-ink mb-3">
+                    Payment
+                  </h3>
+                  <Elements stripe={getStripePromise(initData.publishableKey)}>
+                    <PayInline
+                      clientSecret={initData.clientSecret}
+                      sponsorshipId={initData.sponsorshipId}
+                    />
+                  </Elements>
+                </div>
+              ) : null}
             </div>
           ) : null}
-
-          {success ? (
-            <div className="rounded-xl bg-moss-soft/60 border border-moss/30 px-5 py-4 flex flex-wrap items-center justify-between gap-3 mb-5">
-              <span className="text-[14px] text-ink">
-                {isEditing ? "✓ Cart updated." : "✓ Added to your cart."}
-              </span>
-              <div className="flex items-center gap-3 text-[13px]">
-                <button
-                  type="button"
-                  onClick={() => router.push("/cart")}
-                  className="text-tangerine-deep font-medium border-b border-tangerine pb-0.5 hover:opacity-80"
-                >
-                  Go to cart →
-                </button>
-                {!isEditing ? (
-                  <button
-                    type="button"
-                    onClick={reset}
-                    className="text-slate hover:text-ink"
-                  >
-                    Add another configuration
-                  </button>
-                ) : null}
-                <Link href="/children" className="text-slate hover:text-ink">
-                  Browse more children
-                </Link>
-              </div>
-            </div>
-          ) : null}
-
-          {cartItemCount > 0 && !success ? (
-            <Link
-              href="/cart"
-              className="inline-flex items-center gap-2 text-[13px] text-slate hover:text-tangerine-deeper transition-colors"
-            >
-              View cart ({cartItemCount}{" "}
-              {cartItemCount === 1 ? "item" : "items"}) →
-            </Link>
-          ) : null}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </section>
   );
 }
 
-function StepHeader({ n, title }: { n: number; title: string }) {
+// ─── Small helpers (kept at module scope; original file shape) ────
+
+function convertBdtToDonor(amountBdt: number, bdtPerDonorUnit: number): number {
+  if (bdtPerDonorUnit <= 0) return amountBdt;
+  return Math.max(1, Math.round(amountBdt / bdtPerDonorUnit));
+}
+
+// Session 58.4 — step header with optional progress indicator.
+// progress.current/total counts only the steps that will fire for the
+// donor's chosen path (mode + giftSelected + duration combination).
+// progress=null on Step 1 before mode is picked (we don't know the
+// path yet).
+function StepHeader({
+  n,
+  title,
+  progress,
+}: {
+  n: number;
+  title: string;
+  progress: { current: number; total: number } | null;
+}) {
   return (
-    <h2 className="font-display text-[20px] text-ink mb-3">
-      <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-tangerine-deep mr-2">
-        Step {n}
-      </span>
-      {title}
-    </h2>
+    <div className="mb-4">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-tangerine-deep">
+          {progress
+            ? `Step ${progress.current} of ${progress.total}`
+            : `Step ${n}`}
+        </span>
+        {progress ? (
+          <div
+            className="flex items-center gap-1.5"
+            aria-hidden="true"
+          >
+            {Array.from({ length: progress.total }, (_, i) => (
+              <span
+                key={i}
+                className={`h-1 w-5 rounded-full transition-colors duration-300 ${
+                  i < progress.current ? "bg-tangerine" : "bg-ink/[0.10]"
+                }`}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <h2 className="font-display text-[22px] text-ink leading-tight tracking-[-0.01em]">
+        {title}
+      </h2>
+    </div>
   );
 }
 
-// Banner shown at step 1 when the viewing donor would be JOINING THE
-// QUEUE (Session 14.7). Active sponsor exists, queue isn't full, and
-// the viewing donor is not the active sponsor. Tone: forward-looking
-// — sets the expectation that the donor's support starts later and
-// the upfront payment is real money committed today.
+function BackLink({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors mb-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas"
+    >
+      ← {label}
+    </button>
+  );
+}
+
+// Session 58.4 — shared Continue/primary CTA button. Consistent
+// sizing, weight, hover lift, focus-visible, disabled state. Uses
+// only brand tokens (tangerine fill, ink text). The `ref` is
+// optional for callers that want to scroll-into-view (e.g. Step 2
+// scroll-to-continue still works after a selection).
+const PRIMARY_BTN_CLASSES =
+  "inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-3 text-[14px] shadow-warm transition-all duration-150 hover:-translate-y-[1px] hover:bg-tangerine-deep hover:shadow-md active:translate-y-0 active:shadow-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none disabled:hover:bg-tangerine";
+
+const ContinueButton = ({
+  onClick,
+  disabled,
+  innerRef,
+  children = (
+    <>
+      Continue <span aria-hidden="true">→</span>
+    </>
+  ),
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  innerRef?: React.Ref<HTMLButtonElement>;
+  children?: React.ReactNode;
+}) => (
+  <button
+    ref={innerRef}
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className={PRIMARY_BTN_CLASSES}
+  >
+    {children}
+  </button>
+);
+
+// Compute the donor's step PATH so the indicator can show "Step 3 of
+// 5" with N dots that match the actual sequence they'll move through.
+// Skipped steps (e.g. Step 4 for indefinite monthly; Step 3 for
+// one-time gift selections) are excluded from the count.
+type StepNum = 1 | 2 | 3 | 4 | 5 | 6;
+function getStepSequence(
+  mode: PaymentMode | null,
+  giftSelected: boolean,
+  durationMonthsForFiniteCheck: number | null,
+): StepNum[] {
+  if (!mode) return [1];
+  if (mode === "monthly") {
+    // Indefinite skips Step 4 (schedule).
+    return durationMonthsForFiniteCheck === null
+      ? [1, 2, 3, 5, 6]
+      : [1, 2, 3, 4, 5, 6];
+  }
+  // one_time: gift skips Step 3 (cause).
+  return giftSelected ? [1, 2, 5, 6] : [1, 2, 3, 5, 6];
+}
+function getStepProgress(
+  step: StepNum,
+  sequence: StepNum[],
+): { current: number; total: number } | null {
+  const idx = sequence.indexOf(step);
+  if (idx < 0) return null;
+  // Don't show the indicator when mode hasn't been picked yet (Step 1,
+  // sequence=[1]) — looks silly to show "Step 1 of 1".
+  if (sequence.length <= 1) return null;
+  return { current: idx + 1, total: sequence.length };
+}
+
 function QueueJoinNote({
   childFirstName,
   activeEndDate,
@@ -829,16 +1061,13 @@ function QueueJoinNote({
         {startStr ? ` around ${startStr}` : " when the current sub ends"}.
       </p>
       <p className="mt-1.5 text-[12.5px] text-slate-soft italic leading-snug">
-        Donors ahead of you: {donorsAhead}. You can also send a
-        one-time gift to support {childFirstName} today.
+        Donors ahead of you: {donorsAhead}. You can also send a one-time
+        gift to support {childFirstName} today.
       </p>
     </div>
   );
 }
 
-// Banner shown at step 1 when the queue is FULL (3 donors already
-// queued). Monthly tile is locked; donor can still send a one-time
-// gift. Phrasing nudges them to come back later.
 function QueueFullNote({
   childFirstName,
   queueFullThrough,
@@ -860,11 +1089,6 @@ function QueueFullNote({
   );
 }
 
-// Friendly informational note shown at step 1 when the viewing donor
-// is ALREADY the active monthly sponsor of this child. Distinct from
-// the moss "locked by another donor" pill: this wants to feel like a
-// guided handoff to /dashboard/sponsorship/[id], while still letting
-// the donor add an additional one-time gift on top.
 function SelfActiveMonthlyNote({
   childFirstName,
   sponsorshipId,
@@ -874,8 +1098,6 @@ function SelfActiveMonthlyNote({
   sponsorshipId: string;
   scheduledEndDate: string | null;
 }) {
-  // Format the end date readably; null (indefinite sub) → omit the
-  // "through [date]" clause entirely so the copy stays grammatical.
   let throughClause = "";
   if (scheduledEndDate) {
     const d = new Date(scheduledEndDate);
@@ -905,14 +1127,121 @@ function SelfActiveMonthlyNote({
   );
 }
 
-function BackLink({ onClick, label }: { onClick: () => void; label: string }) {
+// ─── Inline Stripe Elements ──────────────────────────────────────
+
+const CARD_OPTIONS = {
+  style: {
+    base: {
+      fontSize: "15px",
+      color: "#2A2A2C",
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif',
+      "::placeholder": { color: "#8B8B8E" },
+    },
+    invalid: { color: "#A02B2B", iconColor: "#A02B2B" },
+  },
+  hidePostalCode: false,
+};
+
+function PayInline({
+  clientSecret,
+  sponsorshipId,
+}: {
+  clientSecret: string;
+  sponsorshipId: string;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cardComplete, setCardComplete] = useState(false);
+  const cancelled = useRef(false);
+
+  async function handlePay() {
+    if (!stripe || !elements) return;
+    setError(null);
+    setPending(true);
+    const card = elements.getElement(CardElement);
+    if (!card) {
+      setError("Card form not ready. Please refresh.");
+      setPending(false);
+      return;
+    }
+    try {
+      const pmRes = await stripe.createPaymentMethod({ type: "card", card });
+      if (pmRes.error || !pmRes.paymentMethod) {
+        setError(pmRes.error?.message ?? "Could not read card details.");
+        setPending(false);
+        return;
+      }
+      const isSetup = clientSecret.startsWith("seti_");
+      const result = isSetup
+        ? await stripe.confirmCardSetup(clientSecret, {
+            payment_method: pmRes.paymentMethod.id,
+          })
+        : await stripe.confirmCardPayment(clientSecret, {
+            payment_method: pmRes.paymentMethod.id,
+          });
+      if (result.error) {
+        setError(result.error.message ?? "Payment could not be completed.");
+        setPending(false);
+        return;
+      }
+      if (cancelled.current) return;
+      const url = `/donate/success?id=${sponsorshipId}`;
+      router.push(url);
+      setTimeout(() => {
+        if (!window.location.pathname.startsWith("/donate/success")) {
+          window.location.assign(url);
+        }
+      }, 500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unexpected error.");
+      setPending(false);
+    }
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors mb-3"
-    >
-      ← {label}
-    </button>
+    <div>
+      <div className="rounded-xl border-[1.5px] border-ink/[0.12] bg-white px-4 py-3.5 transition-all focus-within:border-tangerine focus-within:ring-2 focus-within:ring-tangerine-soft">
+        <CardElement
+          options={CARD_OPTIONS}
+          onChange={(e) => {
+            setCardComplete(e.complete);
+            if (e.error) setError(e.error.message);
+            else if (error && e.complete) setError(null);
+          }}
+        />
+      </div>
+      {error ? (
+        <p
+          role="alert"
+          className="mt-3 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-3 py-2 text-[13px] text-[#A02B2B]"
+        >
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={handlePay}
+          disabled={!stripe || !cardComplete || pending}
+          className={PRIMARY_BTN_CLASSES}
+        >
+          {pending ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="inline-block w-4 h-4 border-2 border-ink/30 border-t-ink rounded-full animate-spin"
+              />
+              Processing…
+            </>
+          ) : (
+            "Pay now"
+          )}
+        </button>
+      </div>
+    </div>
   );
 }

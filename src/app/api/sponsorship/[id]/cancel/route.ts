@@ -160,6 +160,127 @@ export async function POST(
     );
   }
 
+  // ── Session 58.5 — pre-cancel reconcile ──────────────────────────────
+  //
+  // "Cancel attempt" on a pending_payment row used to call
+  // paymentIntents.cancel() / subscriptions.cancel() blindly. If the
+  // underlying Stripe object had ALREADY succeeded (webhook race or
+  // missed delivery), Stripe rejected the cancel with:
+  //   "You cannot cancel this PaymentIntent because it has a status
+  //    of succeeded..."
+  // …and the donor saw a raw error.
+  //
+  // Defensive fix: retrieve the Stripe object first. If it's already
+  // in a paid state, DON'T cancel — instead reconcile the local row
+  // to the status the webhook would have set (active for sub /
+  // prepaid; completed for one-time) and return a friendly success.
+  // The webhook's own update is idempotent so its eventual arrival
+  // (or replay) doesn't conflict.
+  //
+  // Only applies on the pending_payment cancel paths (the donor
+  // clicking "Cancel attempt"). Active / paused cancellations stay
+  // on the normal path — those are by definition not in an
+  // unconfirmed state.
+  if (sponsorship.status === "pending_payment") {
+    const nowIso = new Date().toISOString();
+    if (isPendingOneTime) {
+      try {
+        const pi = await getStripe().paymentIntents.retrieve(
+          sponsorship.stripe_payment_intent_id!,
+        );
+        // succeeded   = donor was charged
+        // processing  = mid-charge (will succeed shortly)
+        // requires_capture = authorised, capture pending
+        // All three mean we should NOT cancel and instead reconcile.
+        if (
+          pi.status === "succeeded" ||
+          pi.status === "processing" ||
+          pi.status === "requires_capture"
+        ) {
+          try {
+            await updateSponsorship(sponsorship.id, {
+              status: "completed",
+              ...(sponsorship.started_at ? {} : { started_at: nowIso }),
+              ended_at: nowIso,
+            });
+          } catch (err) {
+            console.error(
+              "[sponsorship/cancel] reconcile update failed:",
+              err,
+            );
+            // Even if the local update failed, the webhook will
+            // eventually flip the row. Surface a friendly message
+            // either way.
+          }
+          return NextResponse.json({
+            success: true,
+            mode: "reconciled_already_succeeded",
+            message:
+              "This payment already completed — your sponsorship is now active.",
+          });
+        }
+      } catch (err) {
+        // Retrieve failed — fall through to the cancel attempt
+        // below. The existing cancel catch handles "already gone"
+        // gracefully.
+        console.warn(
+          "[sponsorship/cancel] PI retrieve failed (non-fatal):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    } else {
+      // Subscription path — pending_payment monthly with a sub id.
+      try {
+        const sub = await getStripe().subscriptions.retrieve(
+          sponsorship.stripe_subscription_id!,
+        );
+        // Live states: 'active', 'trialing', 'past_due' (still
+        // billing but a payment failed retry), 'unpaid' (escalated
+        // past_due). 'trialing' covers queue-joined subs.
+        // Cancelable: 'incomplete' (default_incomplete, awaiting
+        // first payment confirmation) and 'incomplete_expired'.
+        const liveStates = new Set([
+          "active",
+          "trialing",
+          "past_due",
+          "unpaid",
+        ]);
+        if (liveStates.has(sub.status)) {
+          // The donor's sub is live but our row didn't get flipped
+          // (webhook miss). Reconcile to active so the donor sees
+          // the right state; we still allow the cancel below to
+          // unwind it if that's what they intended — but per the
+          // brief's intent, the donor clicked Cancel thinking the
+          // payment failed; on discovering it succeeded, we keep
+          // the live sub and return the reconcile message rather
+          // than cancelling a healthy subscription.
+          try {
+            await updateSponsorship(sponsorship.id, {
+              status: "active",
+              ...(sponsorship.started_at ? {} : { started_at: nowIso }),
+            });
+          } catch (err) {
+            console.error(
+              "[sponsorship/cancel] sub reconcile update failed:",
+              err,
+            );
+          }
+          return NextResponse.json({
+            success: true,
+            mode: "reconciled_already_active",
+            message:
+              "This payment already completed — your sponsorship is now active.",
+          });
+        }
+      } catch (err) {
+        console.warn(
+          "[sponsorship/cancel] sub retrieve failed (non-fatal):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
   // Cancel in Stripe. For monthly, the subscription.deleted webhook will
   // also fire and idempotently re-set the same fields; we update locally
   // anyway so the UI reflects the change immediately without waiting.
@@ -176,7 +297,13 @@ export async function POST(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Stripe cancel failed.";
-    if (!/already|No such/i.test(msg)) {
+    // Session 58.5 — second-line defense: if Stripe still throws
+    // "cannot cancel ... succeeded" because the PI/sub state shifted
+    // between our retrieve and our cancel, swallow gracefully + let
+    // the local cancel proceed. The webhook will reconcile.
+    const isAlreadyTerminal =
+      /already|No such|status of succeeded|status of canceled/i.test(msg);
+    if (!isAlreadyTerminal) {
       console.error("[sponsorship/cancel] stripe failed:", err);
       return NextResponse.json({ error: msg }, { status: 502 });
     }

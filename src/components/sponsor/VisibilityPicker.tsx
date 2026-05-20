@@ -36,7 +36,7 @@ export function VisibilityPicker({ value, onChange, donorFirstName }: Props) {
             <label
               key={opt.enum}
               className={
-                "relative cursor-pointer rounded-[16px] border px-4 py-3.5 transition-all " +
+                "relative cursor-pointer rounded-[16px] border px-4 py-3.5 transition-all duration-150 focus-within:ring-2 focus-within:ring-tangerine focus-within:ring-offset-2 focus-within:ring-offset-bg-canvas " +
                 (selected
                   ? "border-tangerine bg-tangerine-mist/60 shadow-warm"
                   : "border-ink/[0.10] bg-cream hover:border-ink/[0.20] hover:bg-white")

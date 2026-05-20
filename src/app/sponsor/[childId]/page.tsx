@@ -9,7 +9,17 @@ import {
   getQueueForChild,
   QUEUE_DEPTH_LIMIT,
 } from "@/lib/queue";
+import {
+  listActiveMonthlyTiers,
+  listOneTimeQuickAmounts,
+  listOneTimeGifts,
+  getMinimumActiveMonthlyAmountBdt,
+} from "@/lib/donation-packages";
+import { listActiveCurrencies } from "@/lib/currency-rates";
+import { resolveDonorCurrencyWithLock } from "@/lib/geo-currency";
 import { SponsorPageContent } from "./sponsor-page-content";
+
+const ONE_TIME_FLOOR_BDT = 1500;
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +131,8 @@ export default async function SponsorPage({
           />
         </div>
       </div>
-      <SponsorPageContent
+      <SponsorPageContentWithData
+        donor={donor}
         child={{
           id: child.id,
           display_name: child.display_name,
@@ -131,15 +142,133 @@ export default async function SponsorPage({
           story: child.story,
           story_truncated: child.story_truncated,
         }}
-        signedIn={Boolean(donor)}
         donorState={donorState}
-        initialCartItemCount={cartItemCount}
+        cartItemCount={cartItemCount}
         monthlyLocked={monthlyLocked}
-        donorFirstName={donor.first_name ?? null}
         selfActiveMonthly={selfActiveMonthly}
         queueJoin={queueJoin}
         queueFullThrough={queueFullThrough}
       />
     </div>
+  );
+}
+
+// Session 58.3 — server-component shim that loads Directus data (active
+// packages by subtype + currency rate + currency options) and threads
+// it into the client SponsorPageContent. Kept inline to avoid an extra
+// file just for the data fetch. The outer page (above) already does
+// all the donor / queue / child logic; this wrapper exists purely to
+// pair that with the new package data layer.
+async function SponsorPageContentWithData({
+  donor,
+  child,
+  donorState,
+  cartItemCount,
+  monthlyLocked,
+  selfActiveMonthly,
+  queueJoin,
+  queueFullThrough,
+}: {
+  donor: Awaited<ReturnType<typeof getCurrentDonor>>;
+  child: {
+    id: string;
+    display_name: string;
+    age: number | null;
+    district: string | null;
+    photo: string | null;
+    story: string | null;
+    story_truncated: boolean;
+  };
+  donorState: ReturnType<typeof getDonorState>;
+  cartItemCount: number;
+  monthlyLocked: boolean;
+  selfActiveMonthly: {
+    sponsorshipId: string;
+    scheduledEndDate: string | null;
+  } | null;
+  queueJoin: {
+    position: number;
+    estimatedStartsAt: string | null;
+    activeEndDate: string | null;
+    donorsAhead: number;
+  } | null;
+  queueFullThrough: string | null;
+}) {
+  // Parallel fetches: 3 package reads + currency list + donor's
+  // current currency. All server-only.
+  //
+  // Session 58.3.2 — resolveDonorCurrencyWithLock reads the Stripe
+  // customer's currency (if any) and locks to it. Donors who have
+  // already transacted get the picker pre-set to their committed
+  // currency so the "cannot combine currencies on a single customer"
+  // Stripe error never surfaces.
+  const [
+    monthlyTiers,
+    oneTimeQuick,
+    oneTimeGifts,
+    currencies,
+    rateResult,
+    monthlyMinBdt,
+  ] = await Promise.all([
+    listActiveMonthlyTiers(),
+    listOneTimeQuickAmounts(),
+    listOneTimeGifts(),
+    listActiveCurrencies(),
+    resolveDonorCurrencyWithLock(donor),
+    getMinimumActiveMonthlyAmountBdt(),
+  ]);
+  const rate = rateResult.rate;
+  const currencyLocked = rateResult.locked;
+
+  return (
+    <SponsorPageContent
+      child={child}
+      signedIn={Boolean(donor)}
+      donorState={donorState}
+      initialCartItemCount={cartItemCount}
+      monthlyLocked={monthlyLocked}
+      donorFirstName={donor?.first_name ?? null}
+      selfActiveMonthly={selfActiveMonthly}
+      queueJoin={queueJoin}
+      queueFullThrough={queueFullThrough}
+      monthlyTiers={monthlyTiers.map((p) => ({
+        id: p.id,
+        name_en: p.name_en,
+        description_en: p.description_en,
+        amount_bdt: p.amount_bdt,
+        cause_tag: p.cause_tag,
+        icon: p.icon,
+      }))}
+      oneTimeQuick={oneTimeQuick.map((p) => ({
+        id: p.id,
+        name_en: p.name_en,
+        description_en: p.description_en,
+        amount_bdt: p.amount_bdt,
+        cause_tag: p.cause_tag,
+        icon: p.icon,
+      }))}
+      oneTimeGifts={oneTimeGifts.map((p) => ({
+        id: p.id,
+        name_en: p.name_en,
+        description_en: p.description_en,
+        amount_bdt: p.amount_bdt,
+        cause_tag: p.cause_tag,
+        icon: p.icon,
+      }))}
+      currency={{
+        code: rate.currency_code,
+        symbol: rate.symbol,
+        display_name: rate.display_name,
+      }}
+      currencyOptions={currencies.map((c) => ({
+        code: c.currency_code,
+        symbol: c.symbol,
+        display_name: c.display_name,
+      }))}
+      bdtPerDonorUnit={rate.bdt_per_unit}
+      monthlyMinBdt={monthlyMinBdt}
+      oneTimeMinBdt={ONE_TIME_FLOOR_BDT}
+      currencyLocked={currencyLocked}
+    />
   );
 }

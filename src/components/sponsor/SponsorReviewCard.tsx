@@ -1,88 +1,93 @@
+// Session 58.3 — restored + rewired. Two key changes vs. the original:
+//
+//   1. All amounts render in donor currency (props are pre-converted
+//      whole-unit amounts in the donor's currency, with the symbol +
+//      code passed in alongside).
+//   2. The CTA is now "Continue to payment" instead of "Add to cart".
+//      Cart no longer exists in the new flow — clicking the CTA calls
+//      back into the parent which fires /api/donate/init and mounts
+//      Stripe Elements inline on the same page (rendered by the
+//      orchestrator below this card).
+//
+// Cause + visibility rows render only when the orchestrator chose to
+// collect them (monthly skips cause; one-time gift selections skip
+// cause). Pass `cause` and `causeLabel` as null to suppress the row.
+
 "use client";
 
-import { formatUsd, type PaymentMode, type PaymentSchedule } from "@/lib/pricing";
-import { labelForCause, type CauseEnum } from "@/lib/cause";
+import type { PaymentMode, PaymentSchedule } from "@/lib/pricing";
 import type { VisibilityEnum } from "@/lib/visibility";
 
 export type SponsorReviewProps = {
   paymentMode: PaymentMode;
-  amountUsd: number;
-  // monthly only; null for one-time
+  /** Per-charge donor-currency amount (whole units). For monthly =
+   *  per-month; for one-time = the gift amount. */
+  perChargeDonorAmount: number;
+  /** monthly only; null for one-time */
   durationMonths: number | null;
   paymentSchedule: PaymentSchedule | null;
-  // Donor's chosen allocation intent.
-  cause: CauseEnum;
-  // Donor's public-visibility choice. Surfaced in review so they can
-  // double-check before checkout.
+  /** Pre-resolved label (e.g. "Education", or a gift name). Null
+   *  suppresses the row entirely. */
+  causeLabel: string | null;
   visibility: VisibilityEnum;
-  // Donor's first name — used to render a concrete preview when
-  // visibility='named' ("Shown publicly: Sponsored by Mahmud"). Null
-  // for guests; the named-row falls back to a generic phrasing.
   donorFirstName?: string | null;
-  // Session 14.7 — when this sponsor flow is a queue join (the
-  // child has another donor's active monthly sponsor and the donor
-  // is paying upfront for a future slot), the review surfaces the
-  // estimated start date + queue position so the donor confirms
-  // BOTH "what I'm paying for" AND "when it starts" before adding
-  // to cart. Null for the normal (no-queue) path.
+  /** Donor currency context. */
+  currencySymbol: string;
+  currencyCode: string;
+  /** "≈ X BDT" subtext rendered under each amount. */
+  perChargeBdt: number;
   queueJoin?: {
     position: number;
     estimatedStartsAt: string | null;
   } | null;
-  // Action props
   onEdit: () => void;
-  onAddToCart: () => void;
+  onContinue: () => void;
   pending: boolean;
   error: string | null;
-  // Action label is a prop so the parent can swap "Add to cart" for
-  // "Save changes" when editing an existing cart item.
-  ctaLabel?: string;
 };
 
-// Final step of the sponsor flow. Summarises the donor's choices and
-// surfaces both the "today" and "total commitment" numbers so they can
-// confirm before adding to cart.
+function fmt(amount: number, symbol: string): string {
+  return `${symbol}${amount.toLocaleString()}`;
+}
+
 export function SponsorReviewCard({
   paymentMode,
-  amountUsd,
+  perChargeDonorAmount,
   durationMonths,
   paymentSchedule,
-  cause,
+  causeLabel,
   visibility,
   donorFirstName,
+  currencySymbol,
+  currencyCode,
+  perChargeBdt,
   queueJoin,
   onEdit,
-  onAddToCart,
+  onContinue,
   pending,
   error,
-  ctaLabel = "Add to cart",
 }: SponsorReviewProps) {
   const isMonthly = paymentMode === "monthly";
   const isFixedTerm = isMonthly && durationMonths !== null;
   const isPrepaid = paymentSchedule === "monthly_prepaid";
 
-  // Today's charge:
-  //   one_time → amount
-  //   monthly_prepaid → amount × months (full upfront)
-  //   monthly recurring (any duration) → amount (first month only)
-  let todayAmount = amountUsd;
-  if (paymentMode === "one_time") {
-    todayAmount = amountUsd;
-  } else if (isPrepaid && durationMonths !== null) {
-    todayAmount = amountUsd * durationMonths;
-  } else {
-    todayAmount = amountUsd; // first month
+  // Today's charge logic mirrors the original:
+  //   one_time         → perChargeDonorAmount
+  //   monthly_prepaid  → perChargeDonorAmount × months
+  //   monthly recurring → perChargeDonorAmount (first month only)
+  let todayAmount = perChargeDonorAmount;
+  let todayBdt = perChargeBdt;
+  if (isPrepaid && durationMonths !== null) {
+    todayAmount = perChargeDonorAmount * durationMonths;
+    todayBdt = perChargeBdt * durationMonths;
   }
 
-  // Total commitment (what the donor will end up paying over the term):
-  //   one_time → amount
-  //   monthly indefinite → "ongoing"
-  //   monthly fixed-term (any schedule) → amount × months
+  // Total commitment over the term.
   const totalCommitment: string =
     paymentMode === "one_time"
-      ? formatUsd(amountUsd)
+      ? fmt(perChargeDonorAmount, currencySymbol)
       : isFixedTerm
-        ? formatUsd(amountUsd * (durationMonths ?? 0))
+        ? fmt(perChargeDonorAmount * (durationMonths ?? 0), currencySymbol)
         : "Ongoing";
 
   return (
@@ -105,7 +110,14 @@ export function SponsorReviewCard({
         <Row label="Type">
           {isMonthly ? "Monthly sponsorship" : "One-time gift"}
         </Row>
-        <Row label="Amount">{formatUsd(amountUsd)}{isMonthly ? " / month" : ""}</Row>
+        <Row label="Amount">
+          {fmt(perChargeDonorAmount, currencySymbol)} {currencyCode}
+          {isMonthly ? " / month" : ""}
+          <span className="ml-2 font-mono text-[10.5px] text-slate-soft">
+            ≈ ৳{perChargeBdt.toLocaleString()}
+            {isMonthly ? " / mo" : ""}
+          </span>
+        </Row>
         {isMonthly ? (
           <Row label="Duration">
             {durationMonths === null
@@ -120,7 +132,7 @@ export function SponsorReviewCard({
               : "Pay monthly"}
           </Row>
         ) : null}
-        <Row label="Supporting">{labelForCause(cause)}</Row>
+        {causeLabel ? <Row label="Supporting">{causeLabel}</Row> : null}
         <Row label="Visibility">
           {visibility === "named"
             ? donorFirstName
@@ -149,8 +161,8 @@ export function SponsorReviewCard({
       </dl>
       {queueJoin ? (
         <p className="mt-3 text-[12.5px] text-slate-soft italic leading-snug">
-          Payment is processed today. Your sponsorship begins when the
-          current sponsor&rsquo;s term ends. Refundable until then.
+          Your card is captured today. Your sponsorship begins when the
+          current sponsor&rsquo;s term ends.
         </p>
       ) : null}
 
@@ -160,7 +172,10 @@ export function SponsorReviewCard({
             Today&rsquo;s charge
           </div>
           <div className="font-display text-[24px] text-ink tracking-[-0.01em]">
-            {formatUsd(todayAmount)}
+            {fmt(todayAmount, currencySymbol)} {currencyCode}
+          </div>
+          <div className="font-mono text-[10.5px] text-slate-soft mt-0.5">
+            ≈ ৳{todayBdt.toLocaleString()}
           </div>
         </div>
         <div>
@@ -169,6 +184,7 @@ export function SponsorReviewCard({
           </div>
           <div className="font-display text-[20px] text-slate tracking-[-0.01em]">
             {totalCommitment}
+            {totalCommitment !== "Ongoing" ? ` ${currencyCode}` : ""}
           </div>
         </div>
       </div>
@@ -184,14 +200,14 @@ export function SponsorReviewCard({
 
       <button
         type="button"
-        onClick={onAddToCart}
+        onClick={onContinue}
         disabled={pending}
         className="mt-5 w-full inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[14px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {pending ? (
           <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
         ) : null}
-        {ctaLabel}
+        Continue to payment
       </button>
     </div>
   );
