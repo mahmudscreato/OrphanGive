@@ -407,7 +407,26 @@ function SponsorshipRow({ s }: { s: AdminSponsorshipSummary }) {
                   className="w-3 h-3 stroke-[1.75]"
                   aria-hidden="true"
                 />
-                {formatMoney(s.amount_usd, s.currency)} · {s.payment_label}
+                {/* Session 58.7 — render the donor-currency amount when
+                    available (new-flow rows), fall back to amount_usd
+                    for legacy rows. The amount the donor actually saw
+                    and paid is the primary signal; admin keeps the USD
+                    equivalent in parentheses for finance reconciliation. */}
+                {s.donor_currency_code &&
+                s.donor_currency_amount != null ? (
+                  <>
+                    {formatMoney(
+                      s.donor_currency_amount,
+                      s.donor_currency_code,
+                    )}
+                    <span className="text-stone-400">
+                      {" "}(≈ {formatMoney(s.amount_usd, "USD")})
+                    </span>
+                  </>
+                ) : (
+                  formatMoney(s.amount_usd, s.currency)
+                )}{" "}
+                · {s.payment_label}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Clock
