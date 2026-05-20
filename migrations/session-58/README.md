@@ -58,6 +58,7 @@ Primary key: `id` (uuid).
 | `cause_tag` | string | no | null | Free-form tag for one-time campaigns (e.g. `feed-a-child`, `winter-clothing`). Nullable on monthly. |
 | `icon` | string | no | null | Lucide icon name (e.g. `BookOpen`, `Apple`) |
 | `duration_months` | integer | no | null | **Added by 002.** Null = open-ended monthly subscription. Positive integer = prepaid bundle of N months as a single upfront charge. Only meaningful on `package_type = monthly`. |
+| `package_subtype` | string (enum) | no | null | **Added by 003.** Refines `package_type` for the multi-step `/sponsor` flow. One of `monthly_tier`, `one_time_quick`, `one_time_gift`. |
 | `date_created` | timestamp | auto | — | Directus special field |
 | `date_updated` | timestamp | auto | — | Directus special field |
 
@@ -169,6 +170,55 @@ One prepaid-bundle example so the data path is exercised end-to-end:
 | 5 | 12 months upfront — Education Support | 24000 (= 12 × 2000, no discount) | 12 | `["education"]` |
 
 **No discount/savings copy anywhere.** Description: _"One year of education support, paid in full upfront. Single charge to your card."_ — the value is convenience + commitment, not price.
+
+## Migration 003 — package_subtype + restore-flow reseed (Session 58.3)
+
+`migrations/session-58/003-add-package-subtype.mjs`.
+
+### `donation_package` collection changes
+
+| Field | Change | Notes |
+|---|---|---|
+| `package_subtype` | **Added** — string (3 enum), nullable | Refines `package_type` for the restored multi-step `/sponsor` flow. Three values: `monthly_tier` (the 4 monthly amount presets), `one_time_quick` (open-amount tiles like ৳2,000 / ৳5,000), `one_time_gift` (fixed-price specific gifts like "Buy a Cycle"). |
+
+### Cleanup
+
+- Deletes the "12 months upfront — Education Support" prepaid row added by migration 002. In Session 58.3, duration is its own step of the sponsor flow (Step 3 + Step 4); it's no longer a package property.
+
+### Backfill
+
+- Every existing `donation_package` row gets a `package_subtype` assigned:
+  - `package_type = monthly` → `monthly_tier`
+  - `package_type = one_time` with `cause_tag != null` → `one_time_gift`
+  - `package_type = one_time` with `cause_tag = null` → `one_time_quick`
+
+### Seed: `one_time_quick`
+
+Only inserted when zero `one_time_quick` rows exist:
+
+| amount_bdt | name_en |
+|---|---|
+| 2000 | ৳2,000 gift |
+| 5000 | ৳5,000 gift |
+| 10000 | ৳10,000 gift |
+| 15000 | ৳15,000 gift |
+
+### Seed: `one_time_gift`
+
+Per-name idempotent — inserts only the brief's 8 gifts whose `name_en` isn't already present. Coexists with any pre-existing gifts from migration 001.
+
+| amount_bdt | name_en | cause_tag | icon |
+|---|---|---|---|
+| 8000 | Buy a Cycle | cycle | Bike |
+| 25000 | Buy a Laptop | laptop | Laptop |
+| 2500 | New Dress | clothing | Shirt |
+| 5000 | Healthcare Package | healthcare | Stethoscope |
+| 3000 | Eid Gift | eid | Gift |
+| 24000 | 12 Months Tuition | tuition | GraduationCap |
+| 1500 | School Supplies | supplies | BookOpen |
+| 4000 | Nutritious Meals (1 month) | meals | Apple |
+
+display_order starts at 101 for these so they sort after any pre-existing gifts. Admin can renumber via drag-and-drop on /admin/donation-packages.
 
 ## Filed for follow-up (NOT in this migration)
 
