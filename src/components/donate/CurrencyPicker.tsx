@@ -9,6 +9,10 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import { ChevronDown, Lock } from "lucide-react";
+// Session 58.4 — framer-motion for the dropdown open/close fade.
+// Already in deps (^12.38.0); using here for parity with the sponsor
+// flow's step cross-fade.
+import { AnimatePresence, motion } from "framer-motion";
 import { setDonorCurrencyAction } from "@/app/donate/actions";
 
 interface CurrencyOption {
@@ -86,10 +90,15 @@ export function CurrencyPicker({
         )}
       </button>
 
+      <AnimatePresence>
       {open && !locked ? (
-        <ul
+        <motion.ul
           role="listbox"
-          className="absolute right-0 z-10 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-stone-200"
+          initial={{ opacity: 0, y: -4, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -4, scale: 0.98 }}
+          transition={{ duration: 0.14, ease: [0.22, 0.61, 0.36, 1] }}
+          className="absolute right-0 z-10 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-stone-200 origin-top-right"
         >
           {options.map((opt) => {
             const isActive = opt.code === current.code;
@@ -98,7 +107,7 @@ export function CurrencyPicker({
                 <button
                   type="button"
                   onClick={() => pick(opt.code)}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13.5px] hover:bg-tangerine-mist/50 ${
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[13.5px] transition-colors hover:bg-tangerine-mist/50 focus-visible:outline-none focus-visible:bg-tangerine-mist/60 ${
                     isActive ? "bg-tangerine-mist/40 text-ink" : "text-ink"
                   }`}
                 >
@@ -109,8 +118,9 @@ export function CurrencyPicker({
               </li>
             );
           })}
-        </ul>
+        </motion.ul>
       ) : null}
+      </AnimatePresence>
     </div>
   );
 }

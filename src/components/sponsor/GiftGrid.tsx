@@ -57,10 +57,10 @@ export function GiftGrid({
             role="radio"
             aria-checked={active}
             onClick={() => onSelect(g.id)}
-            className={`text-left rounded-[16px] p-5 transition-all duration-[200ms] ease-soft ${
+            className={`text-left rounded-[16px] p-5 transition-all duration-[200ms] ease-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas ${
               active
                 ? "bg-tangerine-mist border-[2px] border-tangerine shadow-warm"
-                : "bg-white border-[2px] border-ink/[0.08] hover:border-tangerine-soft"
+                : "bg-white border-[2px] border-ink/[0.08] hover:border-tangerine-soft hover:-translate-y-px"
             }`}
           >
             <div className="flex items-start gap-3">

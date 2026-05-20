@@ -38,6 +38,11 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
+// Session 58.4 — framer-motion (already in deps, ^12.38.0) drives the
+// step cross-fade. AnimatePresence mode="wait" sequences exit → enter
+// so steps don't overlap; motion.div keyed by step number triggers
+// the swap.
+import { AnimatePresence, motion } from "framer-motion";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import {
@@ -224,6 +229,13 @@ export function SponsorPageContent({
   // donor sees the next action.
   const step2ContinueRef = useRef<HTMLButtonElement | null>(null);
 
+  // Session 58.4 — anchor for scroll-to-step-top on advance. Sits on
+  // the outer right-column wrapper; on step change we smooth-scroll
+  // its top into view so the donor always starts reading the new
+  // panel from its heading (mobile especially — the photo + header
+  // can otherwise be off-screen above).
+  const stepFlowRef = useRef<HTMLDivElement | null>(null);
+
   // ── Resolve effective amount in DONOR currency (whole units) ─────
   const donorAmount = useMemo<number | null>(() => {
     if (!mode) return null;
@@ -261,17 +273,39 @@ export function SponsorPageContent({
     return Math.round(donorAmount * bdtPerDonorUnit);
   }, [donorAmount, bdtPerDonorUnit]);
 
-  // Scroll the Step 2 Continue button into view whenever the donor
-  // changes their Step 2 selection (tier / gift / custom amount).
-  // Avoids the donor making a choice and not realising the action
-  // they need to take next is below the GiftGrid.
+  // Session 58.4 — on step change, smooth-scroll the right-column
+  // top into view so the donor lands at the new step's heading.
+  // Mobile-first: the photo + child header stack above the flow, so
+  // without this the donor reads halfway down the panel after the
+  // fade. Desktop is a no-op when already visible (block:'start' +
+  // browser's natural anchor).
+  //
+  // Timing: 60ms delay lets the AnimatePresence exit + the new
+  // motion.div's initial state settle so we're scrolling to the
+  // actual rendered position. Skip on the very first render (step
+  // starts at 1; no transition).
+  const previousStepRef = useRef<number>(1);
+  useEffect(() => {
+    if (previousStepRef.current === step) return;
+    previousStepRef.current = step;
+    const id = setTimeout(() => {
+      stepFlowRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 60);
+    return () => clearTimeout(id);
+  }, [step]);
+
+  // Session 58.3.2 Bug 3a — keep the in-step "scroll Continue into
+  // view after Step 2 selection" behaviour. It only fires when step
+  // === 2 AND donorAmount becomes non-null (post-selection), so it
+  // never competes with the 58.4 step-top scroll on advance (which
+  // fires on step CHANGE while donorAmount is still null right after
+  // mode pick).
   useEffect(() => {
     if (step !== 2) return;
     if (donorAmount === null) return;
-    // requestAnimationFrame so the DOM has rendered the active state
-    // before we measure. behavior:'smooth' on most browsers; block:
-    // 'nearest' so we don't jump past the button if it's already
-    // visible.
     const id = requestAnimationFrame(() => {
       step2ContinueRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -284,6 +318,18 @@ export function SponsorPageContent({
   // Track whether the donor selected a specific GIFT (controls
   // cause-step skip). Gift defines the cause_tag implicitly.
   const isGiftSelected = mode === "one_time" && giftId !== null;
+
+  // Session 58.4 — compute the step sequence + progress for the
+  // donor's current path. Recomputed any time the path-defining
+  // inputs change so the dot indicator stays accurate.
+  const stepSequence = useMemo(
+    () => getStepSequence(mode, isGiftSelected, duration.months),
+    [mode, isGiftSelected, duration.months],
+  );
+  const stepProgress = useMemo(
+    () => getStepProgress(step as StepNum, stepSequence),
+    [step, stepSequence],
+  );
 
   // Floors for AmountInput in donor currency.
   const monthlyMinDonor = bdtFloorToDonor(monthlyMinBdt, bdtPerDonorUnit);
@@ -509,7 +555,7 @@ export function SponsorPageContent({
         </aside>
 
         {/* Right: stepped flow */}
-        <div>
+        <div ref={stepFlowRef} className="scroll-mt-6">
           {/* Currency picker pinned top-right of the flow column.
               Session 58.3.2 — locked when the donor's Stripe customer
               already has objects in this currency; we surface a small
@@ -546,10 +592,32 @@ export function SponsorPageContent({
             </p>
           ) : null}
 
+          {/* Session 58.4 — cross-fade between steps. AnimatePresence
+              mode="wait" sequences exit→enter so steps don't overlap;
+              motion.div keyed by step number triggers the swap. Subtle
+              ~220ms opacity + 6px y on enter, -4px y on exit for a
+              calm transition (charity flow tone, not flashy). The
+              parent persistent shell (currency picker, child photo,
+              gating banners above) stays mounted and doesn't flicker. */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{
+                duration: 0.22,
+                ease: [0.22, 0.61, 0.36, 1],
+              }}
+            >
           {/* Step 1: mode */}
           {step === 1 ? (
             <div className="mb-7">
-              <StepHeader n={1} title="How would you like to give?" />
+              <StepHeader
+                n={1}
+                title="How would you like to give?"
+                progress={stepProgress}
+              />
               {selfActiveMonthly ? (
                 <SelfActiveMonthlyNote
                   childFirstName={child.display_name.split(" ")[0]!}
@@ -597,6 +665,7 @@ export function SponsorPageContent({
                     ? "Choose an amount"
                     : "Choose an amount or a gift"
                 }
+                progress={stepProgress}
               />
               <BackLink onClick={() => setStep(1)} label="Back to give type" />
 
@@ -670,16 +739,12 @@ export function SponsorPageContent({
                 </div>
               ) : null}
 
-              <div className="mt-5">
-                <button
-                  ref={step2ContinueRef}
-                  type="button"
+              <div className="mt-6">
+                <ContinueButton
+                  innerRef={step2ContinueRef}
                   onClick={confirmAmount}
                   disabled={donorAmount === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
+                />
               </div>
             </div>
           ) : null}
@@ -687,18 +752,18 @@ export function SponsorPageContent({
           {/* Step 3 (monthly): duration */}
           {step === 3 && mode === "monthly" ? (
             <div className="mb-7">
-              <StepHeader n={3} title="How long?" />
+              <StepHeader
+                n={3}
+                title="How long?"
+                progress={stepProgress}
+              />
               <BackLink onClick={() => setStep(2)} label="Back to amount" />
               <DurationPicker value={duration} onChange={setDuration} />
-              <div className="mt-5">
-                <button
-                  type="button"
+              <div className="mt-6">
+                <ContinueButton
                   onClick={confirmDuration}
                   disabled={!isDurationSelectionValid(duration)}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
+                />
               </div>
             </div>
           ) : null}
@@ -706,17 +771,15 @@ export function SponsorPageContent({
           {/* Step 3 (one-time, cause): shown only when no gift selected */}
           {step === 3 && mode === "one_time" && !isGiftSelected && donorAmount !== null ? (
             <div className="mb-7">
-              <StepHeader n={3} title="What is this gift for?" />
+              <StepHeader
+                n={3}
+                title="What is this gift for?"
+                progress={stepProgress}
+              />
               <BackLink onClick={() => setStep(2)} label="Back to amount" />
               <CausePicker value={cause} onChange={setCause} />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmCause}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
-                >
-                  Continue →
-                </button>
+              <div className="mt-6">
+                <ContinueButton onClick={confirmCause} />
               </div>
             </div>
           ) : null}
@@ -727,7 +790,11 @@ export function SponsorPageContent({
           duration.months !== null &&
           donorAmount !== null ? (
             <div className="mb-7">
-              <StepHeader n={4} title="How would you like to pay?" />
+              <StepHeader
+                n={4}
+                title="How would you like to pay?"
+                progress={stepProgress}
+              />
               <BackLink onClick={() => setStep(3)} label="Back to duration" />
               <PaymentSchedulePicker
                 perMonthDonorAmount={donorAmount}
@@ -737,15 +804,11 @@ export function SponsorPageContent({
                 value={schedule}
                 onChange={setSchedule}
               />
-              <div className="mt-5">
-                <button
-                  type="button"
+              <div className="mt-6">
+                <ContinueButton
                   onClick={confirmSchedule}
                   disabled={schedule === null}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Continue →
-                </button>
+                />
               </div>
             </div>
           ) : null}
@@ -753,7 +816,11 @@ export function SponsorPageContent({
           {/* Step 5: visibility (always renders for both modes) */}
           {step === 5 && mode && donorAmount !== null ? (
             <div className="mb-7">
-              <StepHeader n={5} title="Should your name appear publicly?" />
+              <StepHeader
+                n={5}
+                title="Should your name appear publicly?"
+                progress={stepProgress}
+              />
               <BackLink
                 onClick={() => {
                   // Smart back: jump to whichever was the previous
@@ -773,14 +840,8 @@ export function SponsorPageContent({
                 onChange={setVisibility}
                 donorFirstName={donorFirstName}
               />
-              <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={confirmVisibility}
-                  className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-[12px] text-[14px] transition-colors hover:bg-tangerine-deep"
-                >
-                  Continue →
-                </button>
+              <div className="mt-6">
+                <ContinueButton onClick={confirmVisibility} />
               </div>
             </div>
           ) : null}
@@ -788,7 +849,11 @@ export function SponsorPageContent({
           {/* Step 6: review + inline payment */}
           {step === 6 && mode && donorAmount !== null ? (
             <div className="mb-5 space-y-5">
-              <StepHeader n={6} title="Review" />
+              <StepHeader
+                n={6}
+                title="Review"
+                progress={stepProgress}
+              />
               <SponsorReviewCard
                 paymentMode={mode}
                 perChargeDonorAmount={donorAmount}
@@ -821,7 +886,7 @@ export function SponsorPageContent({
               />
 
               {initData ? (
-                <div className="rounded-[20px] bg-white border border-ink/[0.08] px-6 py-5">
+                <div className="rounded-[20px] bg-white border border-ink/[0.08] px-6 py-5 shadow-warm">
                   <h3 className="font-display text-[18px] text-ink mb-3">
                     Payment
                   </h3>
@@ -835,6 +900,8 @@ export function SponsorPageContent({
               ) : null}
             </div>
           ) : null}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </section>
@@ -848,14 +915,48 @@ function convertBdtToDonor(amountBdt: number, bdtPerDonorUnit: number): number {
   return Math.max(1, Math.round(amountBdt / bdtPerDonorUnit));
 }
 
-function StepHeader({ n, title }: { n: number; title: string }) {
+// Session 58.4 — step header with optional progress indicator.
+// progress.current/total counts only the steps that will fire for the
+// donor's chosen path (mode + giftSelected + duration combination).
+// progress=null on Step 1 before mode is picked (we don't know the
+// path yet).
+function StepHeader({
+  n,
+  title,
+  progress,
+}: {
+  n: number;
+  title: string;
+  progress: { current: number; total: number } | null;
+}) {
   return (
-    <h2 className="font-display text-[20px] text-ink mb-3">
-      <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-tangerine-deep mr-2">
-        Step {n}
-      </span>
-      {title}
-    </h2>
+    <div className="mb-4">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-tangerine-deep">
+          {progress
+            ? `Step ${progress.current} of ${progress.total}`
+            : `Step ${n}`}
+        </span>
+        {progress ? (
+          <div
+            className="flex items-center gap-1.5"
+            aria-hidden="true"
+          >
+            {Array.from({ length: progress.total }, (_, i) => (
+              <span
+                key={i}
+                className={`h-1 w-5 rounded-full transition-colors duration-300 ${
+                  i < progress.current ? "bg-tangerine" : "bg-ink/[0.10]"
+                }`}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <h2 className="font-display text-[22px] text-ink leading-tight tracking-[-0.01em]">
+        {title}
+      </h2>
+    </div>
   );
 }
 
@@ -864,11 +965,77 @@ function BackLink({ onClick, label }: { onClick: () => void; label: string }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors mb-3"
+      className="inline-flex items-center gap-1 text-[12.5px] text-slate-soft hover:text-tangerine-deeper transition-colors mb-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas"
     >
       ← {label}
     </button>
   );
+}
+
+// Session 58.4 — shared Continue/primary CTA button. Consistent
+// sizing, weight, hover lift, focus-visible, disabled state. Uses
+// only brand tokens (tangerine fill, ink text). The `ref` is
+// optional for callers that want to scroll-into-view (e.g. Step 2
+// scroll-to-continue still works after a selection).
+const PRIMARY_BTN_CLASSES =
+  "inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-6 py-3 text-[14px] shadow-warm transition-all duration-150 hover:-translate-y-[1px] hover:bg-tangerine-deep hover:shadow-md active:translate-y-0 active:shadow-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none disabled:hover:bg-tangerine";
+
+const ContinueButton = ({
+  onClick,
+  disabled,
+  innerRef,
+  children = (
+    <>
+      Continue <span aria-hidden="true">→</span>
+    </>
+  ),
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  innerRef?: React.Ref<HTMLButtonElement>;
+  children?: React.ReactNode;
+}) => (
+  <button
+    ref={innerRef}
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className={PRIMARY_BTN_CLASSES}
+  >
+    {children}
+  </button>
+);
+
+// Compute the donor's step PATH so the indicator can show "Step 3 of
+// 5" with N dots that match the actual sequence they'll move through.
+// Skipped steps (e.g. Step 4 for indefinite monthly; Step 3 for
+// one-time gift selections) are excluded from the count.
+type StepNum = 1 | 2 | 3 | 4 | 5 | 6;
+function getStepSequence(
+  mode: PaymentMode | null,
+  giftSelected: boolean,
+  durationMonthsForFiniteCheck: number | null,
+): StepNum[] {
+  if (!mode) return [1];
+  if (mode === "monthly") {
+    // Indefinite skips Step 4 (schedule).
+    return durationMonthsForFiniteCheck === null
+      ? [1, 2, 3, 5, 6]
+      : [1, 2, 3, 4, 5, 6];
+  }
+  // one_time: gift skips Step 3 (cause).
+  return giftSelected ? [1, 2, 5, 6] : [1, 2, 3, 5, 6];
+}
+function getStepProgress(
+  step: StepNum,
+  sequence: StepNum[],
+): { current: number; total: number } | null {
+  const idx = sequence.indexOf(step);
+  if (idx < 0) return null;
+  // Don't show the indicator when mode hasn't been picked yet (Step 1,
+  // sequence=[1]) — looks silly to show "Step 1 of 1".
+  if (sequence.length <= 1) return null;
+  return { current: idx + 1, total: sequence.length };
 }
 
 function QueueJoinNote({
@@ -1047,15 +1214,32 @@ function PayInline({
           }}
         />
       </div>
-      {error ? <p className="mt-2 text-[13px] text-rose-700">{error}</p> : null}
-      <div className="mt-4">
+      {error ? (
+        <p
+          role="alert"
+          className="mt-3 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-3 py-2 text-[13px] text-[#A02B2B]"
+        >
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-5">
         <button
           type="button"
           onClick={handlePay}
           disabled={!stripe || !cardComplete || pending}
-          className="inline-flex items-center justify-center rounded-full bg-tangerine text-ink px-6 py-3 text-[15px] font-semibold shadow-sm hover:bg-tangerine-deep disabled:opacity-60"
+          className={PRIMARY_BTN_CLASSES}
         >
-          {pending ? "Processing…" : "Pay now"}
+          {pending ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="inline-block w-4 h-4 border-2 border-ink/30 border-t-ink rounded-full animate-spin"
+              />
+              Processing…
+            </>
+          ) : (
+            "Pay now"
+          )}
         </button>
       </div>
     </div>

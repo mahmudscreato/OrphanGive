@@ -70,7 +70,7 @@ export function ModeSelector({
               if (disabled) return;
               onChange(mode);
             }}
-            className={`text-left rounded-[20px] p-6 transition-all duration-[250ms] ease-soft ${
+            className={`text-left rounded-[20px] p-6 transition-all duration-[250ms] ease-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas ${
               disabled
                 ? "bg-cream/60 border-[2px] border-ink/[0.06] cursor-not-allowed opacity-70"
                 : active

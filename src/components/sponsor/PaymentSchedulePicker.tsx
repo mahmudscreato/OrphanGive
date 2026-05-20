@@ -55,7 +55,7 @@ export function PaymentSchedulePicker({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.id)}
-            className={`w-full text-left rounded-[16px] px-5 py-4 transition-all duration-[200ms] ease-soft ${
+            className={`w-full text-left rounded-[16px] px-5 py-4 transition-all duration-[200ms] ease-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tangerine focus-visible:ring-offset-2 focus-visible:ring-offset-bg-canvas ${
               active
                 ? "bg-tangerine-mist border-[2px] border-tangerine shadow-warm"
                 : "bg-white border-[2px] border-ink/[0.08] hover:border-tangerine-soft"
