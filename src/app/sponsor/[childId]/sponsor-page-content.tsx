@@ -30,7 +30,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import {
   CardElement,
@@ -131,6 +131,9 @@ export interface SponsorPageContentProps {
   monthlyMinBdt: number;
   /** Hardcoded one-time floor (1500 BDT per brief). */
   oneTimeMinBdt: number;
+  /** Session 58.3.2 — when true, the donor's Stripe customer already
+   *  has objects in this currency; the picker renders disabled. */
+  currencyLocked: boolean;
 }
 
 const OTHER_TIER_ID = "other" as const;
@@ -185,6 +188,7 @@ export function SponsorPageContent({
   bdtPerDonorUnit,
   monthlyMinBdt,
   oneTimeMinBdt,
+  currencyLocked,
 }: SponsorPageContentProps) {
   // ── State machine ─────────────────────────────────────────────────
   const [mode, setMode] = useState<PaymentMode | null>(null);
@@ -212,6 +216,13 @@ export function SponsorPageContent({
 
   const subhead = pickFirstSentence(child.story);
   const photoSrc = directusAssetUrl(child.photo);
+
+  // Session 58.3.2 Bug 3a — when the donor picks a tile/gift/custom
+  // amount in Step 2, the Continue button can be below the fold
+  // (especially with the one-time GiftGrid which adds another 8
+  // tiles). Scroll the Continue button into view on selection so the
+  // donor sees the next action.
+  const step2ContinueRef = useRef<HTMLButtonElement | null>(null);
 
   // ── Resolve effective amount in DONOR currency (whole units) ─────
   const donorAmount = useMemo<number | null>(() => {
@@ -249,6 +260,26 @@ export function SponsorPageContent({
     if (donorAmount === null) return 0;
     return Math.round(donorAmount * bdtPerDonorUnit);
   }, [donorAmount, bdtPerDonorUnit]);
+
+  // Scroll the Step 2 Continue button into view whenever the donor
+  // changes their Step 2 selection (tier / gift / custom amount).
+  // Avoids the donor making a choice and not realising the action
+  // they need to take next is below the GiftGrid.
+  useEffect(() => {
+    if (step !== 2) return;
+    if (donorAmount === null) return;
+    // requestAnimationFrame so the DOM has rendered the active state
+    // before we measure. behavior:'smooth' on most browsers; block:
+    // 'nearest' so we don't jump past the button if it's already
+    // visible.
+    const id = requestAnimationFrame(() => {
+      step2ContinueRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [step, donorAmount, tierId, giftId]);
 
   // Track whether the donor selected a specific GIFT (controls
   // cause-step skip). Gift defines the cause_tag implicitly.
@@ -388,6 +419,27 @@ export function SponsorPageContent({
       });
       const json = await res.json();
       if (!res.ok) {
+        // Session 58.3.2 — currency-lock safety net. The page-load
+        // lock should have prevented this, but race conditions can
+        // still send us here. Switch the og_currency cookie to the
+        // locked currency and reload so the picker pre-locks and the
+        // amounts re-convert.
+        if (
+          res.status === 409 &&
+          json.error === "currency_locked" &&
+          typeof json.lockedCurrency === "string"
+        ) {
+          const locked = json.lockedCurrency as string;
+          setError(
+            `Showing prices in ${locked} — the currency linked to your account. Reloading…`,
+          );
+          // Cookie name + attrs mirror src/lib/geo-currency.ts (30-day,
+          // sameSite=lax, not httpOnly so the client can read it back).
+          document.cookie = `og_currency=${locked}; path=/; max-age=${30 * 24 * 3600}; samesite=lax`;
+          setTimeout(() => window.location.reload(), 1200);
+          setIniting(false);
+          return;
+        }
         setError(json.error || json.message || "Could not start checkout");
         setIniting(false);
         return;
@@ -458,13 +510,23 @@ export function SponsorPageContent({
 
         {/* Right: stepped flow */}
         <div>
-          {/* Currency picker pinned top-right of the flow column */}
-          <div className="flex items-center justify-end mb-5">
+          {/* Currency picker pinned top-right of the flow column.
+              Session 58.3.2 — locked when the donor's Stripe customer
+              already has objects in this currency; we surface a small
+              note below the picker so they understand why it's fixed. */}
+          <div className="flex flex-col items-end gap-1 mb-5">
             <CurrencyPicker
               current={currency}
               options={currencyOptions}
               fromPath={`/sponsor/${child.id}`}
+              locked={currencyLocked}
             />
+            {currencyLocked ? (
+              <p className="text-[11.5px] text-slate-soft italic max-w-[280px] text-right">
+                Showing prices in {currency.code} — the currency linked to
+                your account.
+              </p>
+            ) : null}
           </div>
 
           {donorState === "pending_approval" ? (
@@ -610,6 +672,7 @@ export function SponsorPageContent({
 
               <div className="mt-5">
                 <button
+                  ref={step2ContinueRef}
                   type="button"
                   onClick={confirmAmount}
                   disabled={donorAmount === null}

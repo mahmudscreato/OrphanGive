@@ -18,7 +18,12 @@
 
 import "server-only";
 import { cookies, headers } from "next/headers";
-import { listActiveCurrencies, getCurrencyByCode } from "./currency-rates";
+import {
+  listActiveCurrencies,
+  getCurrencyByCode,
+  type CurrencyRate,
+} from "./currency-rates";
+import { getStripeCustomerLockedCurrency } from "./stripe-client";
 
 export const CURRENCY_COOKIE = "og_currency";
 const COOKIE_MAX_AGE_DAYS = 30;
@@ -193,6 +198,39 @@ export async function resolveDonorCurrency() {
   }
 
   return rate;
+}
+
+/**
+ * Session 58.3.2 — lock-aware resolver.
+ *
+ * Donor-currency resolution with Stripe currency-lock semantics:
+ *   1. If the signed-in donor has an existing Stripe customer with a
+ *      `currency` set (they've already transacted), pre-lock to that
+ *      currency regardless of cookie or geo. This is what keeps the
+ *      "cannot combine currencies on a single customer" Stripe error
+ *      from ever surfacing.
+ *   2. Otherwise, fall back to the normal cookie/geo/USD path.
+ *
+ * Returns the resolved CurrencyRate plus a `locked: boolean` flag
+ * the page passes to the CurrencyPicker so it can disable the
+ * dropdown + show a tooltip.
+ */
+export async function resolveDonorCurrencyWithLock(
+  donor: { og_stripe_customer_id?: string | null } | null,
+): Promise<{ rate: CurrencyRate; locked: boolean }> {
+  if (donor?.og_stripe_customer_id) {
+    const lockedCode = await getStripeCustomerLockedCurrency(
+      donor.og_stripe_customer_id,
+    );
+    if (lockedCode) {
+      const rate = await getCurrencyByCode(lockedCode);
+      if (rate) return { rate, locked: true };
+      // Locked to an inactive/unknown currency — fall through to geo.
+      // The 409 in /api/donate/init will catch any mismatch attempts.
+    }
+  }
+  const rate = await resolveDonorCurrency();
+  return { rate, locked: false };
 }
 
 /**

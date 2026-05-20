@@ -144,6 +144,23 @@ export function DonateClient({
       });
       const json = await res.json();
       if (!res.ok) {
+        // Session 58.3.2 — currency-lock safety net. Page-load
+        // lock normally prevents this; reload with the cookie set
+        // to the locked currency if we land here anyway.
+        if (
+          res.status === 409 &&
+          json.error === "currency_locked" &&
+          typeof json.lockedCurrency === "string"
+        ) {
+          const locked = json.lockedCurrency as string;
+          setInitError(
+            `Showing prices in ${locked} — the currency linked to your account. Reloading…`,
+          );
+          document.cookie = `og_currency=${locked}; path=/; max-age=${30 * 24 * 3600}; samesite=lax`;
+          setTimeout(() => window.location.reload(), 1200);
+          setIniting(false);
+          return;
+        }
         setInitError(json.error ?? "Could not start checkout");
         setIniting(false);
         return;

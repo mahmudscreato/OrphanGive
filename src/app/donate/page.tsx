@@ -18,7 +18,7 @@ import {
   convertBdtToCurrency,
   bdtFloorToCurrencyFloor,
 } from "@/lib/currency-rates";
-import { resolveDonorCurrency } from "@/lib/geo-currency";
+import { resolveDonorCurrencyWithLock } from "@/lib/geo-currency";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { CurrencyPicker } from "@/components/donate/CurrencyPicker";
 import {
@@ -45,11 +45,17 @@ export default async function DonatePage() {
     redirect("/dashboard");
   }
 
-  const [packages, currencies, rate] = await Promise.all([
+  // Session 58.3.2 — lock the picker to the donor's existing Stripe
+  // currency when they've already transacted, so a USD-history donor
+  // never sees the picker default to GBP and trip the "cannot combine
+  // currencies on a single customer" Stripe error.
+  const [packages, currencies, rateResult] = await Promise.all([
     listActivePackages("one_time"),
     listActiveCurrencies(),
-    resolveDonorCurrency(),
+    resolveDonorCurrencyWithLock(donor),
   ]);
+  const rate = rateResult.rate;
+  const currencyLocked = rateResult.locked;
 
   // Pre-convert each preset to donor currency on the server so the
   // first paint shows the right number (and the SSR'd HTML matches
@@ -101,6 +107,7 @@ export default async function DonatePage() {
               }}
               options={currencyOptions}
               fromPath="/donate"
+              locked={currencyLocked}
             />
           </div>
         </div>

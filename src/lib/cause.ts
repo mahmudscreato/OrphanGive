@@ -20,6 +20,20 @@ export const CAUSES = [
     description:
       "Allocated by the charity based on the child's most pressing needs that month.",
   },
+  // Session 58.3.2 — added "Family support" as a donor-facing intent.
+  // Stored on sponsorship.cause as a new value `family_support`. The
+  // column is a string (max 255) with a Directus dropdown hint, not a
+  // hard Postgres enum, so the new value writes cleanly. NOTE: brief
+  // suggested mapping to general_care; we kept it as a distinct enum
+  // so the donor's intent is preserved on the row and admin can
+  // re-allocate if needed (hybrid-allocation model already documented
+  // at the top of this file).
+  {
+    enum: "family_support",
+    label: "Family support",
+    description:
+      "Help the wider family — household essentials, rent assistance, livelihood support.",
+  },
   {
     enum: "education",
     label: "Education and learning",

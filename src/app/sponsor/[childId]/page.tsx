@@ -16,7 +16,7 @@ import {
   getMinimumActiveMonthlyAmountBdt,
 } from "@/lib/donation-packages";
 import { listActiveCurrencies } from "@/lib/currency-rates";
-import { resolveDonorCurrency } from "@/lib/geo-currency";
+import { resolveDonorCurrencyWithLock } from "@/lib/geo-currency";
 import { SponsorPageContent } from "./sponsor-page-content";
 
 const ONE_TIME_FLOOR_BDT = 1500;
@@ -196,21 +196,29 @@ async function SponsorPageContentWithData({
 }) {
   // Parallel fetches: 3 package reads + currency list + donor's
   // current currency. All server-only.
+  //
+  // Session 58.3.2 — resolveDonorCurrencyWithLock reads the Stripe
+  // customer's currency (if any) and locks to it. Donors who have
+  // already transacted get the picker pre-set to their committed
+  // currency so the "cannot combine currencies on a single customer"
+  // Stripe error never surfaces.
   const [
     monthlyTiers,
     oneTimeQuick,
     oneTimeGifts,
     currencies,
-    rate,
+    rateResult,
     monthlyMinBdt,
   ] = await Promise.all([
     listActiveMonthlyTiers(),
     listOneTimeQuickAmounts(),
     listOneTimeGifts(),
     listActiveCurrencies(),
-    resolveDonorCurrency(),
+    resolveDonorCurrencyWithLock(donor),
     getMinimumActiveMonthlyAmountBdt(),
   ]);
+  const rate = rateResult.rate;
+  const currencyLocked = rateResult.locked;
 
   return (
     <SponsorPageContent
@@ -260,6 +268,7 @@ async function SponsorPageContentWithData({
       bdtPerDonorUnit={rate.bdt_per_unit}
       monthlyMinBdt={monthlyMinBdt}
       oneTimeMinBdt={ONE_TIME_FLOOR_BDT}
+      currencyLocked={currencyLocked}
     />
   );
 }

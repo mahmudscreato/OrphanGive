@@ -33,7 +33,11 @@ import {
 } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 import { getCurrentDonor } from "@/lib/donor-data";
-import { getStripe, getStripePublishableKey } from "@/lib/stripe-client";
+import {
+  getStripe,
+  getStripePublishableKey,
+  getStripeCustomerLockedCurrency,
+} from "@/lib/stripe-client";
 import {
   getPackageById,
   getMinimumActiveMonthlyAmountBdt,
@@ -405,6 +409,26 @@ export async function POST(req: NextRequest) {
     last_name: donor.last_name,
     og_country: donor.og_country,
   });
+
+  // ── Currency-lock safety net (Session 58.3.2) ───────────────────────
+  // Stripe forbids a single Customer holding objects in multiple
+  // currencies. The /sponsor + /donate pages pre-lock the picker via
+  // resolveDonorCurrencyWithLock so this rarely fires. Race-conditions
+  // (donor opened a stale page before transacting elsewhere; admin
+  // re-linked their Stripe customer) can still land here. Return a
+  // structured 409 the client uses to auto-switch the cookie + reload.
+  const lockedCurrency =
+    await getStripeCustomerLockedCurrency(customerId);
+  if (lockedCurrency && lockedCurrency !== rate.currency_code) {
+    return NextResponse.json(
+      {
+        error: "currency_locked",
+        lockedCurrency,
+        message: `Your account is set up to give in ${lockedCurrency}. Please switch the currency selector to ${lockedCurrency} to continue, or contact us to change your giving currency.`,
+      },
+      { status: 409 },
+    );
+  }
 
   // Pre-write sponsorship row in pending_payment state so the
   // webhook has something to flip to active on success. Stripe refs
