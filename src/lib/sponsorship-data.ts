@@ -109,6 +109,24 @@ export type Sponsorship = {
   shift_decision_required_at: string | null;
   shift_decision: string | null;
   shift_decision_at: string | null;
+  // Session 58.10 — donor-currency snapshot + package context for
+  // new-flow rows (written by /api/donate/init). All nullable; legacy
+  // rows return null and downstream renderers fall back to
+  // amount_usd / formatUsd. Single source of truth for what the
+  // donor actually paid + saw at checkout, persisted at the moment
+  // of the charge so historic rate changes don't drift the value.
+  //   donor_currency_code        — ISO 4217 (e.g. "BDT", "USD")
+  //   donor_currency_amount      — per-charge amount in donor units
+  //                                (per-month for monthly modes; gift
+  //                                amount for one-time)
+  //   bdt_per_unit_at_checkout   — FX snapshot for reconciliation
+  //   cause_tag                  — gift's cause hint (e.g. "cycle")
+  //   donation_package           — FK uuid to donation_package
+  donor_currency_code: string | null;
+  donor_currency_amount: number | null;
+  bdt_per_unit_at_checkout: number | null;
+  cause_tag: string | null;
+  donation_package: string | null;
 };
 
 const FULL_FIELDS = [
@@ -126,6 +144,9 @@ const FULL_FIELDS = [
   "queue_position", "queued_starts_at", "queued_ends_at", "queue_status",
   "shift_decision_required", "shift_decision_required_at",
   "shift_decision", "shift_decision_at",
+  // Session 58.10 — donor-currency snapshot + package context.
+  "donor_currency_code", "donor_currency_amount", "bdt_per_unit_at_checkout",
+  "cause_tag", "donation_package",
   "child.id", "child.display_name", "child.Photo",
   "child.date_of_birth", "child.bd_district.name",
   "child.status",
