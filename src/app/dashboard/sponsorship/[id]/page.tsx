@@ -12,6 +12,7 @@ import {
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import { formatUsd } from "@/lib/pricing";
+import { formatSponsorshipAmount } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { labelForCause } from "@/lib/cause";
 import { SponsorshipStatusBadge } from "@/app/dashboard/components/sponsorshipCardHelpers";
 import { SponsorshipActions } from "./SponsorshipActions";
@@ -306,11 +307,13 @@ function SponsorshipSummary({
 
   let typeLabel: string;
   let typeValue: React.ReactNode;
+  // Session 58.10 — donor-currency-first via formatSponsorshipAmount.
+  // For prepaid, multiplier=N gives the upfront total in donor units.
   if (sponsorship.payment_mode === "one_time") {
     typeLabel = "One-time gift";
     typeValue = (
       <span className="font-display font-medium text-ink text-[20px]">
-        {formatUsd(sponsorship.amount_usd)}
+        {formatSponsorshipAmount(sponsorship)}
       </span>
     );
   } else if (isPrepaid) {
@@ -319,7 +322,7 @@ function SponsorshipSummary({
     typeValue = (
       <span>
         <span className="font-display font-medium text-ink text-[20px]">
-          {formatUsd(sponsorship.amount_usd * total)}
+          {formatSponsorshipAmount(sponsorship, total)}
         </span>
         <span className="font-body text-[13px] text-slate ml-1">
           for {total} {total === 1 ? "month" : "months"}
@@ -331,7 +334,7 @@ function SponsorshipSummary({
     typeValue = (
       <span>
         <span className="font-display font-medium text-ink text-[20px]">
-          {formatUsd(sponsorship.amount_usd)}
+          {formatSponsorshipAmount(sponsorship)}
         </span>
         <span className="font-body text-[13px] text-slate ml-0.5">/month</span>
         {isFixedTermRecurring ? (

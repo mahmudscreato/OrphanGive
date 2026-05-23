@@ -46,6 +46,11 @@ import { DonorActionBar } from "@/components/admin/DonorActionBar";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // the donor's Stripe customer id render.
 import { StripeLink } from "@/components/admin/StripeLink";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 
 export const dynamic = "force-dynamic";
 
@@ -419,6 +424,21 @@ function SponsorshipsPanel({
 
 function SponsorshipRow({ s }: { s: AdminDonorSponsorship }) {
   const childHref = s.child_id ? `/children/${s.child_id}` : null;
+  // Session 58.9 — distinguish campaign donations (no child) from
+  // legacy "unknown child" data corruption. A row with no child_id
+  // AND any new-flow signal is a campaign gift — label it as such
+  // (with the cause_tag when present). True data gaps still show
+  // "Unnamed child".
+  const isCampaignDonation =
+    !s.child_id &&
+    (s.cause_tag != null || s.donation_package_id != null);
+  const displayLabel = s.child_name
+    ? s.child_name
+    : isCampaignDonation
+      ? s.cause_tag
+        ? `Campaign: ${s.cause_tag}`
+        : "Campaign donation"
+      : "Unnamed child";
   return (
     <li className="rounded-xl border border-stone-200 bg-stone-50/40 p-3.5 flex items-start gap-3">
       <div className="flex-1 min-w-0">
@@ -428,12 +448,10 @@ function SponsorshipRow({ s }: { s: AdminDonorSponsorship }) {
               href={childHref}
               className="font-medium text-ink hover:text-tangerine-deeper transition-colors"
             >
-              {s.child_name ?? "Unnamed child"}
+              {displayLabel}
             </Link>
           ) : (
-            <span className="font-medium text-ink">
-              {s.child_name ?? "Unnamed child"}
-            </span>
+            <span className="font-medium text-ink">{displayLabel}</span>
           )}
           <SponsorshipStatusPill status={s.status} />
           <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft">
@@ -441,7 +459,26 @@ function SponsorshipRow({ s }: { s: AdminDonorSponsorship }) {
           </span>
         </div>
         <p className="mt-1 text-[12.5px] text-ink-soft leading-relaxed">
-          {formatMoneyUsd(s.amount_usd)} {s.currency}
+          {/* Session 58.9 — donor-currency-first when present;
+              amount_usd fallback for legacy rows. Suffix suppressed
+              for USD donors to avoid "$18 (≈ $18 USD)". */}
+          {s.donor_currency_code && s.donor_currency_amount != null ? (
+            <>
+              {formatDonorAmount(
+                s.donor_currency_amount,
+                s.donor_currency_code,
+              )}
+              {shouldShowUsdEquivalent(s.donor_currency_code) ? (
+                <span className="text-stone-400">
+                  {" "}(≈ {formatUsdEquivalent(s.amount_usd)})
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {formatMoneyUsd(s.amount_usd)} {s.currency}
+            </>
+          )}
           {" · "}
           Started {formatDateOnly(s.started_at)}
           {" · "}

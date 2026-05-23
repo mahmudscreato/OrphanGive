@@ -72,6 +72,11 @@ const QUEUE_READ_FIELDS = [
   "payment_mode",
   "amount_usd",
   "currency",
+  // Session 58.9 — surface donor-currency snapshot so the admin
+  // children-detail render can show "৳2,000" instead of "$18 USD"
+  // for new-flow rows. Nullable on legacy queue rows.
+  "donor_currency_code",
+  "donor_currency_amount",
   "status",
   "stripe_subscription_id",
   "stripe_payment_intent_id",

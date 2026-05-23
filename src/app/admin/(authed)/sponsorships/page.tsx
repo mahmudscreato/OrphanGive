@@ -30,6 +30,11 @@ import {
   type SponsorshipListTypeFilter,
 } from "@/lib/admin-sponsorships";
 import type { SponsorshipStatus } from "@/lib/sponsorship-data";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 
 export const dynamic = "force-dynamic";
 
@@ -407,7 +412,28 @@ function SponsorshipRow({ s }: { s: AdminSponsorshipSummary }) {
                   className="w-3 h-3 stroke-[1.75]"
                   aria-hidden="true"
                 />
-                {formatMoney(s.amount_usd, s.currency)} · {s.payment_label}
+                {/* Session 58.7 → 58.8.1 — render the donor's actual
+                    currency with the proper symbol (৳, $, £, …) +
+                    locale-aware thousands separators. USD-equivalent
+                    suffix is suppressed when the donor's currency IS
+                    USD (avoids the redundant "$18 (≈ $18 USD)"). */}
+                {s.donor_currency_code &&
+                s.donor_currency_amount != null ? (
+                  <>
+                    {formatDonorAmount(
+                      s.donor_currency_amount,
+                      s.donor_currency_code,
+                    )}
+                    {shouldShowUsdEquivalent(s.donor_currency_code) ? (
+                      <span className="text-stone-400">
+                        {" "}(≈ {formatUsdEquivalent(s.amount_usd)})
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  formatMoney(s.amount_usd, s.currency)
+                )}{" "}
+                · {s.payment_label}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Clock

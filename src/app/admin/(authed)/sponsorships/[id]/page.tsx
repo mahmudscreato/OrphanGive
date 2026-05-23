@@ -19,6 +19,7 @@ import {
   Clock,
   CreditCard,
   ExternalLink,
+  Gift,
   HeartHandshake,
   Receipt,
   User2,
@@ -36,6 +37,11 @@ import {
   getPaymentsForSponsorship,
   type PaymentRow,
 } from "@/lib/sponsorship-data";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 import { SponsorshipActionBar } from "@/components/admin/SponsorshipActionBar";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // payment-row charge / payment-intent id renders.
@@ -123,6 +129,8 @@ export default async function AdminSponsorshipDetailPage({
 
       <DonorPanel detail={detail} />
 
+      <DonationContextPanel detail={detail} />
+
       <ChildPanel detail={detail} />
 
       <PaymentsPanel payments={payments} currency={detail.raw.currency} />
@@ -168,8 +176,25 @@ function HeaderCard({ detail }: { detail: AdminSponsorshipDetail }) {
             className="w-3.5 h-3.5 stroke-[1.75]"
             aria-hidden="true"
           />
-          {formatMoney(detail.raw.amount_usd, detail.raw.currency)} ·{" "}
-          {detail.payment_label}
+          {/* Session 58.7 → 58.8.1 — symbol-prefixed donor-currency
+              primary; USD-equivalent suffix in parentheses (suppressed
+              when the donor's own currency IS USD). */}
+          {detail.donor_currency_code && detail.donor_currency_amount != null ? (
+            <>
+              {formatDonorAmount(
+                detail.donor_currency_amount,
+                detail.donor_currency_code,
+              )}
+              {shouldShowUsdEquivalent(detail.donor_currency_code) ? (
+                <span className="text-stone-400">
+                  {" "}(≈ {formatUsdEquivalent(detail.raw.amount_usd)})
+                </span>
+              ) : null}
+            </>
+          ) : (
+            formatMoney(detail.raw.amount_usd, detail.raw.currency)
+          )}{" "}
+          · {detail.payment_label}
         </span>
         <span className="inline-flex items-center gap-1">
           <Clock className="w-3.5 h-3.5 stroke-[1.75]" aria-hidden="true" />
@@ -234,6 +259,97 @@ function DonorPanel({ detail }: { detail: AdminSponsorshipDetail }) {
             : "Anonymous"}
         </DetailField>
       </dl>
+    </section>
+  );
+}
+
+// ─── Donation context panel (Session 58.7) ─────────────────────────
+//
+// Surfaces the donor-currency + package context that the new
+// /api/donate/init flow writes to the row. Renders ONLY when at least
+// one of the new-flow columns is populated — legacy sponsorships skip
+// the panel entirely so the detail page reads unchanged for them.
+//
+// Closes the visibility gap diagnosed in Session 58.7: the row was
+// always present in admin, but the admin saw "amount_usd: $18" for a
+// sponsorship the donor experienced as "18 GBP" with a specific
+// package + cause_tag. Same row, different mental model — now both
+// match.
+
+function DonationContextPanel({
+  detail,
+}: {
+  detail: AdminSponsorshipDetail;
+}) {
+  const hasNewFlowContext =
+    detail.donor_currency_code != null ||
+    detail.donation_package_id != null ||
+    detail.cause_tag != null;
+  if (!hasNewFlowContext) return null;
+
+  // Session 58.8.1 — symbol-prefixed donor amount (matches the public
+  // site rendering). formatDonorAmount handles locale separators +
+  // suppresses decimals on whole-unit amounts (৳2,000 not ৳2,000.00).
+  const donorCurrencyLine =
+    detail.donor_currency_code && detail.donor_currency_amount != null
+      ? formatDonorAmount(
+          detail.donor_currency_amount,
+          detail.donor_currency_code,
+        )
+      : null;
+  // FX rate: e.g. "112.00 BDT / 1 USD" or "1.00 BDT / 1 BDT" (the
+  // identity rate when the donor was on BDT — present for symmetry).
+  const rateLine =
+    detail.bdt_per_unit_at_checkout != null
+      ? `${detail.bdt_per_unit_at_checkout.toFixed(2)} BDT / 1 ${detail.donor_currency_code ?? "unit"}`
+      : null;
+
+  return (
+    <section
+      aria-label="Donation context"
+      className="mb-6 rounded-2xl bg-white border border-stone-200 shadow-sm p-5 md:p-6"
+    >
+      <h2 className="font-display text-[16px] text-ink mb-3 inline-flex items-center gap-2">
+        <Gift className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+        Donation context
+      </h2>
+      <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-[13.5px]">
+        {donorCurrencyLine ? (
+          <DetailField label="Donor paid">
+            <span className="font-medium text-ink">{donorCurrencyLine}</span>
+            {detail.payment_label.includes("Monthly") ? " / month" : ""}
+          </DetailField>
+        ) : null}
+        {rateLine ? (
+          <DetailField label="FX rate at checkout">
+            <span className="font-mono">{rateLine}</span>
+          </DetailField>
+        ) : null}
+        {detail.donation_package_id ? (
+          <DetailField label="Package">
+            {detail.donation_package_name ?? (
+              <span
+                className="font-mono text-[12px] text-slate-soft"
+                title={detail.donation_package_id}
+              >
+                {detail.donation_package_id.slice(0, 8)}…
+              </span>
+            )}
+          </DetailField>
+        ) : null}
+        {detail.cause_tag ? (
+          <DetailField label="Cause tag">
+            <span className="font-mono text-[12.5px]">{detail.cause_tag}</span>
+          </DetailField>
+        ) : null}
+      </dl>
+      <p className="mt-3 text-[11.5px] text-slate-soft italic leading-snug">
+        The amount in the header is the donor&rsquo;s actual currency.
+        The USD equivalent (shown in parentheses) is computed from the
+        FX rate snapshotted at checkout and is preserved even if admin
+        rates change later — finance reconciliation uses these
+        snapshotted values, not live rates.
+      </p>
     </section>
   );
 }

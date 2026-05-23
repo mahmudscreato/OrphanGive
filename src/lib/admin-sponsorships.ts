@@ -44,6 +44,11 @@ export interface AdminSponsorshipSummary {
   payment_label: string;
   amount_usd: number;
   currency: string;
+  // Session 58.7 — donor-currency amount the donor actually saw and
+  // paid. Null on legacy rows; the list cell renders the donor
+  // currency when present and falls back to USD when null.
+  donor_currency_code: string | null;
+  donor_currency_amount: number | null;
   started_at: string | null;
   // Best available "last payment" timestamp — prefers updated count
   // from payment.paid_at via the totals; falls back to started_at.
@@ -73,6 +78,15 @@ export interface AdminSponsorshipDetail {
   child_status: string | null;
   child_district: string | null;
   payment_label: string;
+  // Session 58.7 — donor-currency + package context for new-flow
+  // rows. All nullable so legacy rows render unchanged (the detail
+  // page conditionally shows the panels when these are non-null).
+  donor_currency_code: string | null;
+  donor_currency_amount: number | null;
+  bdt_per_unit_at_checkout: number | null;
+  cause_tag: string | null;
+  donation_package_id: string | null;
+  donation_package_name: string | null;
 }
 
 // ─── Internal row shape ─────────────────────────────────────────────
@@ -95,6 +109,9 @@ type SponsorshipRowFlat = {
   payment_schedule: string | null;
   amount_usd: number | null;
   currency: string | null;
+  // Session 58.7 — present on new-flow rows; null on legacy.
+  donor_currency_code?: string | null;
+  donor_currency_amount?: number | string | null;
   started_at: string | null;
   next_billing_date: string | null;
   total_paid_usd: number | null;
@@ -112,6 +129,9 @@ const LIST_FIELDS = [
   "payment_schedule",
   "amount_usd",
   "currency",
+  // Session 58.7 — donor-currency snapshot. Nullable on legacy rows.
+  "donor_currency_code",
+  "donor_currency_amount",
   "started_at",
   "next_billing_date",
   "total_paid_usd",
@@ -153,6 +173,14 @@ const DETAIL_FIELDS = [
   "shift_decision_required_at",
   "shift_decision",
   "shift_decision_at",
+  // Session 58.7 — new-flow columns (donor-currency + package
+  // context). Nullable on legacy rows; the detail page conditionally
+  // renders the panels when these are non-null. Without these the
+  // admin saw "amount_usd: $18" for a sponsorship the donor
+  // experienced as "18 GBP" — same row, different mental model.
+  "bdt_per_unit_at_checkout",
+  "cause_tag",
+  "donation_package",
 ] as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -455,6 +483,14 @@ export async function listAdminSponsorships(opts?: {
       // work.
       amount_usd: toMoney(r.amount_usd),
       currency: r.currency ?? "USD",
+      // Session 58.7 — donor-currency snapshot. The list cell renders
+      // the donor amount when both fields are non-null; otherwise it
+      // falls back to formatting amount_usd.
+      donor_currency_code: r.donor_currency_code ?? null,
+      donor_currency_amount:
+        r.donor_currency_amount == null
+          ? null
+          : toMoney(r.donor_currency_amount),
       started_at: r.started_at,
       // Without a per-payment cron we don't track last_payment_at on
       // the sponsorship row; use next_billing_date as a coarse proxy
@@ -570,6 +606,48 @@ export async function getAdminSponsorshipDetail(
     ),
   } as Sponsorship;
 
+  // Session 58.7 — pull the new-flow columns for the detail panel.
+  // donation_package is an FK; we look up the package name in a
+  // second small read so the detail page can render the human label
+  // ("Buy a Cycle") instead of a UUID. The lookup is best-effort —
+  // if the package was archived or the read fails, name stays null
+  // and the page shows the FK id as a compact debug fallback.
+  const rowAsExtended = row as unknown as {
+    donor_currency_code?: string | null;
+    donor_currency_amount?: number | string | null;
+    bdt_per_unit_at_checkout?: number | string | null;
+    cause_tag?: string | null;
+    donation_package?: string | null;
+  };
+  const donorCurrencyCode = rowAsExtended.donor_currency_code ?? null;
+  const donorCurrencyAmount =
+    rowAsExtended.donor_currency_amount == null
+      ? null
+      : toMoney(rowAsExtended.donor_currency_amount);
+  const bdtPerUnitAtCheckout =
+    rowAsExtended.bdt_per_unit_at_checkout == null
+      ? null
+      : toMoney(rowAsExtended.bdt_per_unit_at_checkout);
+  const causeTag = rowAsExtended.cause_tag ?? null;
+  const donationPackageId = rowAsExtended.donation_package ?? null;
+
+  let donationPackageName: string | null = null;
+  if (donationPackageId) {
+    try {
+      const pkg = (await directusServer().request(
+        readItem("donation_package" as never, donationPackageId as never, {
+          fields: ["name_en"],
+        } as never),
+      )) as unknown as { name_en?: string | null } | null;
+      donationPackageName = pkg?.name_en ?? null;
+    } catch (err) {
+      console.warn(
+        "[admin-sponsorships] donation_package lookup failed (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   return {
     id: row.id,
     raw: coercedRaw,
@@ -596,6 +674,14 @@ export async function getAdminSponsorshipDetail(
       (row as { prepaid_months_remaining?: number | null })
         .prepaid_months_remaining,
     ),
+    // Session 58.7 — new-flow context. All null on legacy rows so the
+    // detail page's conditional rendering skips the panels.
+    donor_currency_code: donorCurrencyCode,
+    donor_currency_amount: donorCurrencyAmount,
+    bdt_per_unit_at_checkout: bdtPerUnitAtCheckout,
+    cause_tag: causeTag,
+    donation_package_id: donationPackageId,
+    donation_package_name: donationPackageName,
   };
 }
 

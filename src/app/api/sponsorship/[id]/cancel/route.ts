@@ -146,19 +146,40 @@ export async function POST(
   }
 
   // ── Standard cancellation path (no remaining prepaid coverage) ─────
-  if (isPendingOneTime) {
-    if (!sponsorship.stripe_payment_intent_id) {
-      return NextResponse.json(
-        { error: "Pending sponsorship has no PaymentIntent." },
-        { status: 400 },
-      );
-    }
-  } else if (!sponsorship.stripe_subscription_id) {
-    return NextResponse.json(
-      { error: "Sponsorship has no Stripe subscription." },
-      { status: 400 },
-    );
-  }
+  //
+  // Session 58.7 — discriminate on WHAT THE ROW HOLDS, not on payment
+  // mode. Three legitimate combinations exist:
+  //
+  //   stripe_subscription_id set, no PI    → recurring monthly sub
+  //                                          (legacy AND new flow)
+  //   stripe_payment_intent_id set, no sub → one-time gift OR pending
+  //                                          monthly prepaid bundle
+  //                                          (the new flow's mode=
+  //                                          'prepaid-bundle' writes
+  //                                          payment_mode='monthly'
+  //                                          but uses a single PI, not
+  //                                          a Subscription)
+  //   neither set                          → the row was created but
+  //                                          the Stripe object never
+  //                                          attached (rare; resume
+  //                                          / writePendingSponsorship
+  //                                          attach the id AFTER the
+  //                                          Stripe call, so if that
+  //                                          call failed the row is
+  //                                          orphaned). Local cancel
+  //                                          only — no Stripe call.
+  //
+  // The pre-58.7 logic gated on isPendingOneTime which assumed
+  // payment_mode='monthly' implies a subscription. Pending prepaid
+  // (payment_mode='monthly', stripe_payment_intent_id set, no sub)
+  // hit the else-branch and rejected with "no Stripe subscription".
+  const hasPI = Boolean(sponsorship.stripe_payment_intent_id);
+  const hasSub = Boolean(sponsorship.stripe_subscription_id);
+  const stripeObjectKind: "pi" | "sub" | "none" = hasSub
+    ? "sub"
+    : hasPI
+      ? "pi"
+      : "none";
 
   // ── Session 58.5 — pre-cancel reconcile ──────────────────────────────
   //
@@ -183,7 +204,7 @@ export async function POST(
   // unconfirmed state.
   if (sponsorship.status === "pending_payment") {
     const nowIso = new Date().toISOString();
-    if (isPendingOneTime) {
+    if (stripeObjectKind === "pi") {
       try {
         const pi = await getStripe().paymentIntents.retrieve(
           sponsorship.stripe_payment_intent_id!,
@@ -197,11 +218,16 @@ export async function POST(
           pi.status === "processing" ||
           pi.status === "requires_capture"
         ) {
+          // 58.7 — match the webhook's reconcile shape for both
+          // one-time (status='completed' + ended_at) and pending
+          // prepaid (status='active' — the donor has paid the upfront
+          // amount; the prepaid cron continues drawing months down).
+          const isOneTime = sponsorship.payment_mode === "one_time";
           try {
             await updateSponsorship(sponsorship.id, {
-              status: "completed",
+              status: isOneTime ? "completed" : "active",
               ...(sponsorship.started_at ? {} : { started_at: nowIso }),
-              ended_at: nowIso,
+              ...(isOneTime ? { ended_at: nowIso } : {}),
             });
           } catch (err) {
             console.error(
@@ -228,7 +254,7 @@ export async function POST(
           err instanceof Error ? err.message : err,
         );
       }
-    } else {
+    } else if (stripeObjectKind === "sub") {
       // Subscription path — pending_payment monthly with a sub id.
       try {
         const sub = await getStripe().subscriptions.retrieve(
@@ -284,17 +310,27 @@ export async function POST(
   // Cancel in Stripe. For monthly, the subscription.deleted webhook will
   // also fire and idempotently re-set the same fields; we update locally
   // anyway so the UI reflects the change immediately without waiting.
+  //
+  // Session 58.7 — branch on the Stripe object kind actually attached
+  // to the row, not on payment_mode. Pending prepaid bundles are
+  // payment_mode='monthly' but use a PaymentIntent (no subscription
+  // exists). The pre-58.7 path always called subscriptions.cancel for
+  // anything not isPendingOneTime and crashed with "no Stripe
+  // subscription".
   try {
-    if (isPendingOneTime) {
+    if (stripeObjectKind === "pi") {
       await getStripe().paymentIntents.cancel(
         sponsorship.stripe_payment_intent_id!,
       );
-    } else {
+    } else if (stripeObjectKind === "sub") {
       await getStripe().subscriptions.cancel(
         sponsorship.stripe_subscription_id!,
         { prorate: false },
       );
     }
+    // stripeObjectKind === "none" → skip the Stripe call entirely.
+    // No object means there's nothing to cancel server-side; we
+    // proceed directly to the local-row update below.
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Stripe cancel failed.";
     // Session 58.5 — second-line defense: if Stripe still throws

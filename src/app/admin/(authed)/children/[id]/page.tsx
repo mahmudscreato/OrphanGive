@@ -44,6 +44,11 @@ import {
 import { getDocumentsForChild } from "@/lib/admin-documents";
 import { getIntakePhotosForChild } from "@/lib/admin-intake-photos";
 import { getQueueForChild } from "@/lib/queue";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { AdminChildActionBar } from "@/components/admin/AdminChildActionBar";
 import { ReuploadRequestButton } from "@/components/admin/ReuploadRequestButton";
@@ -637,7 +642,38 @@ function SponsorshipRow({
         </span>
       </div>
       <p className="mt-1 text-[12.5px] text-ink-soft leading-relaxed">
-        ${s.amount_usd} {s.currency}
+        {/* Session 58.9 — donor-currency-first when present. The
+            queue read now includes donor_currency_code/amount; we
+            cast through `unknown` because the Sponsorship type
+            hasn't been extended with the new-flow fields yet (would
+            propagate to every consumer). Localized cast keeps blast
+            radius zero. */}
+        {(() => {
+          const ext = s as unknown as {
+            donor_currency_code?: string | null;
+            donor_currency_amount?: number | string | null;
+          };
+          if (ext.donor_currency_code && ext.donor_currency_amount != null) {
+            return (
+              <>
+                {formatDonorAmount(
+                  ext.donor_currency_amount,
+                  ext.donor_currency_code,
+                )}
+                {shouldShowUsdEquivalent(ext.donor_currency_code) ? (
+                  <span className="text-stone-400">
+                    {" "}(≈ {formatUsdEquivalent(s.amount_usd)})
+                  </span>
+                ) : null}
+              </>
+            );
+          }
+          return (
+            <>
+              ${s.amount_usd} {s.currency}
+            </>
+          );
+        })()}
         {" · "}
         Started {formatDate(s.started_at)}
         {s.stripe_subscription_id ? (

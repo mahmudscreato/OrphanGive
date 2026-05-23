@@ -8,10 +8,50 @@
 //   • bottomInfo (the bottom-row meta grid: Started, Next charge, Contributed)
 
 import { formatUsd } from "@/lib/pricing";
+import {
+  formatDonorAmount,
+  formatUsdEquivalent,
+  shouldShowUsdEquivalent,
+} from "@/lib/donor-currency-format";
 import type { Sponsorship } from "@/lib/sponsorship-data";
 import { PendingCardActions } from "./PendingCardActions";
 
 type DisplayStatus = "active" | "completed" | "pending_payment" | "cancelled";
+
+// Session 58.10 — Donor-currency money formatter for the dashboard.
+//
+// Mirrors the admin convention (commits ed05a31 + c3ecd20 + ed2f76f):
+// donor-currency-first when present, "(≈ $X USD)" suffix when donor
+// currency != USD, fallback to amount_usd when the row pre-dates
+// the new flow.
+//
+// Multiplier handles per-charge × N totals (prepaid upfront = monthly
+// rate × months). LIFETIME aggregates (total_paid_usd across mixed
+// modes) MUST stay in USD via formatUsd directly — do not call this
+// for those.
+//
+// Returns a plain string for use in describeConfig template literals
+// and the Mono-wrapped JSX bits alike. Suffix is "(≈ $X USD)" inline
+// for consistency.
+export function formatSponsorshipAmount(
+  s: Sponsorship,
+  multiplier: number = 1,
+): string {
+  // Coerce both donor_currency_amount (NUMERIC-as-string drift) and
+  // amount_usd (same) at the boundary. The donor-currency-format
+  // helpers already tolerate string input, but the multiplier math
+  // needs real numbers.
+  if (s.donor_currency_code && s.donor_currency_amount != null) {
+    const donorAmt = Number(s.donor_currency_amount) * multiplier;
+    const primary = formatDonorAmount(donorAmt, s.donor_currency_code);
+    if (shouldShowUsdEquivalent(s.donor_currency_code)) {
+      const usdEquiv = Number(s.amount_usd) * multiplier;
+      return `${primary} (≈ ${formatUsdEquivalent(usdEquiv)})`;
+    }
+    return primary;
+  }
+  return formatUsd(Number(s.amount_usd) * multiplier);
+}
 
 // Filters sponsorships down to ones that should appear on the dashboard.
 // Failed/paused rows don't get rendered in any of the donor-facing groupings.
@@ -254,36 +294,40 @@ export function describeConfig(s: Sponsorship): string {
   const variant = pillVariantFor(s);
   const months = s.duration_months ?? 0;
 
+  // Session 58.10 — every per-charge / per-month / upfront-total money
+  // value uses formatSponsorshipAmount so the donor sees their actual
+  // currency. Multiplier handles upfront totals (rate × months) as a
+  // single donor-currency amount (donor_currency_amount * months) so
+  // we don't sum across mismatched units. Lifetime "total contributed"
+  // aggregates still use total_paid_usd / formatUsd downstream.
   if (variant === "active_one_time" || s.payment_mode === "one_time") {
-    return `One-time gift · ${formatUsd(s.amount_usd)}`;
+    return `One-time gift · ${formatSponsorshipAmount(s)}`;
   }
   if (variant === "completed") {
     const completedMonths = s.duration_months ?? s.prepaid_months_total ?? 0;
-    const total = s.amount_usd * (completedMonths || 1);
     return `Sponsored for ${completedMonths} ${
       completedMonths === 1 ? "month" : "months"
-    } · ${formatUsd(total)} total`;
+    } · ${formatSponsorshipAmount(s, completedMonths || 1)} total`;
   }
   if (s.payment_schedule === "monthly_prepaid") {
     const total = s.prepaid_months_total ?? 0;
     const remaining = s.prepaid_months_remaining ?? 0;
-    const upfront = s.amount_usd * total;
     const tailMonths = Math.max(0, (s.duration_months ?? 0) - total);
     if (tailMonths > 0) {
-      return `Prepaid for ${total} ${total === 1 ? "month" : "months"}, then ${formatUsd(s.amount_usd)}/mo for ${tailMonths} ${
+      return `Prepaid for ${total} ${total === 1 ? "month" : "months"}, then ${formatSponsorshipAmount(s)}/mo for ${tailMonths} ${
         tailMonths === 1 ? "month" : "months"
       }`;
     }
-    return `Prepaid · ${formatUsd(upfront)} for ${total} ${
+    return `Prepaid · ${formatSponsorshipAmount(s, total)} for ${total} ${
       total === 1 ? "month" : "months"
     } (${remaining} remaining)`;
   }
   if (months === 0 || s.duration_months == null) {
     // Indefinite — "until I cancel" copy moved to coverageLine.
-    return `Monthly · ${formatUsd(s.amount_usd)}/mo`;
+    return `Monthly · ${formatSponsorshipAmount(s)}/mo`;
   }
   const remaining = monthsRemainingUntil(s.scheduled_end_date) ?? months;
-  return `Monthly · ${formatUsd(s.amount_usd)}/mo · ${months} ${
+  return `Monthly · ${formatSponsorshipAmount(s)}/mo · ${months} ${
     months === 1 ? "month" : "months"
   } (${remaining} remaining)`;
 }
@@ -316,7 +360,7 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
           <>
             <Mono>{formatLongDate(s.started_at) ?? "—"}</Mono>
             <span className="text-slate-soft"> · </span>
-            <Mono>{formatUsd(s.amount_usd)}</Mono>
+            <Mono>{formatSponsorshipAmount(s)}</Mono>
           </>
         ),
       },
@@ -358,7 +402,7 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
             label: "Paid up front",
             value: (
               <Mono>
-                {formatUsd(s.amount_usd * (months || 1))} · {months}{" "}
+                {formatSponsorshipAmount(s, months || 1)} · {months}{" "}
                 {months === 1 ? "month" : "months"}
               </Mono>
             ),
@@ -367,7 +411,7 @@ export function bottomInfo(s: Sponsorship): InfoCol[] {
             label: "On activation",
             value: (
               <Mono>
-                {formatUsd(s.amount_usd)}/mo
+                {formatSponsorshipAmount(s)}/mo
                 {months ? ` · ${months} ${months === 1 ? "month" : "months"}` : ""}
               </Mono>
             ),
@@ -432,10 +476,24 @@ export type ChildBits = {
 };
 
 export function childOf(s: Sponsorship): ChildBits {
+  // Session 58.10 — campaign donations (child=null, new-flow) get a
+  // cause-derived label instead of the generic "Child" placeholder.
+  // Legacy rows with child=null OR child=<string id> still fall
+  // through to the prior behaviour. Donor's dashboard cards now read
+  // "Campaign: cycle" / "Campaign donation" for these rows.
   if (!s.child || typeof s.child === "string") {
+    const hasNewFlowSignal = s.cause_tag != null || s.donation_package != null;
+    const id = typeof s.child === "string" ? s.child : null;
+    const name = id
+      ? "Child"
+      : hasNewFlowSignal
+        ? s.cause_tag
+          ? `Campaign: ${s.cause_tag}`
+          : "Campaign donation"
+        : "Child";
     return {
-      id: typeof s.child === "string" ? s.child : null,
-      name: "Child",
+      id,
+      name,
       district: null,
       age: null,
       photoId: null,
