@@ -125,6 +125,17 @@ export interface AdminDonorSponsorship {
   payment_mode: "monthly" | "one_time" | string;
   amount_usd: number;
   currency: string;
+  // Session 58.9 — donor-currency snapshot (new-flow rows). Both
+  // null on legacy rows; the render uses the donor-currency value
+  // when present and falls back to amount_usd otherwise.
+  donor_currency_code: string | null;
+  donor_currency_amount: number | null;
+  // Session 58.9 — campaign signal. cause_tag is non-null on
+  // one-time gifts (Buy a Cycle, etc.); donation_package is set for
+  // any new-flow row regardless of type. Used to label campaign
+  // donations rather than rendering "Unnamed child".
+  cause_tag: string | null;
+  donation_package_id: string | null;
   status: string;
   started_at: string | null;
   ended_at: string | null;
@@ -197,6 +208,11 @@ type SponsorshipRow = {
   payment_mode: string | null;
   amount_usd: number | string | null;
   currency: string | null;
+  // Session 58.9 — new-flow snapshot fields. Nullable on legacy rows.
+  donor_currency_code?: string | null;
+  donor_currency_amount?: number | string | null;
+  cause_tag?: string | null;
+  donation_package?: string | null;
   status: string | null;
   started_at: string | null;
   ended_at: string | null;
@@ -247,6 +263,13 @@ const SPONSORSHIP_FIELDS = [
   "payment_mode",
   "amount_usd",
   "currency",
+  // Session 58.9 — donor-currency snapshot + campaign signals.
+  // All nullable on legacy rows; the donor-detail page falls back
+  // to amount_usd / "Unnamed child" when these are absent.
+  "donor_currency_code",
+  "donor_currency_amount",
+  "cause_tag",
+  "donation_package",
   "status",
   "started_at",
   "ended_at",
@@ -660,6 +683,14 @@ export async function getAdminDonorDetail(
       payment_mode: r.payment_mode ?? "monthly",
       amount_usd: toNumber(r.amount_usd),
       currency: r.currency ?? "USD",
+      // Session 58.9 — donor-currency + campaign context.
+      donor_currency_code: r.donor_currency_code ?? null,
+      donor_currency_amount:
+        r.donor_currency_amount == null
+          ? null
+          : toNumber(r.donor_currency_amount),
+      cause_tag: r.cause_tag ?? null,
+      donation_package_id: r.donation_package ?? null,
       status: r.status ?? "pending_payment",
       started_at: r.started_at,
       ended_at: r.ended_at,

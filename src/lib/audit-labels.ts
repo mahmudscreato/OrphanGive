@@ -69,6 +69,14 @@ export const AUDIT_LABELS: Record<string, string> = {
   admin_uploaded_document: "Uploaded document directly (admin)",
   admin_uploaded_intake_photo: "Uploaded intake photo directly (admin)",
 
+  // ─── Session 58.2+ — donation_package + currency_rate admin ───
+  admin_created_donation_package: "Created donation package",
+  admin_edited_donation_package: "Edited donation package",
+  admin_archived_donation_package: "Archived donation package",
+  admin_reactivated_donation_package: "Reactivated donation package",
+  admin_reordered_donation_packages: "Reordered donation packages",
+  admin_edited_currency_rate: "Edited currency rate",
+
   // ─── System / cron (Session 14.7-ish + 46+) ───
   system_expired_proposal: "Expired stale proposal (cron)",
 };
