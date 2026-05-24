@@ -136,11 +136,21 @@ export function ProfileHero({
           ) : null}
 
           <div className="mt-9 flex gap-3 flex-wrap">
-            {child.district ? (
+            {/* Hotfix R1 — Tier 1 (public) viewers see DIVISION only;
+                the district + division composite is Tier 2+. Defense-
+                in-depth: child-profile-data.ts already returns
+                district=null for public tier, so this render gate is
+                a backstop against a future data-layer regression. */}
+            {tier !== "public" && child.district ? (
               <span className="inline-flex items-center gap-2 bg-white border border-ink/[0.08] rounded-full px-4 py-2.5 text-[13px] text-ink font-medium">
                 <MetaPillIcon kind="location" />
                 {child.district}
                 {child.region ? `, ${child.region}` : ""}
+              </span>
+            ) : child.region ? (
+              <span className="inline-flex items-center gap-2 bg-white border border-ink/[0.08] rounded-full px-4 py-2.5 text-[13px] text-ink font-medium">
+                <MetaPillIcon kind="location" />
+                {child.region}
               </span>
             ) : null}
             {child.age !== null ? (

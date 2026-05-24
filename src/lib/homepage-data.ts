@@ -285,14 +285,16 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
             { Photo: { _nnull: true } },
           ],
         },
+        // Hotfix R1 — homepage `/` is always Tier 1 (public, no auth
+        // gate). DROP bd_district.* from the fetch so district never
+        // reaches the FeaturedChild payload. Division is the only
+        // location field the public tier may surface.
         fields: [
           "id",
           "display_name",
           "date_of_birth",
           "bd_division.code",
           "bd_division.name",
-          "bd_district.code",
-          "bd_district.name",
           "story",
           "Photo",
           "status",
@@ -312,7 +314,11 @@ export async function getFeaturedChildren(): Promise<FeaturedChild[]> {
       display_name: row.display_name ?? null,
       age: calcAge(row.date_of_birth),
       region: row.bd_division?.name ?? null,
-      district: row.bd_district?.name ?? null,
+      // Hotfix R1 — homepage is Tier 1; district is Tier 2+.
+      // bd_district isn't fetched (see fields list above), so
+      // row.bd_district is undefined and this collapses to null.
+      // Explicit null preserves the FeaturedChild type shape.
+      district: null,
       story: trimStory(row.story),
       // Coerce Photo to a string id regardless of whether
       // Directus returned a UUID string (expected per field

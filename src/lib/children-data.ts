@@ -253,6 +253,15 @@ type DirectusChildRow = {
   class_grade?: string | null;
 };
 
+// Hotfix R1 — /children browse list is Tier 1 (public). BrowseChildCard
+// is a client component, so anything in SAFE_FIELDS that flows into
+// the props gets wire-serialized into the page HTML — render-side
+// gating is not enough. DROP bd_district.* so the column never reaches
+// the wire on a public surface. The browse-list FILTER for districts
+// (`districts` derived list at the bottom of this file) is admin/
+// internal — see `listDistricts` below — and is unaffected; the public
+// browse exposes division-level filtering only per the privacy note at
+// the top of this file.
 const SAFE_FIELDS = [
   "id",
   "display_name",
@@ -260,8 +269,6 @@ const SAFE_FIELDS = [
   "date_of_birth",
   "bd_division.code",
   "bd_division.name",
-  "bd_district.code",
-  "bd_district.name",
   "story",
   "Photo",
   "education_level",
@@ -357,7 +364,11 @@ function rowToSummary(row: DirectusChildRow): ChildSummary {
     gender: row.gender ?? null,
     age: calcAge(row.date_of_birth),
     region: row.bd_division?.name?.trim() ?? null,
-    district: row.bd_district?.name?.trim() ?? null,
+    // Hotfix R1 — district is Tier 2+; SAFE_FIELDS no longer fetches
+    // bd_district.* so row.bd_district is undefined. Field kept on
+    // ChildSummary for shape compatibility (existing donor-tier
+    // consumers may surface district from other data sources).
+    district: null,
     story_preview: previewStory(row.story),
     photo: row.Photo ?? null,
     education_level: row.education_level ?? null,
