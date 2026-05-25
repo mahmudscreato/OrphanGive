@@ -32,11 +32,13 @@ import {
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
+// Phase 0 — donor lifecycle audit. See cancel/route.ts header for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
@@ -229,6 +231,22 @@ export async function POST(
       err instanceof Error ? err.message : err,
     );
   }
+
+  await recordAuditEvent({
+    actorUserId: donor.id,
+    actorRole: "donor",
+    action: "donor_cancelled_queued_sponsorship",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: donor.id,
+      childId: childIdRef,
+      queuePosition: position,
+      refundedAmountUsd,
+      refundId,
+    },
+    request: req,
+  });
 
   return NextResponse.json({
     success: true,

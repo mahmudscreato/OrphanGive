@@ -18,6 +18,8 @@ import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipExtendedEmail } from "@/emails/SponsorshipExtendedEmail";
 import { shiftQueueDates, sendQueueShiftEmail } from "@/lib/queue";
 import { getActiveMonthlySponsorForChild } from "@/lib/sponsorship-data";
+// Phase 0 — donor lifecycle audit. See cancel/route.ts header for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
@@ -223,6 +225,26 @@ export async function POST(
         });
       }
     }
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_extended_sponsorship",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId:
+          typeof sponsorship.child === "string"
+            ? sponsorship.child
+            : sponsorship.child.id,
+        mode: "added_to_schedule",
+        additionalMonths,
+        newDurationMonths: newDuration,
+        newEndDate: newEnd.toISOString(),
+      },
+      request: req,
+    });
+
     return NextResponse.json({
       success: true,
       mode: "added_to_schedule",
@@ -398,6 +420,27 @@ export async function POST(
       }
     }
 
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_extended_sponsorship",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId:
+          typeof sponsorship.child === "string"
+            ? sponsorship.child
+            : sponsorship.child.id,
+        mode: "monthly_after_prepaid",
+        additionalMonths,
+        newDurationMonths: newDuration,
+        newEndDate: newEnd.toISOString(),
+        monthlyStartsAt: prepaidEnd.toISOString(),
+      },
+      request: req,
+    });
+
     return NextResponse.json({
       success: true,
       mode: "monthly_after_prepaid",
@@ -570,6 +613,29 @@ export async function POST(
         });
       }
     }
+
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_extended_sponsorship",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId:
+          typeof sponsorship.child === "string"
+            ? sponsorship.child
+            : sponsorship.child.id,
+        mode: "paid_now",
+        paymentIntentId: pi.id,
+        paymentAmountUsd: totalCents / 100,
+        additionalMonths,
+        newDurationMonths: newDuration,
+        newEndDate: newEnd.toISOString(),
+        newPrepaidMonthsRemaining: newPrepaidRemaining,
+      },
+      request: req,
+    });
 
     return NextResponse.json({
       success: true,

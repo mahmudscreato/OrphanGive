@@ -11,7 +11,6 @@
 // admin_paused_sponsorship.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createItem } from "@directus/sdk";
 import { getStripe } from "@/lib/stripe-client";
 import { updateSponsorship } from "@/lib/sponsorship-data";
 import { sendEmail, siteUrl } from "@/lib/email";
@@ -22,13 +21,15 @@ import {
   fetchDonorForEmail,
   unwrapChildId,
 } from "@/lib/admin-sponsorship-actions";
-import { directusServer } from "@/lib/directus";
+// Phase 0 — see /api/admin/sponsorships/[id]/cancel/route.ts for why
+// we swap raw createItem for recordAuditEvent.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
@@ -97,28 +98,19 @@ export async function POST(
     );
   }
 
-  // Audit (best-effort).
-  try {
-    await directusServer().request(
-      createItem("audit_log" as never, {
-        timestamp: new Date().toISOString(),
-        actor: admin.userId,
-        actor_role: "admin",
-        action: "admin_paused_sponsorship",
-        collection: "sponsorship",
-        record_id: sponsorship.id,
-        metadata: {
-          donor: sponsorship.donor,
-          childId: unwrapChildId(sponsorship),
-        },
-      } as never),
-    );
-  } catch (err) {
-    console.warn(
-      "[admin/sponsorships/pause] audit write failed (swallowed)",
-      err instanceof Error ? err.message : err,
-    );
-  }
+  // Audit (best-effort; recordAuditEvent never throws).
+  await recordAuditEvent({
+    actorUserId: admin.userId,
+    actorRole: "admin",
+    action: "admin_paused_sponsorship",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: sponsorship.donor,
+      childId: unwrapChildId(sponsorship),
+    },
+    request: req,
+  });
 
   // Session 61.3 hotfix — donor email now attributes the pause to
   // the OrphanGive team (was: same neutral copy as donor self-pause,

@@ -79,6 +79,27 @@ export const AUDIT_LABELS: Record<string, string> = {
 
   // ─── System / cron (Session 14.7-ish + 46+) ───
   system_expired_proposal: "Expired stale proposal (cron)",
+
+  // ─── Phase 0 — sponsorship lifecycle (admin + donor) ───
+  //
+  // Admin actions (already written today via raw createItem in
+  // /api/admin/sponsorships/[id]/*) — these labels remove the
+  // snake-case fallback that the audit page was rendering.
+  admin_cancelled_sponsorship: "Cancelled sponsorship",
+  admin_paused_sponsorship: "Paused sponsorship",
+  admin_resumed_sponsorship: "Resumed sponsorship",
+  admin_refunded_sponsorship_charge: "Refunded sponsorship charge",
+  // Donor actions (newly wired in /api/sponsorship/[id]/*). Same
+  // copy shape as admin so the audit page reads as one row of
+  // history; the actor pill (Admin vs Donor) carries the attribution.
+  donor_cancelled_sponsorship: "Cancelled sponsorship",
+  donor_paused_sponsorship: "Paused sponsorship",
+  donor_resumed_sponsorship: "Resumed sponsorship",
+  donor_extended_sponsorship: "Extended sponsorship",
+  donor_modified_sponsorship_amount: "Changed sponsorship amount",
+  donor_changed_sponsorship_visibility: "Changed sponsorship visibility",
+  donor_cancelled_queued_sponsorship: "Cancelled queued sponsorship",
+  donor_resolved_queue_shift: "Resolved queue-shift decision",
 };
 
 /**

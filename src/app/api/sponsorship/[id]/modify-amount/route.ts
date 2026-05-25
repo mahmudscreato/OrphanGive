@@ -10,6 +10,8 @@ import { MIN_AMOUNTS } from "@/lib/pricing";
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipModifiedEmail } from "@/emails/SponsorshipModifiedEmail";
+// Phase 0 — donor lifecycle audit. See cancel/route.ts header for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
@@ -239,6 +241,25 @@ export async function POST(
       err instanceof Error ? err.message : err,
     );
   }
+
+  await recordAuditEvent({
+    actorUserId: donor.id,
+    actorRole: "donor",
+    action: "donor_modified_sponsorship_amount",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: donor.id,
+      childId:
+        typeof sponsorship.child === "string"
+          ? sponsorship.child
+          : sponsorship.child.id,
+      oldAmountUsd: oldAmount,
+      newAmountUsd: newAmount,
+      prorationCents,
+    },
+    request: req,
+  });
 
   return NextResponse.json({
     success: true,
