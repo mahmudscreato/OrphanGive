@@ -19,28 +19,28 @@ const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://orphangive.org"
 ).replace(/\/$/, "");
 
-// Session 64 — previously this helper hard-coded a Cloudinary
-// f_auto PNG as `DEFAULT_OG_IMAGE`. f_auto caused Cloudinary to
-// return image/jpeg from a .png URL, which some scrapers
-// cross-check and silently drop.
+// Default site-wide social-share image. Mirrored from
+// src/app/layout.tsx so every helper-built page emits the same
+// og:image / twitter:image as the root layout. Cloudinary URL is
+// format-forced to image/jpeg (the most universally-rendered share
+// format — WhatsApp / iMessage often won't render WebP/AVIF that
+// f_auto would otherwise serve). See the layout's comment for the
+// full rationale.
 //
-// New default: points at the layout's /opengraph-image route
-// (Next.js file convention — see src/app/opengraph-image.tsx).
-// That route serves a deterministic 1200×630 image/png with
-// no extension/content-type mismatch.
-//
-// Why not "leave images unset and let the file convention fill in":
+// Why not "leave images unset and let the layout fill in":
 // Next.js merges metadata SHALLOWLY. When a page exports its own
 // openGraph block (even without an images key), the layout's
-// openGraph — including any file-convention images — is fully
-// replaced. So a page-level openGraph without images means NO
-// og:image renders on that page. Defensively naming the URL here
-// keeps every helper-built page wired correctly regardless.
+// openGraph — including its images — is fully replaced. So a
+// page-level openGraph without images means NO og:image renders on
+// that page. Defensively naming the URL here keeps every helper-
+// built page wired correctly regardless.
 //
 // Callers can pass `imageUrl` to override per-page (useful when a
 // future per-child OG flow ships).
-const DEFAULT_OG_IMAGE_URL = `${SITE_URL}/opengraph-image`;
+const DEFAULT_OG_IMAGE_URL =
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/c_fill,w_1200,h_630,f_jpg,q_auto/v1778529921/_OrphanGive_CG_V2_25_khxro8.jpg";
 const DEFAULT_OG_IMAGE_ALT = "OrphanGive — Sponsor an orphan in Bangladesh";
+const DEFAULT_OG_IMAGE_TYPE = "image/jpeg";
 
 type BuildArgs = {
   /** Page path including leading slash (e.g. "/about", "/children/abc"). */
@@ -94,8 +94,10 @@ export function buildPageMetadata({
       images: [
         {
           url: image,
+          secureUrl: image,
           width: 1200,
           height: 630,
+          type: DEFAULT_OG_IMAGE_TYPE,
           alt,
         },
       ],
