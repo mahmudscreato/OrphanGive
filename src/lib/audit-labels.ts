@@ -100,6 +100,18 @@ export const AUDIT_LABELS: Record<string, string> = {
   donor_changed_sponsorship_visibility: "Changed sponsorship visibility",
   donor_cancelled_queued_sponsorship: "Cancelled queued sponsorship",
   donor_resolved_queue_shift: "Resolved queue-shift decision",
+
+  // ─── Phase 0 follow-up — Stripe webhook events ───
+  //
+  // Attributed to the SYSTEM directus user (seeded by
+  // migrations/phase-0/002). Surfaced on the admin audit timeline
+  // alongside admin/donor actions; the actor-role pill is "System".
+  webhook_payment_succeeded: "Payment succeeded",
+  webhook_payment_failed: "Payment failed",
+  webhook_invoice_paid: "Invoice paid",
+  webhook_subscription_created: "Subscription created",
+  webhook_subscription_deleted: "Subscription ended",
+  webhook_charge_refunded: "Charge refunded",
 };
 
 /**

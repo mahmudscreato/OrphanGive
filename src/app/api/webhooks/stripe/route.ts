@@ -22,6 +22,11 @@ import {
   fireWelcomeEmail,
   fireCampaignThankYouEmail,
 } from "@/lib/email-triggers";
+// Phase 0 follow-up — every accountability-relevant Stripe event
+// writes a system-attributed audit row alongside its existing
+// business-logic handling. The helper is best-effort: never throws,
+// never blocks payment processing.
+import { recordWebhookAuditEvent } from "@/lib/webhook-audit";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -133,6 +138,22 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
   if (created && paymentId) {
     await fireMonthlyReceiptEmail(paymentId);
   }
+
+  // Phase 0 follow-up — audit the invoice-paid event. Best-effort.
+  await recordWebhookAuditEvent({
+    action: "webhook_invoice_paid",
+    sponsorshipId: sponsorship.id,
+    metadata: {
+      donor: sponsorship.donor,
+      stripeSubscriptionId: ctx.subId,
+      stripePaymentIntentId: ctx.piId,
+      stripeChargeId: ctx.chargeId,
+      stripeInvoiceId: ctx.invoiceId,
+      amountUsd,
+      source: ctx.source,
+      paymentRecorded: created,
+    },
+  });
 }
 
 // Pulls the normalized context out of an Invoice object (legacy event names).
@@ -293,6 +314,23 @@ async function handleFailedInvoice(ctx: FailedInvoiceCtx) {
     if (Object.keys(patch).length > 0) {
       await updateSponsorship(s.id, patch);
     }
+    // Phase 0 follow-up — audit the invoice failure. Best-effort.
+    // NB: failureMessage may be human-readable Stripe text (e.g.
+    // "Your card was declined."). No Tier-3 child fields.
+    await recordWebhookAuditEvent({
+      action: "webhook_payment_failed",
+      sponsorshipId: s.id,
+      metadata: {
+        donor: s.donor,
+        stripeSubscriptionId: ctx.subId,
+        stripePaymentIntentId: ctx.piId,
+        stripeInvoiceId: ctx.invoiceId,
+        amountUsd: ctx.amountDueCents / 100,
+        failureMessage: ctx.failureMessage,
+        source: ctx.source,
+        kind: "invoice",
+      },
+    });
   }
 }
 
@@ -473,22 +511,60 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
     // doesn't bundle.
     await fireCampaignThankYouEmail(id);
   }
+
+  // Phase 0 follow-up — audit one row per sponsorship affected by
+  // the PI. For one-time bundles the PI has multiple sponsorships
+  // so each gets its own audit; for prepaid there's one sponsorship.
+  // Per-row amount mirrors the payment row above so the audit and
+  // the payment ledger agree. Best-effort.
+  for (const s of sponsorships) {
+    const isPrepaid = s.payment_schedule === "monthly_prepaid";
+    const paymentAmount = isPrepaid
+      ? (pi.amount ?? 0) / 100
+      : s.amount_usd;
+    await recordWebhookAuditEvent({
+      action: "webhook_payment_succeeded",
+      sponsorshipId: s.id,
+      metadata: {
+        donor: s.donor,
+        stripePaymentIntentId: pi.id,
+        stripeChargeId: chargeId,
+        amountUsd: paymentAmount,
+        paymentMode: metaMode,
+      },
+    });
+  }
 }
 
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent) {
   const sponsorships = await findSponsorshipsByStripeRef({ paymentIntentId: pi.id });
+  const failureMessage = pi.last_payment_error?.message ?? "Payment failed.";
   for (const s of sponsorships) {
     await createPaymentIfMissing({
       sponsorshipId: s.id,
       amount_usd: s.amount_usd,
       status: "failed",
       stripe_payment_intent_id: pi.id,
-      failure_reason: pi.last_payment_error?.message ?? "Payment failed.",
+      failure_reason: failureMessage,
       paid_at: new Date().toISOString(),
     });
     if (!s.started_at) {
       await updateSponsorship(s.id, { status: "failed" });
     }
+    // Phase 0 follow-up — audit per sponsorship. Same action name
+    // as the invoice-failure path; the metadata.kind discriminates
+    // PI vs invoice for downstream readers that care.
+    await recordWebhookAuditEvent({
+      action: "webhook_payment_failed",
+      sponsorshipId: s.id,
+      metadata: {
+        donor: s.donor,
+        stripePaymentIntentId: pi.id,
+        amountUsd: s.amount_usd,
+        failureMessage,
+        kind: "payment_intent",
+      },
+    });
   }
 }
 
@@ -627,6 +703,20 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
           err instanceof Error ? err.message : err,
         );
       }
+      // Phase 0 follow-up — audit the refund per sponsorship.
+      // Best-effort; sits inside the per-row try-block so a single
+      // sponsorship's audit failure doesn't break the loop.
+      await recordWebhookAuditEvent({
+        action: "webhook_charge_refunded",
+        sponsorshipId: s.id,
+        metadata: {
+          donor: s.donor,
+          stripeChargeId: charge.id,
+          stripePaymentIntentId: piId,
+          refundedAmountUsd,
+          refundReason,
+        },
+      });
     } catch (err) {
       console.warn(
         `[stripe-webhook] sponsorship ${s.id} refund update failed:`,
@@ -673,6 +763,25 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
         err instanceof Error ? err.message : err,
       );
     }
+  }
+  // Phase 0 follow-up — audit the subscription creation per
+  // sponsorship. Fires regardless of whether we backfilled the
+  // payment_schedule (the audit records the event arrival, not the
+  // backfill action).
+  for (const s of sponsorships) {
+    await recordWebhookAuditEvent({
+      action: "webhook_subscription_created",
+      sponsorshipId: s.id,
+      metadata: {
+        donor: s.donor,
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId:
+          typeof sub.customer === "string"
+            ? sub.customer
+            : sub.customer?.id ?? null,
+        status: sub.status,
+      },
+    });
   }
 }
 
@@ -745,6 +854,22 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
         err instanceof Error ? err.message : err,
       );
     }
+  }
+
+  // Phase 0 follow-up — audit the subscription end per sponsorship.
+  // Fires AFTER all row updates so the audit doesn't claim an event
+  // we didn't record. Includes the scheduled-vs-manual discriminator
+  // for the timeline reader.
+  for (const s of sponsorships) {
+    await recordWebhookAuditEvent({
+      action: "webhook_subscription_deleted",
+      sponsorshipId: s.id,
+      metadata: {
+        donor: s.donor,
+        stripeSubscriptionId: sub.id,
+        kind: isScheduledCompletion ? "scheduled_completion" : "manual_cancel",
+      },
+    });
   }
 }
 

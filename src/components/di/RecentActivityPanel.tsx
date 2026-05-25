@@ -6,8 +6,10 @@
 
 import Link from "next/link";
 import {
+  AlertTriangle,
   Camera,
   CheckCircle2,
+  CreditCard,
   Edit3,
   FileBarChart,
   FileText,
@@ -17,6 +19,7 @@ import {
   ListChecks,
   PauseCircle,
   PlayCircle,
+  Receipt,
   RotateCcw,
   Trash2,
   Truck,
@@ -108,6 +111,16 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   donor_changed_sponsorship_visibility: Edit3,
   donor_cancelled_queued_sponsorship: XCircle,
   donor_resolved_queue_shift: ListChecks,
+  // Phase 0 follow-up — Stripe webhook events. Type-safety
+  // placeholders; the DI Recent Activity reader filters to the DI's
+  // own actions + admin actions on scoped children, so webhook rows
+  // never surface here.
+  webhook_payment_succeeded: CreditCard,
+  webhook_payment_failed: AlertTriangle,
+  webhook_invoice_paid: Receipt,
+  webhook_subscription_created: PlayCircle,
+  webhook_subscription_deleted: XCircle,
+  webhook_charge_refunded: RotateCcw,
 };
 
 function relativeTime(iso: string | null): string {
