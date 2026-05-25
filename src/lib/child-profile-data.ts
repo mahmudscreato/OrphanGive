@@ -111,6 +111,11 @@ export type ChildProfile = {
   } | null;
 };
 
+// Hotfix R1 — bd_district.* moved OUT of PUBLIC_FIELDS into TIER2_FIELDS.
+// Tier 1 sees Bangladesh DIVISION only; the district is one level too
+// specific for the public contract (64 districts vs 8 divisions narrows
+// a child's location too far). bd_division.* stays in PUBLIC_FIELDS so
+// the public location pill still renders.
 const PUBLIC_FIELDS = [
   "id",
   "display_name",
@@ -126,8 +131,6 @@ const PUBLIC_FIELDS = [
   "priority_support",
   "bd_division.code",
   "bd_division.name",
-  "bd_district.code",
-  "bd_district.name",
 ] as const;
 
 // Session 50 — Tier 2 SELECT list. Added to the fetch ONLY when
@@ -138,6 +141,9 @@ const PUBLIC_FIELDS = [
 // expanding `.id`, `.name`, `.type` matches the bd_division /
 // bd_district expansion pattern already used for location fields.
 const TIER2_FIELDS = [
+  // Hotfix R1 — bd_district promoted to Tier 2. See PUBLIC_FIELDS comment.
+  "bd_district.code",
+  "bd_district.name",
   "educational_organization.id",
   "educational_organization.name",
   "educational_organization.type",
@@ -355,7 +361,12 @@ export async function getChildById(
     display_name: (row.display_name ?? "").trim() || "A child awaiting sponsorship",
     age: calcAge(row.date_of_birth),
     birth_year: birthYear(row.date_of_birth),
-    district: row.bd_district?.name?.trim() ?? null,
+    // Hotfix R1 — district is Tier 2+. When tier === "public",
+    // bd_district isn't in the SELECT list, so row.bd_district is
+    // undefined and this resolves to null. The explicit guard is
+    // defense-in-depth in case a future PUBLIC_FIELDS edit
+    // accidentally re-adds the field.
+    district: tier === "public" ? null : row.bd_district?.name?.trim() ?? null,
     region: row.bd_division?.name?.trim() ?? null,
     story,
     story_truncated: truncated,

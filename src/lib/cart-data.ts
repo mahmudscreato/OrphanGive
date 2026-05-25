@@ -49,7 +49,15 @@ export type CartItem = {
 
 export type HydratedCartItem = CartItem & {
   display_name: string | null;
+  // Hotfix R1 — the cart can be hydrated for an UNAUTHENTICATED visitor
+  // (cart_token cookie alone, no donor session — see /api/cart/add which
+  // passes `donorId: donor?.id ?? null`). District is Tier 2+, so we
+  // can't surface it through this shape regardless of who's looking,
+  // without splitting the component by tier. Cart UI is slated for
+  // retirement separately; force-null here and surface DIVISION via
+  // `region` instead.
   district: string | null;
+  region: string | null;
   photo: string | null;
 };
 
@@ -364,25 +372,30 @@ export async function readCart(): Promise<Cart | null> {
 // ─── Hydration (child name + photo for cart UI) ──────────────────────────────
 export async function hydrateCart(cart: Cart): Promise<HydratedCart> {
   const ids = Array.from(new Set(cart.items.map((i) => i.childId)));
-  let childMap = new Map<string, { display_name: string | null; district: string | null; photo: string | null }>();
+  // Hotfix R1 — fetch bd_division.name (DIVISION) instead of
+  // bd_district.name. Anonymous cart access is possible (see the
+  // HydratedCartItem type comment), and district is Tier 2+. Division
+  // is the safe public-tier location surface — same contract enforced
+  // on /, /children, and /children/[id] in this hotfix.
+  let childMap = new Map<string, { display_name: string | null; region: string | null; photo: string | null }>();
   if (ids.length > 0) {
     try {
       const rows = (await directusServer().request(
         readItems("child" as never, {
           filter: { id: { _in: ids } },
-          fields: ["id", "display_name", "Photo", "bd_district.name"],
+          fields: ["id", "display_name", "Photo", "bd_division.name"],
         } as never),
       )) as unknown as Array<{
         id: string;
         display_name?: string | null;
         Photo?: string | null;
-        bd_district?: { name?: string | null } | null;
+        bd_division?: { name?: string | null } | null;
       }>;
       if (Array.isArray(rows)) {
         for (const r of rows) {
           childMap.set(String(r.id), {
             display_name: r.display_name?.trim() ?? null,
-            district: r.bd_district?.name?.trim() ?? null,
+            region: r.bd_division?.name?.trim() ?? null,
             photo: r.Photo ?? null,
           });
         }
@@ -399,7 +412,11 @@ export async function hydrateCart(cart: Cart): Promise<HydratedCart> {
     return {
       ...it,
       display_name: c?.display_name ?? null,
-      district: c?.district ?? null,
+      // Hotfix R1 — bd_district is no longer fetched; district is
+      // always null on the cart payload. Field kept on the type for
+      // shape compatibility.
+      district: null,
+      region: c?.region ?? null,
       photo: c?.photo ?? null,
     };
   });

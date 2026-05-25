@@ -65,9 +65,14 @@ export function CartItemCard({ item, editable = true, onChanged }: Props) {
         <div className="mt-0.5 text-[12.5px] text-slate leading-snug">
           {config}
         </div>
-        {item.district ? (
+        {/* Hotfix R1 — render DIVISION (region) only. The cart is
+            reachable by anonymous visitors (cart_token cookie alone),
+            and district is Tier 2+; cart-data.ts force-nulls district
+            and surfaces bd_division.name via item.region. Same
+            contract as /, /children, and /children/[id]. */}
+        {item.region ? (
           <div className="mt-1 font-mono text-[10.5px] tracking-[0.1em] uppercase text-slate-soft">
-            {item.district}
+            {item.region}
           </div>
         ) : null}
       </div>

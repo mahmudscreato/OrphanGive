@@ -187,7 +187,12 @@ function ChildCard({
 }) {
   const safeName = safeDisplayName(child.display_name);
   const first = firstNameOnly(child.display_name);
-  const locationLabel = child.region ?? child.district ?? null;
+  // Hotfix R1 — homepage `/` is Tier 1 (public). Show DIVISION only;
+  // the prior `?? child.district` fallback could leak district when
+  // region was null. district is now always null on FeaturedChild
+  // (homepage-data.ts stripped from fetch), but the fallback is
+  // removed here too as defense-in-depth.
+  const locationLabel = child.region ?? null;
   const ageLabel = child.age !== null ? `Age ${child.age}` : null;
   const metaParts = [locationLabel, ageLabel].filter(Boolean) as string[];
 
