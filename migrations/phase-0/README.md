@@ -6,13 +6,16 @@ work. Three pieces ship in `feature/phase-0-foundation`:
 - **A. FK links** — these migration scripts (this directory).
 - **B. Super Admin gate** — code-only (no migration). Requires a
   `"Super Admin"` Directus role; see ship report for creation steps.
-- **C. Audit-write holes** — code-only (no migration).
+- **C. Audit-write holes** — mostly code-only, plus the SYSTEM user
+  seed in 002 below (needed so webhook + cron audit rows have a real
+  `audit_log.actor` to point at — the column is NOT NULL).
 
 ## Scripts (run in order)
 
 | # | Script | What it does |
 |---|--------|--------------|
 | 001 | `001-add-sponsorship-fks.mjs` | Adds two NEW NULLABLE columns: `task.sponsorship` (uuid, M2O sponsorship), `child_update.sponsorship` (uuid, M2O sponsorship). Mirrors the existing `aid_delivery.sponsorship` shape (Session 41-v3). Idempotent: re-runnable; skips fields that already exist. No backfill — existing rows stay NULL on the new column. |
+| 002 | `002-seed-system-user.mjs` | Seeds a single SYSTEM `directus_users` row at stable UUID `00000000-0000-0000-0000-00000000a0d1` (email `system@orphangive.org`, role `Administrator`, no password, no token). Idempotent: re-runnable; skips if the row exists. **Post-run:** set `SYSTEM_USER_ID=00000000-0000-0000-0000-00000000a0d1` in `.env.local` (and the production env file when deploying) so webhook + cron handlers can attribute audit rows to it. Without this env var the webhook silently skips audit writes — business logic still runs. |
 
 Re-running any script is safe.
 
@@ -82,8 +85,10 @@ relevant commit; the database columns remain harmless.
 
 ## Deferred (NOT in 001)
 
-- **Webhook auditing for Piece C** requires either a seeded "system"
-  user UUID for `audit_log.actor` (M2O directus_users, NOT NULL today)
-  or a schema relaxation to make `actor` nullable. Out of scope for
-  Phase 0 ("schema additions only, no alter"). Documented in the
-  Phase 0 ship report.
+- ~~Webhook auditing for Piece C~~ — **CLOSED in 002 + the
+  `feature/phase-0-webhook-audit` branch.** Seeds the SYSTEM user
+  (002) and wires the webhook handlers to write audit rows via
+  `recordWebhookAuditEvent` (a thin wrapper around
+  `recordAuditEvent` that pre-fills `actorRole: "system"` +
+  `actorUserId: process.env.SYSTEM_USER_ID`). No schema relaxation
+  needed — actor remains NOT NULL.
