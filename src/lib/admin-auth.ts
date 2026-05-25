@@ -20,7 +20,36 @@
 
 import { cookies } from "next/headers";
 
-const ADMIN_ROLE_NAMES = new Set(["Admin", "Administrator"]);
+// Phase 0 — Super Admin gate.
+//
+// `Super Admin` is the highest-privilege internal role. Mahmud creates
+// the role in Directus admin UI (see migrations/phase-0/README.md).
+// Code-side recognition:
+//   - SUPER_ADMIN_ROLE_NAME            — the single string we match on.
+//   - ADMIN_ROLE_NAMES                 — INCLUDES Super Admin, so every
+//                                        Super Admin transparently passes
+//                                        requireAdminUser. No regression
+//                                        for the ~50 existing callers.
+//   - AdminSession.isSuperAdmin        — boolean tier discriminator,
+//                                        populated server-side from
+//                                        role.name on every request.
+//   - requireSuperAdminUser()          — extra guard used by surfaces
+//                                        that must reject a plain
+//                                        Admin / Administrator.
+//
+// V1 enforcement is intentionally narrow — one proof surface (the
+// /api/admin/super/ping read-only endpoint). The wider can/cannot
+// permission matrix is a later RBAC phase.
+const SUPER_ADMIN_ROLE_NAME = "Super Admin";
+const ADMIN_ROLE_NAMES = new Set([
+  "Admin",
+  "Administrator",
+  SUPER_ADMIN_ROLE_NAME,
+]);
+
+function roleIsSuperAdmin(roleName: string | null | undefined): boolean {
+  return roleName === SUPER_ADMIN_ROLE_NAME;
+}
 
 export const ADMIN_ACCESS_COOKIE = "admin_access_token";
 export const ADMIN_REFRESH_COOKIE = "admin_refresh_token";
@@ -41,6 +70,11 @@ export type AdminSession = {
   lastName: string | null;
   email: string;
   roleName: string;
+  // Phase 0 — true iff role.name === SUPER_ADMIN_ROLE_NAME. Plain
+  // Admin / Administrator stays false. Computed server-side on every
+  // request from a fresh Directus /users/me lookup, so role changes
+  // apply on the next request with no cookie invalidation.
+  isSuperAdmin: boolean;
   accessToken: string;
 };
 
@@ -142,6 +176,7 @@ export async function loginAdmin(
       lastName: me.last_name ?? null,
       email: me.email,
       roleName,
+      isSuperAdmin: roleIsSuperAdmin(roleName),
       accessToken,
     },
   };
@@ -200,6 +235,7 @@ export async function getAdminSession(): Promise<AdminSession | null> {
     lastName: me.last_name ?? null,
     email: me.email,
     roleName,
+    isSuperAdmin: roleIsSuperAdmin(roleName),
     accessToken,
   };
 }
@@ -209,9 +245,28 @@ export async function getAdminSession(): Promise<AdminSession | null> {
  * but API-only — the brief explicitly defers admin UI to Sessions 47+,
  * so there's no `redirect()` helper here. API routes that need an
  * admin user check this and return a 401 manually.
+ *
+ * Accepts both plain Admin / Administrator AND Super Admin (Phase 0).
  */
 export async function requireAdminUser(): Promise<AdminSession | null> {
   return getAdminSession();
+}
+
+/**
+ * Phase 0 — Stricter guard. Returns the session ONLY when the caller
+ * holds the Super Admin role. Plain Admin / Administrator → null
+ * (caller returns 403). No session → null (caller returns 401; the
+ * caller distinguishes the two by re-checking requireAdminUser).
+ *
+ * V1 is intentionally narrow: only the /api/admin/super/ping proof
+ * surface uses this. Later RBAC phases will gate more routes once the
+ * can/cannot permission matrix is defined.
+ */
+export async function requireSuperAdminUser(): Promise<AdminSession | null> {
+  const session = await getAdminSession();
+  if (!session) return null;
+  if (!session.isSuperAdmin) return null;
+  return session;
 }
 
 // ─── Cookie helpers ─────────────────────────────────────────────────
