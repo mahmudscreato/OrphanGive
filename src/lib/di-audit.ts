@@ -89,6 +89,17 @@ export type AuditAction =
   | "admin_viewed_moment"
   | "admin_approved_moment"
   | "admin_rejected_moment"
+  // Spine 1.2 — admin report review queue. Mirrors the moment review
+  // shape. View events fire on detail-page load (force-dynamic);
+  // claim is the explicit "I'm working on this" handoff; edit captures
+  // a donor_text overwrite (length-only metadata, NEVER the text);
+  // approve is the terminal-for-1.2 sign-off; correction is the
+  // send-back-to-DI loop. Sending to donor (1.3) lives elsewhere.
+  | "admin_viewed_report"
+  | "admin_claimed_report_review"
+  | "admin_approved_report"
+  | "admin_edited_report_donor_text"
+  | "admin_requested_report_correction"
   // Session 52c — admin cleanup removes, distinct from approve /
   // reject. Admin hits these when a DI uploaded by mistake — no
   // judgement recorded, just gone. Session 52d lifts the pending-
@@ -441,6 +452,16 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_viewed_moment: (a) => `${a} opened a moment`,
   admin_approved_moment: () => `Admin approved a moment`,
   admin_rejected_moment: () => `Admin rejected a moment`,
+  // Spine 1.2 — admin report review. Approval surfaces on the DI's
+  // History tab; edit + correction events also surface (the DI needs
+  // to see "Admin edited your donor copy" + "Admin sent back for
+  // correction with reason: ..."). View / claim stay admin-only.
+  admin_viewed_report: (a) => `${a} opened a report`,
+  admin_claimed_report_review: (a) => `${a} claimed a report for review`,
+  admin_approved_report: () => `Admin approved your report`,
+  admin_edited_report_donor_text: () => `Admin edited the donor-facing copy`,
+  admin_requested_report_correction: () =>
+    `Admin sent your report back for correction`,
   admin_removed_document: () => `Admin removed a pending document`,
   admin_removed_intake_photo: () => `Admin removed a pending intake photo`,
   admin_removed_approved_document: () =>
