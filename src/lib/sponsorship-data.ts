@@ -913,7 +913,20 @@ export async function getApprovedChildUpdates(
         filter: {
           _and: [
             { child: { _eq: childId } },
-            { status: { _eq: "approved" } },
+            // Spine 1.2 — filter changed from 'approved' to 'published'.
+            // Writer + the public child-profile reader
+            // (src/lib/child-profile-data.ts:508 getChildUpdates) both
+            // use 'published' as the terminal donor-visible state.
+            // The previous filter returned zero rows always, so this
+            // donor-dashboard reader effectively didn't work. The
+            // Spine 1.2 lifecycle introduces an `'approved'` intermediate
+            // state (admin-signed-off, NOT YET SENT) — donors must NOT
+            // see those rows. Spine 1.3's "Send to donor" action will
+            // flip 'approved' → 'published'; this reader will then start
+            // surfacing them correctly. Name kept as
+            // getApprovedChildUpdates for caller-site compatibility,
+            // but the semantics are "child updates the donor can see".
+            { status: { _eq: "published" } },
             { published_at: { _lte: nowIso } },
           ],
         },

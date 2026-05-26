@@ -31,7 +31,15 @@
 
 import "server-only";
 
-import { createItem, readItems, readUsers } from "@directus/sdk";
+import {
+  createItem,
+  readItem,
+  readItems,
+  readUsers,
+} from "@directus/sdk";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { directusServer } from "./directus";
 import { getDiChildById } from "./di-children";
 // Option lists + their type aliases live in a non-`server-only`
@@ -49,7 +57,24 @@ import {
 
 export type { ReportType, ReportVisibility };
 
-export type ReportStatus = "draft" | "pending" | "published" | "rejected";
+// Spine 1.2 — status enum now includes the new sponsorship-tied
+// lifecycle values. Existing 'pending'/'published'/'rejected'/'draft'
+// remain valid (legacy DI flow + existing data).
+export type ReportStatus =
+  | "draft"
+  | "pending"
+  | "submitted_by_di"
+  | "under_admin_review"
+  | "approved"
+  | "correction_requested"
+  | "published"
+  | "rejected";
+
+// Spine 1.2 — report_type derived from sponsorship.payment_mode at
+// write time. 'progress' for monthly sponsor; 'deployment' for
+// one-time donor. Stored on the row so admin queue filters don't
+// need a sponsorship join per row.
+export type ReportType_Spine = "progress" | "deployment";
 
 export interface CreateReportInput {
   childId: string;
@@ -58,6 +83,13 @@ export interface CreateReportInput {
   content: string; // 50-2000 chars
   visibility: ReportVisibility;
   photoUuid?: string;
+  // Spine 1.2 — when set, this is a sponsorship-tied report.
+  // Triggers report_type derivation + status='submitted_by_di'.
+  // When unset, falls back to the legacy 'pending'-status flow.
+  sponsorshipId?: string;
+  // Spine 1.2 — optional task link (Spine 1.1 admin task). Only
+  // meaningful when sponsorshipId is set; ignored otherwise.
+  taskId?: string;
 }
 
 export interface ReportSummary {
@@ -108,7 +140,11 @@ const VALID_VIS = new Set<string>(REPORT_VISIBILITY_OPTIONS.map((o) => o.value))
 export async function createReport(
   userId: string,
   input: CreateReportInput,
-): Promise<{ reportId: string }> {
+): Promise<{
+  reportId: string;
+  reportType: ReportType_Spine | null;
+  status: ReportStatus;
+}> {
   // Scope guard.
   const child = await getDiChildById(input.childId, userId);
   if (!child) throw new OutOfScopeError();
@@ -133,19 +169,142 @@ export async function createReport(
     throw new InvalidInputError("content", "max 2000 characters");
   }
 
+  // ─── Spine 1.2 — resolve sponsorship + derive report_type ──────────
+  //
+  // If sponsorshipId is provided, validate it belongs to this child
+  // and read payment_mode to derive report_type. If absent, fall back
+  // to the legacy 'pending'-status flow (existing DI form path).
+  let reportType: ReportType_Spine | null = null;
+  let resolvedSponsorshipId: string | null = null;
+  let resolvedTaskId: string | null = null;
+
+  if (input.sponsorshipId) {
+    if (!UUID_RE.test(input.sponsorshipId)) {
+      throw new InvalidInputError("sponsorshipId", "must be a uuid");
+    }
+    // Validate the sponsorship is for THIS child (or null-child
+    // campaign — but a child-scoped report can't be tied to a
+    // campaign sponsorship). Look up + check.
+    type SponsorshipPeek = {
+      id: string;
+      child: string | null;
+      payment_mode: string | null;
+    };
+    let sponsorshipRow: SponsorshipPeek | null = null;
+    try {
+      const raw = await directusServer().request(
+        readItem("sponsorship" as never, input.sponsorshipId as never, {
+          fields: ["id", "child", "payment_mode"],
+        } as never),
+      );
+      sponsorshipRow = raw as unknown as SponsorshipPeek | null;
+    } catch {
+      throw new InvalidInputError(
+        "sponsorshipId",
+        "sponsorship not found",
+      );
+    }
+    if (!sponsorshipRow) {
+      throw new InvalidInputError(
+        "sponsorshipId",
+        "sponsorship not found",
+      );
+    }
+    // The sponsorship's child column may come back as a string id or
+    // (when expanded) an object — for our fields:['child'] query it
+    // comes back as a string. Compare to the report's child.
+    const sponsorshipChildId =
+      typeof sponsorshipRow.child === "string"
+        ? sponsorshipRow.child
+        : null;
+    if (sponsorshipChildId !== input.childId) {
+      throw new InvalidInputError(
+        "sponsorshipId",
+        "sponsorship is not for this child",
+      );
+    }
+    // Derive report_type from payment_mode. monthly → progress;
+    // one_time → deployment. Anything else null (defensive — shouldn't
+    // happen with the production enum).
+    if (sponsorshipRow.payment_mode === "monthly") reportType = "progress";
+    else if (sponsorshipRow.payment_mode === "one_time")
+      reportType = "deployment";
+    resolvedSponsorshipId = input.sponsorshipId;
+
+    // Optional task link. Server-side-validate it points at the
+    // SAME sponsorship (defence-in-depth — the DI form filters the
+    // dropdown but the API is the security boundary).
+    if (input.taskId) {
+      if (!UUID_RE.test(input.taskId)) {
+        throw new InvalidInputError("taskId", "must be a uuid");
+      }
+      try {
+        const taskRow = (await directusServer().request(
+          readItem("task" as never, input.taskId as never, {
+            fields: ["id", "sponsorship", "child", "assignee"],
+          } as never),
+        )) as unknown as {
+          id: string;
+          sponsorship: string | null;
+          child: string | null;
+          assignee: string;
+        } | null;
+        if (!taskRow) {
+          throw new InvalidInputError("taskId", "task not found");
+        }
+        if (taskRow.sponsorship !== input.sponsorshipId) {
+          throw new InvalidInputError(
+            "taskId",
+            "task is not for this sponsorship",
+          );
+        }
+        // Assignee-vs-self check. Authoring a report against
+        // someone else's task is a flag — block it.
+        if (taskRow.assignee !== userId) {
+          throw new InvalidInputError(
+            "taskId",
+            "task is not assigned to you",
+          );
+        }
+        resolvedTaskId = input.taskId;
+      } catch (err) {
+        if (err instanceof InvalidInputError) throw err;
+        throw new InvalidInputError("taskId", "task lookup failed");
+      }
+    }
+  }
+
+  const isSpinePath = resolvedSponsorshipId !== null;
+  const status: ReportStatus = isSpinePath ? "submitted_by_di" : "pending";
+  const trimmedContent = input.content.trim();
+
   const created = (await directusServer().request(
     createItem("child_update" as never, {
       child: input.childId,
       type: input.type,
       title: input.title.trim(),
-      content: input.content.trim(),
+      content: trimmedContent,
       visibility: input.visibility,
-      // Always 'pending' on insert — admin promotes to 'published'
-      // (or rejects). The schema default is 'draft' but DI never
-      // submits drafts; the form posts straight to pending.
-      status: "pending",
+      // Legacy path → 'pending' (existing readers + admin tooling).
+      // Spine path → 'submitted_by_di' (new admin review queue
+      // claim/approve/correction lifecycle).
+      status,
       created_by: userId,
       ...(input.photoUuid ? { photo: input.photoUuid } : {}),
+      // Spine 1.2 — sponsorship FK (Phase 0 column), optional task FK
+      // (1.2 column), derived report_type, and donor_text initialized
+      // to the DI's content so the donor reader's
+      // COALESCE(donor_text, content) is consistent from the moment
+      // the row exists. Admin's review may overwrite donor_text;
+      // content stays the DI's forensic record.
+      ...(resolvedSponsorshipId
+        ? {
+            sponsorship: resolvedSponsorshipId,
+            report_type: reportType,
+            donor_text: trimmedContent,
+          }
+        : {}),
+      ...(resolvedTaskId ? { task: resolvedTaskId } : {}),
     } as never),
   )) as unknown as { id?: string } | undefined;
 
@@ -153,7 +312,11 @@ export async function createReport(
   if (!id) {
     throw new Error("[di-reports] createReport: no id returned");
   }
-  return { reportId: String(id) };
+  return {
+    reportId: String(id),
+    reportType,
+    status,
+  };
 }
 
 type ReportRow = {

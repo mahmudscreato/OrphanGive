@@ -67,6 +67,11 @@ export interface TaskSummary {
   completedAt: string | null;
   verifiedAt: string | null;
   isOverdue: boolean;
+  // Spine 1.2 — surface the sponsorship FK (Phase 0) on the DI's
+  // task summary so the report-creation form can pick a task and
+  // know which sponsorship to pre-bind. Null when the task is
+  // general (no sponsorship tie).
+  sponsorshipId: string | null;
 }
 
 export type TaskDetail = TaskSummary;
@@ -145,6 +150,8 @@ type TaskRow = {
   date_created: string | null;
   completed_at: string | null;
   verified_at: string | null;
+  // Spine 1.2 — Phase 0 sponsorship FK. String uuid when not expanded.
+  sponsorship: string | null;
 };
 
 const TASK_FIELDS = [
@@ -160,6 +167,8 @@ const TASK_FIELDS = [
   "date_created",
   "completed_at",
   "verified_at",
+  // Spine 1.2 — Phase 0 sponsorship FK.
+  "sponsorship",
 ] as const;
 
 function asPriority(s: string | null): TaskPriority {
@@ -200,6 +209,8 @@ function rowToSummary(row: TaskRow): TaskSummary {
     createdAt: row.date_created,
     completedAt: row.completed_at,
     verifiedAt: row.verified_at,
+    // Spine 1.2 — Phase 0 sponsorship FK (nullable).
+    sponsorshipId: row.sponsorship,
     isOverdue:
       asDiStatus(row.di_status) !== "completed_pending_verification" &&
       isOverdueByDate(row.due_date),

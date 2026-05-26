@@ -34,9 +34,29 @@ const errorClass = "mt-1.5 text-[12.5px] text-[#D04848]";
 export function ReportForm({
   childId,
   childName,
+  // Spine 1.2 — optional sponsorship + task pickers. When the page
+  // passes a non-empty `sponsorships` array, the form renders a
+  // required sponsorship selector at the top; report_type is then
+  // derived server-side from the selected sponsorship's payment_mode.
+  // When `sponsorships` is empty (no sponsorships exist for this
+  // child), the form falls back to the legacy non-sponsorship flow.
+  sponsorships = [],
+  tasks = [],
 }: {
   childId: string;
   childName: string;
+  sponsorships?: Array<{
+    id: string;
+    sponsor_category: "monthly" | "prepaid" | "one_time" | "unknown";
+    status: string;
+    donor_display_name: string;
+  }>;
+  tasks?: Array<{
+    id: string;
+    title: string;
+    sponsorshipId: string | null;
+    diStatus: string;
+  }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -47,6 +67,18 @@ export function ReportForm({
   const [photoUuid, setPhotoUuid] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  // Spine 1.2 — selector state. Default to "no sponsorship" so the
+  // legacy form path stays the visible default when sponsorships
+  // don't exist; DI can opt-in by picking one.
+  const [sponsorshipId, setSponsorshipId] = useState<string>("");
+  const [taskId, setTaskId] = useState<string>("");
+
+  // Tasks filtered to the picked sponsorship (matches the server-side
+  // validation in di-reports.ts:createReport). Memoised inline since
+  // tasks is rarely > 10 items.
+  const tasksForSponsorship = tasks.filter(
+    (t) => sponsorshipId !== "" && t.sponsorshipId === sponsorshipId,
+  );
 
   function validate(): Record<string, string> {
     const e: Record<string, string> = {};
@@ -80,6 +112,11 @@ export function ReportForm({
           content: content.trim(),
           visibility,
           ...(photoUuid ? { photoUuid } : {}),
+          // Spine 1.2 — sponsorship + task only sent when the DI
+          // explicitly picked a sponsorship; otherwise we send the
+          // legacy non-sponsorship-tied shape (writes 'pending').
+          ...(sponsorshipId ? { sponsorshipId } : {}),
+          ...(taskId ? { taskId } : {}),
         };
         const res = await fetch("/api/di/reports", {
           method: "POST",
@@ -116,8 +153,88 @@ export function ReportForm({
     });
   }
 
+  // Spine 1.2 — when the picked sponsorship is monthly, copy framing
+  // is "Progress update"; when one_time, "Deployment confirmation".
+  const pickedSponsorship = sponsorships.find((s) => s.id === sponsorshipId);
+  const reportTypeLabel =
+    pickedSponsorship?.sponsor_category === "one_time"
+      ? "Deployment confirmation"
+      : pickedSponsorship
+        ? "Progress update"
+        : null;
+
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-5">
+      {/* Spine 1.2 — sponsorship + task pickers. Only rendered when
+          this child actually has sponsorships. When the DI files an
+          "organic" update (no sponsorship), the legacy non-sponsorship
+          submission path kicks in automatically. */}
+      {sponsorships.length > 0 ? (
+        <div className="rounded-2xl bg-white border border-stone-200 shadow-sm p-5 md:p-6 space-y-5">
+          <div>
+            <label className={labelClass} htmlFor="sponsorship">
+              For which sponsorship?
+            </label>
+            <select
+              id="sponsorship"
+              className={selectClass}
+              value={sponsorshipId}
+              onChange={(e) => {
+                setSponsorshipId(e.target.value);
+                // Reset task picker if the new sponsorship doesn't
+                // include the currently-picked task.
+                setTaskId("");
+              }}
+              disabled={pending}
+            >
+              <option value="">
+                — none (file as an organic update) —
+              </option>
+              {sponsorships.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.donor_display_name} ·{" "}
+                  {s.sponsor_category === "one_time"
+                    ? "One-time"
+                    : s.sponsor_category === "prepaid"
+                      ? "Monthly (prepaid)"
+                      : s.sponsor_category === "monthly"
+                        ? "Monthly"
+                        : "Unknown"}
+                  {" · "}
+                  {s.status}
+                </option>
+              ))}
+            </select>
+            <p className={helperClass}>
+              {reportTypeLabel
+                ? `${reportTypeLabel} — admin reviews before sending to the donor.`
+                : "Or leave unset for the legacy update flow."}
+            </p>
+          </div>
+          {tasksForSponsorship.length > 0 ? (
+            <div>
+              <label className={labelClass} htmlFor="task">
+                Filed against a task? (optional)
+              </label>
+              <select
+                id="task"
+                className={selectClass}
+                value={taskId}
+                onChange={(e) => setTaskId(e.target.value)}
+                disabled={pending}
+              >
+                <option value="">— none —</option>
+                {tasksForSponsorship.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title} ({t.diStatus})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Type + title card */}
       <div className="rounded-2xl bg-white border border-stone-200 shadow-sm p-5 md:p-6 space-y-5">
         <div>
