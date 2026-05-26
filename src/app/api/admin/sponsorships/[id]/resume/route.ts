@@ -20,7 +20,6 @@
 // the symmetry argument doesn't hold when the actor is different.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createItem } from "@directus/sdk";
 import { getStripe } from "@/lib/stripe-client";
 import { updateSponsorship } from "@/lib/sponsorship-data";
 import { sendEmail, siteUrl } from "@/lib/email";
@@ -31,13 +30,14 @@ import {
   fetchDonorForEmail,
   unwrapChildId,
 } from "@/lib/admin-sponsorship-actions";
-import { directusServer } from "@/lib/directus";
+// Phase 0 — see /api/admin/sponsorships/[id]/cancel/route.ts for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
@@ -102,27 +102,18 @@ export async function POST(
     );
   }
 
-  try {
-    await directusServer().request(
-      createItem("audit_log" as never, {
-        timestamp: new Date().toISOString(),
-        actor: admin.userId,
-        actor_role: "admin",
-        action: "admin_resumed_sponsorship",
-        collection: "sponsorship",
-        record_id: sponsorship.id,
-        metadata: {
-          donor: sponsorship.donor,
-          childId: unwrapChildId(sponsorship),
-        },
-      } as never),
-    );
-  } catch (err) {
-    console.warn(
-      "[admin/sponsorships/resume] audit write failed (swallowed)",
-      err instanceof Error ? err.message : err,
-    );
-  }
+  await recordAuditEvent({
+    actorUserId: admin.userId,
+    actorRole: "admin",
+    action: "admin_resumed_sponsorship",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: sponsorship.donor,
+      childId: unwrapChildId(sponsorship),
+    },
+    request: req,
+  });
 
   // Session 61.3 hotfix — donor email mirroring the pause + cancel
   // pattern. Fire-and-await with non-fatal catch (same shape the

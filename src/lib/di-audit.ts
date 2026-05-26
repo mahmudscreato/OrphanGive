@@ -150,9 +150,50 @@ export type AuditAction =
   // Session 58.2-overnight Task 3 — bulk reorder via drag-and-drop on
   // /admin/donation-packages. Logged once per drag with the affected
   // ids + new display_order values in metadata.
-  | "admin_reordered_donation_packages";
+  | "admin_reordered_donation_packages"
+  // ─── Phase 0 — admin sponsorship lifecycle ───
+  //
+  // These 4 actions are ALREADY written today (raw createItem in the
+  // /api/admin/sponsorships/[id]/{cancel,pause,resume,refund} routes).
+  // Adding them here moves them out of the snake-case fallback in
+  // formatActionLabel into the AUDIT_LABELS map (audit-labels.ts) and
+  // makes them typesafe with recordAuditEvent. Action values match
+  // exactly what's already in the production audit_log rows so the
+  // existing reader (listAuditEventsForSponsorship) keeps finding them.
+  | "admin_cancelled_sponsorship"
+  | "admin_paused_sponsorship"
+  | "admin_resumed_sponsorship"
+  | "admin_refunded_sponsorship_charge"
+  // ─── Phase 0 — donor sponsorship lifecycle ───
+  //
+  // NEW: previously the 8 /api/sponsorship/[id]/* endpoints wrote NO
+  // audit rows (the donor flow predates the audit layer, per the
+  // inline comment in admin-sponsorships.ts:700-708). The reader
+  // currently triangulates "by donor" from sponsorship column
+  // timestamps with no attribution. With these actions written:
+  //   - timeline shows actual donor user attribution
+  //   - reason / amount / visibility values land in audit.metadata
+  //   - IP + user_agent captured via recordAuditEvent's standard path
+  //
+  // Naming: <role>_<past-tense-verb>_<entity>[_qualifier], matching
+  // the existing admin_*_sponsorship convention.
+  | "donor_cancelled_sponsorship"
+  | "donor_paused_sponsorship"
+  | "donor_resumed_sponsorship"
+  | "donor_extended_sponsorship"
+  | "donor_modified_sponsorship_amount"
+  | "donor_changed_sponsorship_visibility"
+  | "donor_cancelled_queued_sponsorship"
+  | "donor_resolved_queue_shift";
 
-export type ActorRole = "data_inputter" | "admin" | "system";
+// Phase 0 — "donor" added so /api/sponsorship/[id]/* lifecycle
+// endpoints can attribute the audit to the donor who initiated the
+// action. ACTOR_ROLE_STYLES in audit-labels.ts already carried "donor"
+// styling for a forward-looking row; this aligns the type with the
+// styling. "system" is reserved for future webhook / cron audits —
+// not yet used because audit_log.actor is NOT NULL today (see Phase 0
+// migrations/README.md "Deferred" note).
+export type ActorRole = "data_inputter" | "admin" | "system" | "donor";
 
 export interface AuditInput {
   actorUserId: string;
@@ -403,6 +444,28 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_edited_currency_rate: () => `Admin updated a currency rate`,
   admin_reordered_donation_packages: () =>
     `Admin reordered donation packages`,
+  // Phase 0 — admin sponsorship lifecycle (already wired in route
+  // handlers; now typesafe).
+  admin_cancelled_sponsorship: () => `Admin cancelled a sponsorship`,
+  admin_paused_sponsorship: () => `Admin paused a sponsorship`,
+  admin_resumed_sponsorship: () => `Admin resumed a sponsorship`,
+  admin_refunded_sponsorship_charge: () =>
+    `Admin refunded a sponsorship charge`,
+  // Phase 0 — donor sponsorship lifecycle (newly wired). Phrased
+  // from the per-child History feed POV for consistency with the
+  // existing copy style.
+  donor_cancelled_sponsorship: () => `Donor cancelled their sponsorship`,
+  donor_paused_sponsorship: () => `Donor paused their sponsorship`,
+  donor_resumed_sponsorship: () => `Donor resumed their sponsorship`,
+  donor_extended_sponsorship: () => `Donor extended their sponsorship`,
+  donor_modified_sponsorship_amount: () =>
+    `Donor changed their sponsorship amount`,
+  donor_changed_sponsorship_visibility: () =>
+    `Donor changed their sponsorship visibility`,
+  donor_cancelled_queued_sponsorship: () =>
+    `Donor cancelled their queued sponsorship slot`,
+  donor_resolved_queue_shift: () =>
+    `Donor responded to a queue-shift decision`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

@@ -2,17 +2,19 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe-client";
 import { authedSponsorship } from "@/lib/sponsorship-actions";
 import { updateSponsorship } from "@/lib/sponsorship-data";
+// Phase 0 — donor lifecycle audit. See cancel/route.ts header for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
   const auth = await authedSponsorship(id);
   if (!auth.ok) return auth.response;
-  const { sponsorship } = auth.ctx;
+  const { donor, sponsorship } = auth.ctx;
 
   if (sponsorship.payment_mode !== "monthly") {
     return NextResponse.json(
@@ -60,6 +62,22 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  await recordAuditEvent({
+    actorUserId: donor.id,
+    actorRole: "donor",
+    action: "donor_resumed_sponsorship",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: donor.id,
+      childId:
+        typeof sponsorship.child === "string"
+          ? sponsorship.child
+          : sponsorship.child.id,
+    },
+    request: req,
+  });
 
   return NextResponse.json({ success: true });
 }

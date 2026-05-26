@@ -6,6 +6,12 @@ import { promoteQueue } from "@/lib/queue";
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
+// Phase 0 — donor lifecycle audit. Previously this route wrote zero
+// audit rows; the admin sponsorship timeline reader (see
+// admin-sponsorships.ts:700-708) explicitly notes the gap and falls
+// back to a "by donor" inference from row timestamps. With this call
+// the reader gets real attribution + reason + IP / UA capture.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
@@ -137,6 +143,25 @@ export async function POST(
 
     // Don't fire the SponsorshipCancelledEmail yet — the donor still
     // has coverage. Session 15's cron will fire it at prepaid-period end.
+
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_cancelled_sponsorship",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId:
+          typeof sponsorship.child === "string"
+            ? sponsorship.child
+            : sponsorship.child.id,
+        mode: "scheduled_for_prepaid_end",
+        cancellationScheduledAt: prepaidEndIso,
+        reason: reasonRaw || null,
+      },
+      request: req,
+    });
 
     return NextResponse.json({
       success: true,
@@ -363,6 +388,24 @@ export async function POST(
       { status: 500 },
     );
   }
+
+  await recordAuditEvent({
+    actorUserId: donor.id,
+    actorRole: "donor",
+    action: "donor_cancelled_sponsorship",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: donor.id,
+      childId:
+        typeof sponsorship.child === "string"
+          ? sponsorship.child
+          : sponsorship.child.id,
+      mode: "immediate",
+      reason: reasonRaw || null,
+    },
+    request: req,
+  });
 
   try {
     const child = await fetchChildById(

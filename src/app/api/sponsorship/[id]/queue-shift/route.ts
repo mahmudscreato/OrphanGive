@@ -38,6 +38,8 @@ import {
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
+// Phase 0 — donor lifecycle audit. See cancel/route.ts header for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
@@ -107,6 +109,19 @@ export async function POST(
         { status: 500 },
       );
     }
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_resolved_queue_shift",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId: childIdRef,
+        decision: "accept",
+      },
+      request: req,
+    });
     return NextResponse.json({ success: true, decision: "accept" });
   }
 
@@ -246,6 +261,22 @@ export async function POST(
         err instanceof Error ? err.message : err,
       );
     }
+
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_resolved_queue_shift",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId: childIdRef,
+        decision: "refund",
+        refundedAmountUsd,
+        refundId,
+      },
+      request: req,
+    });
 
     return NextResponse.json({
       success: true,
@@ -393,6 +424,22 @@ export async function POST(
         );
       }
     }
+
+    await recordAuditEvent({
+      actorUserId: donor.id,
+      actorRole: "donor",
+      action: "donor_resolved_queue_shift",
+      collection: "sponsorship",
+      recordId: sponsorship.id,
+      metadata: {
+        donor: donor.id,
+        childId: childIdRef,
+        decision: "transfer",
+        transferToChildId: body.transferToChildId,
+        refundedAmountUsd,
+      },
+      request: req,
+    });
 
     // Hand the donor a sponsor-flow URL targeting the new child.
     // The dashboard redirects them after the API call returns.

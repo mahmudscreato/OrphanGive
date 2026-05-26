@@ -11,9 +11,13 @@ import {
   Edit3,
   FileBarChart,
   FileText,
+  HeartHandshake,
   Home,
   ImagePlus,
   ListChecks,
+  PauseCircle,
+  PlayCircle,
+  RotateCcw,
   Trash2,
   Truck,
   Video,
@@ -90,6 +94,20 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_reactivated_donation_package: CheckCircle2,
   admin_edited_currency_rate: Edit3,
   admin_reordered_donation_packages: ListChecks,
+  // Phase 0 — admin sponsorship lifecycle.
+  admin_cancelled_sponsorship: XCircle,
+  admin_paused_sponsorship: PauseCircle,
+  admin_resumed_sponsorship: PlayCircle,
+  admin_refunded_sponsorship_charge: RotateCcw,
+  // Phase 0 — donor sponsorship lifecycle.
+  donor_cancelled_sponsorship: XCircle,
+  donor_paused_sponsorship: PauseCircle,
+  donor_resumed_sponsorship: PlayCircle,
+  donor_extended_sponsorship: HeartHandshake,
+  donor_modified_sponsorship_amount: Edit3,
+  donor_changed_sponsorship_visibility: Edit3,
+  donor_cancelled_queued_sponsorship: XCircle,
+  donor_resolved_queue_shift: ListChecks,
 };
 
 function relativeTime(iso: string | null): string {

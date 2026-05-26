@@ -30,7 +30,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { createItem } from "@directus/sdk";
 import { getStripe } from "@/lib/stripe-client";
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
@@ -40,7 +39,8 @@ import {
   fetchDonorForEmail,
   unwrapChildId,
 } from "@/lib/admin-sponsorship-actions";
-import { directusServer } from "@/lib/directus";
+// Phase 0 — see /api/admin/sponsorships/[id]/cancel/route.ts for why.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -179,33 +179,24 @@ export async function POST(
     );
   }
 
-  // Audit (best-effort).
-  try {
-    await directusServer().request(
-      createItem("audit_log" as never, {
-        timestamp: new Date().toISOString(),
-        actor: admin.userId,
-        actor_role: "admin",
-        action: "admin_refunded_sponsorship_charge",
-        collection: "sponsorship",
-        record_id: sponsorship.id,
-        metadata: {
-          donor: sponsorship.donor,
-          childId: unwrapChildId(sponsorship),
-          chargeId,
-          refundId: refund.id,
-          amountUsd,
-          amountCents,
-          reason: reason || null,
-        },
-      } as never),
-    );
-  } catch (err) {
-    console.warn(
-      "[admin/sponsorships/refund] audit write failed (swallowed)",
-      err instanceof Error ? err.message : err,
-    );
-  }
+  // Audit (best-effort; recordAuditEvent never throws).
+  await recordAuditEvent({
+    actorUserId: admin.userId,
+    actorRole: "admin",
+    action: "admin_refunded_sponsorship_charge",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: sponsorship.donor,
+      childId: unwrapChildId(sponsorship),
+      chargeId,
+      refundId: refund.id,
+      amountUsd,
+      amountCents,
+      reason: reason || null,
+    },
+    request: req,
+  });
 
   // Donor email (best-effort). We don't have a dedicated refund
   // template; sending a short plain-text body via the same email

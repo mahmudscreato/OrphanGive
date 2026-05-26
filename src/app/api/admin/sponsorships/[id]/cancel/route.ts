@@ -18,7 +18,6 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { createItem } from "@directus/sdk";
 import { getStripe } from "@/lib/stripe-client";
 import { updateSponsorship } from "@/lib/sponsorship-data";
 import { promoteQueue } from "@/lib/queue";
@@ -30,7 +29,12 @@ import {
   fetchDonorForEmail,
   unwrapChildId,
 } from "@/lib/admin-sponsorship-actions";
-import { directusServer } from "@/lib/directus";
+// Phase 0 — switched from raw createItem("audit_log") to
+// recordAuditEvent so the write picks up IP / user-agent capture +
+// the AUDIT_REDACTED_FIELDS pass. Action value + payload shape are
+// preserved exactly so the existing listAuditEventsForSponsorship
+// reader still finds these rows.
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -149,29 +153,20 @@ export async function POST(
     );
   }
 
-  // Audit (best-effort).
-  try {
-    await directusServer().request(
-      createItem("audit_log" as never, {
-        timestamp: nowIso,
-        actor: admin.userId,
-        actor_role: "admin",
-        action: "admin_cancelled_sponsorship",
-        collection: "sponsorship",
-        record_id: sponsorship.id,
-        metadata: {
-          donor: sponsorship.donor,
-          childId: unwrapChildId(sponsorship),
-          reason,
-        },
-      } as never),
-    );
-  } catch (err) {
-    console.warn(
-      "[admin/sponsorships/cancel] audit write failed (swallowed)",
-      err instanceof Error ? err.message : err,
-    );
-  }
+  // Audit (best-effort; recordAuditEvent never throws).
+  await recordAuditEvent({
+    actorUserId: admin.userId,
+    actorRole: "admin",
+    action: "admin_cancelled_sponsorship",
+    collection: "sponsorship",
+    recordId: sponsorship.id,
+    metadata: {
+      donor: sponsorship.donor,
+      childId: unwrapChildId(sponsorship),
+      reason,
+    },
+    request: req,
+  });
 
   // Session 61.3 hotfix — donor email now attributes the cancel
   // to the OrphanGive team and surfaces the admin's stated reason
