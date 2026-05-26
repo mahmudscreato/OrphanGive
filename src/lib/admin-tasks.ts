@@ -22,7 +22,13 @@
 
 import "server-only";
 
-import { createItem, readItem, readItems, readUsers } from "@directus/sdk";
+import {
+  createItem,
+  readItem,
+  readItems,
+  readRoles,
+  readUsers,
+} from "@directus/sdk";
 import { directusServer } from "./directus";
 import type {
   TaskPriority,
@@ -164,6 +170,43 @@ function sortDIs(list: AssignableDI[]): AssignableDI[] {
 // ─── Public API: DI picker + auto-assign ────────────────────────────
 
 /**
+ * Look up the Directus role id for the "Data Inputter" role. The
+ * SDK can't filter `directus_users` on the nested `role.name` field
+ * (Directus permission quirk — admin token gets FORBIDDEN on the
+ * nested filter even though direct REST works). Two-step lookup
+ * via the roles endpoint is the reliable path.
+ *
+ * Memoised at module scope: roles rarely change, and we only need
+ * the id. A null return means the role is missing (catastrophic
+ * config error) — listAssignableDIs surfaces that as "no DIs".
+ */
+let DI_ROLE_ID_CACHE: string | null | undefined = undefined;
+async function getDIRoleId(): Promise<string | null> {
+  if (DI_ROLE_ID_CACHE !== undefined) return DI_ROLE_ID_CACHE;
+  try {
+    // readRoles is the SDK helper for the core `directus_roles`
+    // collection — `readItems("directus_roles", …)` throws "Cannot
+    // use readItems for core collections" by design.
+    const roles = (await directusServer().request(
+      readRoles({
+        filter: { name: { _eq: DI_ROLE_NAME } },
+        fields: ["id"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{ id: string }> | undefined;
+    const id = Array.isArray(roles) && roles[0] ? roles[0].id : null;
+    DI_ROLE_ID_CACHE = id;
+    return id;
+  } catch (err) {
+    console.warn(
+      "[admin-tasks] getDIRoleId failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
  * List DIs eligible to be assigned a task. If `childDivisionCode` is
  * provided, returns DIs covering that division FIRST (with
  * coversChildDivision=true), then the rest (out-of-scope but still
@@ -177,13 +220,20 @@ function sortDIs(list: AssignableDI[]): AssignableDI[] {
 export async function listAssignableDIs(
   childDivisionCode: string | null,
 ): Promise<AssignableDI[]> {
+  const roleId = await getDIRoleId();
+  if (!roleId) {
+    console.warn(
+      "[admin-tasks] Data Inputter role not found — no DIs assignable",
+    );
+    return [];
+  }
   let rows: DiUserRow[] = [];
   try {
     const result = (await directusServer().request(
       readUsers({
         filter: {
           _and: [
-            { "role.name": { _eq: DI_ROLE_NAME } },
+            { role: { _eq: roleId } },
             { status: { _eq: "active" } },
           ],
         },
