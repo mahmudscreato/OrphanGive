@@ -184,7 +184,40 @@ export type AuditAction =
   | "donor_modified_sponsorship_amount"
   | "donor_changed_sponsorship_visibility"
   | "donor_cancelled_queued_sponsorship"
-  | "donor_resolved_queue_shift";
+  | "donor_resolved_queue_shift"
+  // ─── Phase 0 follow-up — Stripe webhook (actor_role=system) ───
+  //
+  // Attribution: every row carries actor = the seeded SYSTEM user
+  // (migrations/phase-0/002-seed-system-user.mjs, env SYSTEM_USER_ID).
+  // Helper: src/lib/webhook-audit.ts pre-fills the actor + role and
+  // skips silently when SYSTEM_USER_ID is unset (best-effort —
+  // business logic in the webhook never blocks on audit writes).
+  //
+  // Event → action mapping (some collapse multiple Stripe event
+  // names into one accountability-meaningful row; see
+  // /api/webhooks/stripe handlers):
+  //   payment_intent.succeeded                      → webhook_payment_succeeded
+  //   payment_intent.payment_failed
+  //     + invoice.payment_failed
+  //     + invoice_payment.failed                    → webhook_payment_failed
+  //   invoice.payment_succeeded
+  //     + invoice.paid
+  //     + invoice_payment.paid                      → webhook_invoice_paid
+  //   customer.subscription.created                 → webhook_subscription_created
+  //   customer.subscription.deleted                 → webhook_subscription_deleted
+  //   charge.refunded                               → webhook_charge_refunded
+  //
+  // invoice_payment.created is an informational ack we don't audit
+  // (no state change).
+  //
+  // Metadata privacy: IDs + USD amounts only. No childId (recoverable
+  // from sponsorship), no Tier-3 fields.
+  | "webhook_payment_succeeded"
+  | "webhook_payment_failed"
+  | "webhook_invoice_paid"
+  | "webhook_subscription_created"
+  | "webhook_subscription_deleted"
+  | "webhook_charge_refunded";
 
 // Phase 0 — "donor" added so /api/sponsorship/[id]/* lifecycle
 // endpoints can attribute the audit to the donor who initiated the
@@ -466,6 +499,15 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Donor cancelled their queued sponsorship slot`,
   donor_resolved_queue_shift: () =>
     `Donor responded to a queue-shift decision`,
+  // Phase 0 follow-up — Stripe webhook events. Actor is the SYSTEM
+  // user (see src/lib/webhook-audit.ts + migrations/phase-0/002).
+  // Phrased from the timeline reader's POV.
+  webhook_payment_succeeded: () => `Stripe confirmed a payment succeeded`,
+  webhook_payment_failed: () => `Stripe reported a payment failed`,
+  webhook_invoice_paid: () => `Stripe invoice marked paid`,
+  webhook_subscription_created: () => `Stripe subscription created`,
+  webhook_subscription_deleted: () => `Stripe subscription ended`,
+  webhook_charge_refunded: () => `Stripe charge refunded`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

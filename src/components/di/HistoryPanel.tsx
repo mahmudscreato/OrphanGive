@@ -12,8 +12,10 @@
 // became part of) is what surfaces.
 
 import {
+  AlertTriangle,
   Camera,
   CheckCircle2,
+  CreditCard,
   Edit3,
   FileBarChart,
   FileText,
@@ -23,6 +25,7 @@ import {
   ListChecks,
   PauseCircle,
   PlayCircle,
+  Receipt,
   RotateCcw,
   Trash2,
   Truck,
@@ -121,6 +124,15 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   donor_changed_sponsorship_visibility: Edit3,
   donor_cancelled_queued_sponsorship: XCircle,
   donor_resolved_queue_shift: ListChecks,
+  // Phase 0 follow-up — Stripe webhook events. Never surface on the
+  // per-child DI History tab (action prefix filter is di_*), but the
+  // map must be exhaustive over AuditAction for type-safety.
+  webhook_payment_succeeded: CreditCard,
+  webhook_payment_failed: AlertTriangle,
+  webhook_invoice_paid: Receipt,
+  webhook_subscription_created: PlayCircle,
+  webhook_subscription_deleted: XCircle,
+  webhook_charge_refunded: RotateCcw,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
