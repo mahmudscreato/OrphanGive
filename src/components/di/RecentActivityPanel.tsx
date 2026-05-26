@@ -121,6 +121,11 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   webhook_subscription_created: PlayCircle,
   webhook_subscription_deleted: XCircle,
   webhook_charge_refunded: RotateCcw,
+  // Spine 1.1 — admin field-task creation. Type-safety placeholder;
+  // the DI Recent Activity feed filters to the DI's own actions +
+  // admin actions on scoped children, so admin_created_task rows
+  // never surface here (no childId metadata key from this audit).
+  admin_created_task: ListChecks,
 };
 
 function relativeTime(iso: string | null): string {

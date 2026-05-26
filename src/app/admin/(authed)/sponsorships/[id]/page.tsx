@@ -46,6 +46,10 @@ import { SponsorshipActionBar } from "@/components/admin/SponsorshipActionBar";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // payment-row charge / payment-intent id renders.
 import { StripeLink } from "@/components/admin/StripeLink";
+// Spine 1.1 — admin field-task creation. Hop 3 of the accountability
+// spine per docs/admin-os/02-spine-design.md §2.
+import { CreateTaskButton } from "@/components/admin/CreateTaskButton";
+import { listAssignableDIs } from "@/lib/admin-tasks";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +109,7 @@ export default async function AdminSponsorshipDetailPage({
   // Session 61.4 hotfix — audit events for the timeline panel. Best-
   // effort; failure returns empty array → timeline falls back to
   // unattributed events.
-  const [payments, charges, auditEvents] = await Promise.all([
+  const [payments, charges, auditEvents, availableDIs] = await Promise.all([
     getPaymentsForSponsorship(detail.id),
     listChargesForSponsorship(detail.id, {
       customerId: detail.raw.stripe_customer_id,
@@ -113,6 +117,9 @@ export default async function AdminSponsorshipDetailPage({
       limit: 5,
     }),
     listAuditEventsForSponsorship(detail.id, 50),
+    // Spine 1.1 — DIs eligible for the "Create field task" affordance,
+    // pre-sorted with division-coverers first. Tier-1 fields only.
+    listAssignableDIs(detail.child_division_code),
   ]);
 
   return (
@@ -136,6 +143,35 @@ export default async function AdminSponsorshipDetailPage({
       <PaymentsPanel payments={payments} currency={detail.raw.currency} />
 
       <TimelinePanel detail={detail} auditEvents={auditEvents} />
+
+      {/* Spine 1.1 — Create field task (hop 3). Sits ABOVE the
+          existing pause/cancel/refund action bar because creating
+          a task is constructive (start work) whereas the action
+          bar is corrective (stop / refund work). */}
+      <div className="mb-6 rounded-2xl bg-white border border-stone-200 shadow-sm p-5 md:p-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-display text-[16px] text-ink leading-tight">
+            Field work
+          </h3>
+          <p className="mt-0.5 text-[13px] text-ink-soft leading-relaxed">
+            Create a task for the field team — tied to this sponsorship.
+          </p>
+        </div>
+        <CreateTaskButton
+          sponsorshipId={detail.id}
+          childId={detail.child_id}
+          childDisplayName={detail.child_label}
+          childDivisionCode={detail.child_division_code}
+          childDivisionName={detail.child_division_name}
+          availableDIs={availableDIs.map((d) => ({
+            id: d.id,
+            firstName: d.firstName,
+            lastName: d.lastName,
+            email: d.email,
+            coversChildDivision: d.coversChildDivision,
+          }))}
+        />
+      </div>
 
       <SponsorshipActionBar
         sponsorshipId={detail.id}
