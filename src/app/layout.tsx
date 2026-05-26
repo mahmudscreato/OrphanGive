@@ -67,20 +67,34 @@ const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://orphangive.org"
 ).replace(/\/$/, "");
 
-// Session 64 — og:image moved to Next.js's file-based metadata
-// convention. See src/app/opengraph-image.tsx — it generates a
-// 1200×630 PNG dynamically via ImageResponse and Next auto-injects
-// the og:image meta tag pointing at /opengraph-image. The previous
-// inline Cloudinary URL (`_OrphanGive_CG_V2_25_khxro8.png` with
-// `f_auto`) was problematic: Cloudinary served it as image/jpeg
-// despite the .png extension, which some scrapers cross-check and
-// silently drop. The file-convention image has a deterministic
-// image/png Content-Type and Next handles caching for us.
+// Site-wide social-share image (default for every route that doesn't
+// ship a per-segment override). Replaces the Session 64 file-convention
+// `src/app/opengraph-image.tsx` route — that file was DELETED in this
+// commit because Next 16 MERGES file-convention images with metadata-
+// declared images (rather than letting metadata override). Keeping the
+// file would have left two og:image tags in the head: the auto-injected
+// dynamic ImageResponse plus the Cloudinary URL below. WhatsApp /
+// iMessage scrapers tend to pick the first og:image they see — which
+// would have been the file-convention one — defeating this fix.
 //
-// IMPORTANT: explicit openGraph.images / twitter.images here would
-// override the file convention — so they're intentionally OMITTED.
-// Twitter clients fall back to og:image when twitter:image is
-// absent, so the file convention covers both card types.
+// Image shape:
+//   • Cloudinary asset Mahmud uploaded for share previews.
+//   • `c_fill,w_1200,h_630` — standard OG ratio + dimensions.
+//   • `f_jpg` — force a static raster format. f_auto was previously
+//     in use, which let Cloudinary serve WebP/AVIF based on the
+//     scraper's Accept header. WhatsApp / iMessage often won't
+//     render WebP/AVIF, leaving the placeholder; jpg is the most
+//     universally-rendered format and verified image/jpeg above.
+//   • `q_auto` — Cloudinary's content-aware compression.
+// Content-Type verified image/jpeg (80 KB). The `.jpg` extension on
+// the URL also matches the served Content-Type, so extension-vs-
+// Content-Type cross-checking by strict scrapers is safe.
+const OG_IMAGE_URL =
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/c_fill,w_1200,h_630,f_jpg,q_auto/v1778529921/_OrphanGive_CG_V2_25_khxro8.jpg";
+const OG_IMAGE_ALT = "OrphanGive — Sponsor an orphan in Bangladesh";
+const OG_IMAGE_WIDTH = 1200;
+const OG_IMAGE_HEIGHT = 630;
+const OG_IMAGE_TYPE = "image/jpeg";
 
 const DEFAULT_DESCRIPTION =
   "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021).";
@@ -103,13 +117,22 @@ export const metadata: Metadata = {
     url: SITE_URL,
     title: "OrphanGive — Sponsor an orphan in Bangladesh",
     description: DEFAULT_DESCRIPTION,
-    // images: [...] intentionally omitted — see Session 64 note above.
+    images: [
+      {
+        url: OG_IMAGE_URL,
+        secureUrl: OG_IMAGE_URL,
+        width: OG_IMAGE_WIDTH,
+        height: OG_IMAGE_HEIGHT,
+        type: OG_IMAGE_TYPE,
+        alt: OG_IMAGE_ALT,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "OrphanGive — Sponsor an orphan in Bangladesh",
     description: DEFAULT_DESCRIPTION,
-    // images: [...] intentionally omitted — see Session 64 note above.
+    images: [OG_IMAGE_URL],
   },
   robots: {
     // Crawler directives are also broadcast via /robots.txt; the
