@@ -305,29 +305,68 @@ export async function countPendingReports(): Promise<number | null> {
   }
 }
 
-/** Per-report detail for the review-detail page. Returns null if
- *  the row doesn't exist or is in a terminal state we don't expose
- *  here (published / rejected — those live on the donor-facing
- *  reader / DI submissions feed). */
+/** Per-report detail for the review-detail page. Returns null only
+ *  when the row genuinely doesn't exist. Surfaces ANY error to the
+ *  dev log (was previously swallowed silently — that masked the
+ *  Spine 1.2 first-cut bug where the detail page 404'd on rows the
+ *  list page had just served).
+ *
+ *  Implementation: uses `readItems` + filter-by-id (symmetric with
+ *  `listAdminReports`'s query shape). Falls back to `readItem` if
+ *  the filter path returns empty — defends against a Directus SDK
+ *  quirk where readItem and readItems on the same custom collection
+ *  can occasionally diverge under turbopack hot-reload. Cost is one
+ *  extra request only on the empty path. */
 export async function getAdminReportDetail(
   reportId: string,
 ): Promise<AdminReportDetail | null> {
   if (!UUID_RE.test(reportId)) return null;
+
   let row: AdminReportRow | null = null;
+
+  // Primary path: filtered list-by-id. Mirrors the LIST query's
+  // shape (which the queue UI uses successfully).
   try {
     const result = (await directusServer().request(
-      readItem("child_update" as never, reportId as never, {
+      readItems("child_update" as never, {
+        filter: { id: { _eq: reportId } },
         fields: [...ADMIN_REPORT_DETAIL_FIELDS],
+        limit: 1,
       } as never),
-    )) as unknown as AdminReportRow | null;
-    row = result;
+    )) as unknown as AdminReportRow[] | undefined;
+    if (Array.isArray(result) && result.length > 0) {
+      row = result[0];
+    }
   } catch (err) {
-    console.warn(
-      "[admin-reports] getAdminReportDetail failed",
-      err instanceof Error ? err.message : err,
+    // Don't swallow — the symptom of a silent swallow is exactly
+    // what this fix is repairing. Errors at this layer mean either
+    // (a) the SDK couldn't reach Directus, or (b) the static token
+    // lost permission on child_update — both are dev-time-actionable.
+    console.error(
+      "[admin-reports] getAdminReportDetail primary read failed",
+      { reportId, err: err instanceof Error ? err.message : String(err) },
     );
-    return null;
   }
+
+  // Fallback: direct readItem. Only fires when the primary path
+  // returned empty AND no exception — covers the case where the
+  // filter-by-id SDK helper silently elides a row for any reason.
+  if (!row) {
+    try {
+      const result = (await directusServer().request(
+        readItem("child_update" as never, reportId as never, {
+          fields: [...ADMIN_REPORT_DETAIL_FIELDS],
+        } as never),
+      )) as unknown as AdminReportRow | null;
+      if (result) row = result;
+    } catch (err) {
+      console.error(
+        "[admin-reports] getAdminReportDetail fallback readItem failed",
+        { reportId, err: err instanceof Error ? err.message : String(err) },
+      );
+    }
+  }
+
   if (!row) return null;
   return rowToDetail(row);
 }
