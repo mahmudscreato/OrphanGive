@@ -116,10 +116,17 @@ export function TaskCard({ task }: { task: TaskSummary }) {
         ) : null}
       </div>
 
-      {/* Title */}
-      <h3 className="font-display text-[18px] text-ink leading-snug mt-2">
-        {task.title}
-      </h3>
+      {/* Title — links to task detail (Spine 1.2b). The TaskActionButton
+          below stays an in-place action; the title is the navigation
+          affordance into the detail + "File report" entry point. */}
+      <Link
+        href={`/di/tasks/${task.id}`}
+        className="block mt-2 group"
+      >
+        <h3 className="font-display text-[18px] text-ink leading-snug group-hover:text-tangerine-deeper transition-colors">
+          {task.title}
+        </h3>
+      </Link>
 
       {/* Description */}
       {task.description ? (
@@ -144,13 +151,23 @@ export function TaskCard({ task }: { task: TaskSummary }) {
         <p className={`mt-3 text-[13px] ${adminHint.tone}`}>{adminHint.label}</p>
       ) : null}
 
-      {/* Action button */}
-      <div className="mt-4 pt-3 border-t border-stone-200">
+      {/* Action button + detail link (Spine 1.2b) */}
+      <div className="mt-4 pt-3 border-t border-stone-200 flex items-center justify-between gap-3">
         <TaskActionButton
           taskId={task.id}
           diStatus={task.diStatus}
           adminStatus={task.adminStatus}
         />
+        <Link
+          href={`/di/tasks/${task.id}`}
+          className="inline-flex items-center gap-1 text-[13px] text-slate hover:text-tangerine-deeper transition-colors"
+        >
+          View details
+          <ChevronRight
+            className="w-3.5 h-3.5 stroke-[1.75]"
+            aria-hidden="true"
+          />
+        </Link>
       </div>
     </article>
   );

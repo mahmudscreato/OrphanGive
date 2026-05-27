@@ -639,3 +639,78 @@ export async function resubmitReport(
     sponsorshipId,
   };
 }
+
+// ─── Spine 1.2b — task→report loop close ───────────────────────────
+//
+// Surfaces any reports the DI has filed against a specific task. Used
+// by /di/tasks/[id] to show the report-already-filed state + status,
+// closing the task→report visual loop without changing either state
+// machine.
+//
+// Scope guard: caller passes userId; we filter to `created_by = userId`
+// so a DI only sees their OWN reports against the task. (Multiple DIs
+// could in principle hit the same task across a re-assignment; we
+// scope-narrow to the caller for privacy.)
+
+export interface TaskReportLink {
+  id: string;
+  title: string;
+  status: ReportStatus;
+  reportType: ReportType_Spine | null;
+  // Created-at is approximated by published_at (set on Spine 1.3) or
+  // null until then. The card surfaces "filed" without a precise
+  // timestamp; admin's audit log has the real timeline.
+  publishedAt: string | null;
+}
+
+export async function listReportsForTask(
+  userId: string,
+  taskId: string,
+): Promise<TaskReportLink[]> {
+  if (!UUID_RE.test(taskId) || !UUID_RE.test(userId)) return [];
+  let rows: Array<{
+    id: string;
+    title: string | null;
+    status: string | null;
+    report_type: string | null;
+    published_at: string | null;
+  }> = [];
+  try {
+    const raw = (await directusServer().request(
+      readItems("child_update" as never, {
+        filter: {
+          _and: [
+            { task: { _eq: taskId } },
+            { created_by: { _eq: userId } },
+          ],
+        },
+        fields: [
+          "id",
+          "title",
+          "status",
+          "report_type",
+          "published_at",
+        ] as const,
+        sort: ["-id"],
+        limit: 10,
+      } as never),
+    )) as unknown as typeof rows | undefined;
+    if (Array.isArray(raw)) rows = raw;
+  } catch (err) {
+    console.warn(
+      "[di-reports] listReportsForTask failed",
+      { taskId, err: err instanceof Error ? err.message : err },
+    );
+    return [];
+  }
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title?.trim() || "(untitled)",
+    status: isStatus(r.status) ? r.status : "pending",
+    reportType:
+      r.report_type === "progress" || r.report_type === "deployment"
+        ? r.report_type
+        : null,
+    publishedAt: r.published_at,
+  }));
+}

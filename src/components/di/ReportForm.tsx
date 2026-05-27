@@ -42,6 +42,12 @@ export function ReportForm({
   // child), the form falls back to the legacy non-sponsorship flow.
   sponsorships = [],
   tasks = [],
+  // Spine 1.2b — optional initial selections, passed by the
+  // /di/tasks/[id] "File report for this task" entry point so the
+  // sponsorship + task pickers come up pre-bound. Defaults to "" so
+  // the standard /di/children/[id]/reports/new flow is unaffected.
+  initialSponsorshipId = "",
+  initialTaskId = "",
 }: {
   childId: string;
   childName: string;
@@ -57,6 +63,8 @@ export function ReportForm({
     sponsorshipId: string | null;
     diStatus: string;
   }>;
+  initialSponsorshipId?: string;
+  initialTaskId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -70,8 +78,16 @@ export function ReportForm({
   // Spine 1.2 — selector state. Default to "no sponsorship" so the
   // legacy form path stays the visible default when sponsorships
   // don't exist; DI can opt-in by picking one.
-  const [sponsorshipId, setSponsorshipId] = useState<string>("");
-  const [taskId, setTaskId] = useState<string>("");
+  //
+  // Spine 1.2b — when called from the task→report entry the props
+  // seed both pickers. If the seed task doesn't match any task in
+  // `tasks` (e.g. URL tampering) the form silently drops it; the
+  // server-side validation in createReport is the actual security
+  // boundary.
+  const [sponsorshipId, setSponsorshipId] = useState<string>(
+    initialSponsorshipId,
+  );
+  const [taskId, setTaskId] = useState<string>(initialTaskId);
 
   // Tasks filtered to the picked sponsorship (matches the server-side
   // validation in di-reports.ts:createReport). Memoised inline since

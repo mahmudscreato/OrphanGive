@@ -18,11 +18,21 @@ export const dynamic = "force-dynamic";
 
 export default async function DiNewReportPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // Spine 1.2b — when the DI lands here via the "File report for
+  // this task" button on /di/tasks/[id], the link carries the
+  // task's sponsorship + task ids so the ReportForm pickers come
+  // up pre-bound. URL parameters are validated against the loaded
+  // sponsorships/tasks below; server-side createReport is the
+  // security boundary, so any URL tampering at most de-binds the
+  // selection rather than letting the DI bypass scope.
+  searchParams: Promise<{ sponsorshipId?: string; taskId?: string }>;
 }) {
   const session = await requireDiUser();
   const { id } = await params;
+  const sp = await searchParams;
   const child = await getDiChildById(id, session.userId);
   if (!child) notFound();
 
@@ -96,6 +106,28 @@ export default async function DiNewReportPage({
         childName={child.display_name || "this child"}
         sponsorships={sponsorships}
         tasks={tasksForChild}
+        initialSponsorshipId={
+          // Pre-bind ONLY if the URL-named sponsorship is actually in
+          // the loaded picker — silently drop otherwise (no error
+          // surface; the DI can repick).
+          typeof sp.sponsorshipId === "string" &&
+          sponsorships.some((s) => s.id === sp.sponsorshipId)
+            ? sp.sponsorshipId
+            : ""
+        }
+        initialTaskId={
+          // Pre-bind task only when its sponsorship matches the
+          // pre-bound sponsorship (same defensive check the form
+          // applies after selection).
+          typeof sp.taskId === "string" &&
+          typeof sp.sponsorshipId === "string" &&
+          tasksForChild.some(
+            (t) =>
+              t.id === sp.taskId && t.sponsorshipId === sp.sponsorshipId,
+          )
+            ? sp.taskId
+            : ""
+        }
       />
     </div>
   );
