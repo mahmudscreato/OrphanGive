@@ -132,21 +132,49 @@ type FulfillmentStatus =
 
 **Resolution order** (first match wins):
 
+> **Option A correction (post-sub-phase-2):** the earlier draft of this
+> section put the payment-cancelled check at #1, which contradicted
+> §B.2's "strictly independent axes" intent — admin's explicit
+> `disputed` or `on_hold` gestures on a cancelled sponsorship would be
+> masked as "Cancelled". Locked correction: **all four exception
+> column values take precedence over payment-cancelled, not just the
+> refund flow.** An admin's explicit fulfillment exception is always
+> surfaced to the donor regardless of payment state. The Q5 composite
+> (delivered + sponsorship-ended) still fires for the NO-exception
+> delivered+cancelled case.
+
 ```
-1. If sponsorship.status = 'cancelled' / 'failed'  → phase = 'cancelled_fulfillment'
-                                                    (payment is gone; no fulfillment will happen)
-2. If sponsorship.fulfillment_exception != null    → phase = that exception
-3. If sponsorship.status = 'pending_payment'       → display nothing yet
-                                                    (donation isn't really "in" until Stripe confirms)
-4. If NO task exists with task.sponsorship = id
-   AND NO child_update exists with .sponsorship    → phase = 'pending'
-5. If a child_update.status = 'published' exists   → phase = 'delivered' (latest cycle for monthly)
-6. If a child_update.status ∈ {submitted_by_di,
-   under_admin_review, approved, correction_req,
-   rejected}  exists  with .sponsorship = id        → phase = 'in_delivery'
-7. If a task exists with task.sponsorship = id
-   AND task.di_status != 'verified_complete'        → phase = 'processing'
-8. Fallback                                         → phase = 'pending'
+1. If sponsorship.fulfillment_exception = 'refunded'         → phase = 'refunded'
+2. If sponsorship.fulfillment_exception = 'refund_requested' → phase = 'refund_requested'
+3. If sponsorship.fulfillment_exception = 'disputed'         → phase = 'disputed'
+4. If sponsorship.fulfillment_exception = 'on_hold'          → phase = 'on_hold'
+
+5. If sponsorship.status ∈ {cancelled, failed} AND no exception:
+   - if a child_update.status='published' exists for this sponsorship:
+       phase = 'delivered' WITH sponsorshipEndedAt set
+       (Q5 terminal composite — donor UI renders
+        "Delivered • Sponsorship ended [date]")
+   - otherwise:
+       phase = 'cancelled_fulfillment'
+
+6. If sponsorship.status = 'paused' AND no exception → phase = 'on_hold'
+   (Q1 lock: DISPLAYED not WRITTEN — resuming payment auto-resumes
+    fulfillment because no exception column was set.)
+
+7. If sponsorship.status = 'pending_payment'        → display nothing yet
+                                                     (donation isn't "in" until Stripe confirms)
+
+8. Derived spine phase:
+   - If a child_update.status='published' exists    → phase = 'delivered'
+                                                     (latest cycle for monthly)
+   - If a child_update.status ∈ {submitted_by_di,
+     under_admin_review, approved, correction_requested,
+     pending}                                       → phase = 'in_delivery'
+   - If a task exists AND task.di_status =
+     'completed_pending_verification'               → phase = 'in_delivery'
+   - If a task exists AND task.di_status ∈ {open,
+     in_progress}                                   → phase = 'processing'
+   - Fallback                                       → phase = 'pending'
 ```
 
 For **monthly** sponsorships, "delivered" means *the latest cycle is
