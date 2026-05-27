@@ -22,6 +22,12 @@ import "server-only";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { countPendingDocuments } from "./admin-documents";
+// Spine 1.2 — single source of truth for "pending reports" count.
+// Same helper feeds the /admin/reviews index tile, so sidebar badge
+// and index totals can't diverge. Status set is `submitted_by_di`
+// + `under_admin_review` + legacy `pending` — `correction_requested`
+// is awaiting the DI, NOT admin, so it's deliberately excluded.
+import { countPendingReports } from "./admin-reports";
 
 async function safeCount(
   collection: string,
@@ -51,6 +57,11 @@ export interface AdminHomeStats {
   pendingIntakePhotoCount: number | null;
   pendingDeliveryCount: number | null;
   pendingDocumentCount: number | null;
+  // Spine 1.2 — surfaced for the sidebar Reviews badge aggregation
+  // (src/app/admin/(authed)/layout.tsx). The /admin/reviews index
+  // calls countPendingReports() directly for its tile; this field
+  // exists so the badge can use the SAME helper without re-fetching.
+  pendingReportCount: number | null;
 }
 
 export async function getAdminHomeStats(): Promise<AdminHomeStats> {
@@ -60,6 +71,7 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     pendingIntakePhotoCount,
     pendingDeliveryCount,
     pendingDocumentCount,
+    pendingReportCount,
   ] = await Promise.all([
     safeCount("child_proposal", { status: { _eq: "pending" } }),
     safeCount("child_moment", { status: { _eq: "pending" } }),
@@ -72,6 +84,11 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     // mismatch (home=9, queue=0); reusing the function eliminates
     // any drift.
     countPendingDocuments(),
+    // Reports: Spine 1.2 — same single-helper pattern. Status set
+    // matches the index tile: submitted_by_di + under_admin_review
+    // + legacy 'pending'. Excludes correction_requested (those are
+    // DI-blocked rows, not admin-blocked).
+    countPendingReports(),
   ]);
 
   return {
@@ -80,5 +97,6 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     pendingIntakePhotoCount,
     pendingDeliveryCount,
     pendingDocumentCount,
+    pendingReportCount,
   };
 }

@@ -29,16 +29,22 @@ export default async function AdminAuthedLayout({
     countPendingDonorApprovals(),
     countActiveChildrenForBadge(),
   ]);
+  // Spine 1.2 — Reviews badge must include the reports queue.
+  // pendingReportCount uses the SAME helper (countPendingReports) the
+  // /admin/reviews index tile uses, so badge total and index tile
+  // sum agree by construction.
   const reviewsCount =
     (stats.pendingMomentCount ?? 0) +
     (stats.pendingIntakePhotoCount ?? 0) +
-    (stats.pendingDocumentCount ?? 0);
+    (stats.pendingDocumentCount ?? 0) +
+    (stats.pendingReportCount ?? 0);
   const badges = {
     proposals: stats.pendingProposalCount,
     reviews:
       stats.pendingMomentCount === null &&
       stats.pendingIntakePhotoCount === null &&
-      stats.pendingDocumentCount === null
+      stats.pendingDocumentCount === null &&
+      stats.pendingReportCount === null
         ? null
         : reviewsCount,
     donors: donorPending,
