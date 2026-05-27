@@ -36,6 +36,7 @@ import {
   readItem,
   readItems,
   readUsers,
+  updateItem,
 } from "@directus/sdk";
 
 const UUID_RE =
@@ -98,10 +99,18 @@ export interface ReportSummary {
   title: string;
   content: string;
   photoUrl: string | null;
+  // Spine 1.2 — the raw photo uuid is needed too, so the edit form
+  // can re-bind the existing photo via PhotoUploadField. photoUrl
+  // is a derived `/api/assets/${uuid}` URL for rendering.
+  photoUuid: string | null;
   visibility: ReportVisibility;
   status: ReportStatus;
   publishedAt: string | null;
   rejectionReason: string | null;
+  // Spine 1.2 — admin's correction note when status === 'correction_requested'.
+  // The DI sees this prominently on their report card + on the
+  // resubmit form. Null in every other status.
+  correctionReason: string | null;
   submittedByName: string;
   isOwn: boolean;
 }
@@ -330,6 +339,11 @@ type ReportRow = {
   published_at: string | null;
   rejection_reason: string | null;
   created_by: string | null;
+  // Spine 1.2 — admin's send-back note. Omitting this from the
+  // SELECT was the Spine 1.2 backward-loop bug: the DI's reader
+  // had the row but couldn't show the reason.
+  correction_reason: string | null;
+  sponsorship: string | null;
 };
 
 const REPORT_FIELDS = [
@@ -343,6 +357,8 @@ const REPORT_FIELDS = [
   "published_at",
   "rejection_reason",
   "created_by",
+  "correction_reason",
+  "sponsorship",
 ] as const;
 
 function isType(s: string | null | undefined): s is ReportType {
@@ -354,8 +370,19 @@ function isVis(s: string | null | undefined): s is ReportVisibility {
 }
 
 function isStatus(s: string | null | undefined): s is ReportStatus {
+  // Spine 1.2 — the new lifecycle statuses MUST pass this guard.
+  // Previously this only accepted the 4 legacy values, which silently
+  // coerced 'correction_requested' to 'pending' on the DI's reader —
+  // hiding the fact that admin had sent the report back.
   return (
-    s === "draft" || s === "pending" || s === "published" || s === "rejected"
+    s === "draft" ||
+    s === "pending" ||
+    s === "submitted_by_di" ||
+    s === "under_admin_review" ||
+    s === "approved" ||
+    s === "correction_requested" ||
+    s === "published" ||
+    s === "rejected"
   );
 }
 
@@ -428,12 +455,187 @@ export async function listReportsForChild(
       title: r.title?.trim() || "(untitled)",
       content: r.content?.trim() ?? "",
       photoUrl: r.photo ? `/api/assets/${r.photo}` : null,
+      photoUuid: r.photo,
       visibility: isVis(r.visibility) ? r.visibility : "all_donors",
       status: isStatus(r.status) ? r.status : "pending",
       publishedAt: r.published_at,
       rejectionReason: r.rejection_reason,
+      correctionReason: r.correction_reason,
       submittedByName: name,
       isOwn,
     };
   });
+}
+
+// ─── Spine 1.2 — DI resubmit path ───────────────────────────────────
+//
+// Closes the backward loop opened by admin's send-back-for-correction:
+// the DI fetches their own correction_requested row, edits the
+// content/title/visibility/photo, and resubmits — flipping status back
+// to 'submitted_by_di' so it re-enters the admin queue. The DI's
+// original sponsorship/task/report_type are PRESERVED (not editable
+// here — those were locked at first submit).
+//
+// Scope guards:
+//  - DI must be the original `created_by` (not just in scope) —
+//    only the author can fix their own work
+//  - status MUST be 'correction_requested' — admin's other
+//    intermediate states (under_admin_review, approved) aren't
+//    DI-editable, and 'published' is terminal
+//  - same 50-2000 char content validation as createReport
+
+export interface ResubmitReportInput {
+  title: string;
+  content: string;
+  visibility: ReportVisibility;
+  photoUuid?: string | null; // null = clear existing photo; undefined = leave as-is
+}
+
+export interface ResubmittableReport {
+  id: string;
+  childId: string;
+  type: ReportType;
+  title: string;
+  content: string;
+  visibility: ReportVisibility;
+  photoUuid: string | null;
+  correctionReason: string | null;
+}
+
+/**
+ * Read a report row IF the caller is allowed to resubmit it. Returns
+ * null when:
+ *   - row doesn't exist
+ *   - row's child isn't in the DI's scope (defense-in-depth)
+ *   - row's created_by isn't this DI
+ *   - row's status isn't 'correction_requested'
+ *
+ * Used by the /edit page to load the form's initial state with the
+ * SAME guards the resubmit mutator will re-enforce on POST.
+ */
+export async function getReportForResubmit(
+  userId: string,
+  reportId: string,
+): Promise<ResubmittableReport | null> {
+  if (!UUID_RE.test(reportId)) return null;
+  let row: (ReportRow & { child: string | null }) | null = null;
+  try {
+    const raw = await directusServer().request(
+      readItem("child_update" as never, reportId as never, {
+        fields: [...REPORT_FIELDS, "child"],
+      } as never),
+    );
+    row = raw as unknown as (ReportRow & { child: string | null }) | null;
+  } catch (err) {
+    console.warn(
+      "[di-reports] getReportForResubmit read failed",
+      { reportId, err: err instanceof Error ? err.message : err },
+    );
+    return null;
+  }
+  if (!row || !row.child) return null;
+  if (row.created_by !== userId) return null;
+  if (row.status !== "correction_requested") return null;
+  const child = await getDiChildById(row.child, userId);
+  if (!child) return null;
+  return {
+    id: row.id,
+    childId: row.child,
+    type: isType(row.type) ? row.type : "story",
+    title: row.title?.trim() || "",
+    content: row.content?.trim() ?? "",
+    visibility: isVis(row.visibility) ? row.visibility : "all_donors",
+    photoUuid: row.photo,
+    correctionReason: row.correction_reason,
+  };
+}
+
+/**
+ * Apply the DI's edits + flip status back to 'submitted_by_di'.
+ * Clears correction_reason (the round-trip is closed; the admin's
+ * note from THIS cycle should not persist past the next claim).
+ * The row's sponsorship/task/report_type/created_by/donor_text-edit
+ * history all stay untouched — admin's prior edits to donor_text are
+ * NOT discarded (the DI's resubmit may have been a tiny fix and
+ * admin's wording may still be the right donor copy). Admin can edit
+ * again post-claim if needed.
+ *
+ * Returns the report's childId + sponsorship_id so the API route can
+ * write a correctly-scoped audit row + notify admin.
+ */
+export async function resubmitReport(
+  userId: string,
+  reportId: string,
+  input: ResubmitReportInput,
+): Promise<{ reportId: string; childId: string; sponsorshipId: string | null }> {
+  if (!UUID_RE.test(reportId)) {
+    throw new InvalidInputError("reportId", "must be a uuid");
+  }
+  const trimmedTitle = input.title.trim();
+  const trimmedContent = input.content.trim();
+  if (trimmedTitle.length === 0) {
+    throw new InvalidInputError("title", "required");
+  }
+  if (trimmedTitle.length > 200) {
+    throw new InvalidInputError("title", "max 200 characters");
+  }
+  if (trimmedContent.length < 50) {
+    throw new InvalidInputError("content", "must be at least 50 characters");
+  }
+  if (trimmedContent.length > 2000) {
+    throw new InvalidInputError("content", "max 2000 characters");
+  }
+  if (!VALID_VIS.has(input.visibility)) {
+    throw new InvalidInputError("visibility", "invalid value");
+  }
+
+  // Re-fetch with the SAME guards as getReportForResubmit, in case
+  // status changed since the form loaded (admin could have re-claimed
+  // and approved while the DI was editing).
+  const existing = await getReportForResubmit(userId, reportId);
+  if (!existing) {
+    throw new OutOfScopeError(
+      "Report not found, not yours, or no longer awaiting correction",
+    );
+  }
+
+  // Photo handling: undefined → unchanged; null → clear; uuid → set.
+  let photoPatch: Record<string, unknown> = {};
+  if (input.photoUuid === null) {
+    photoPatch = { photo: null };
+  } else if (typeof input.photoUuid === "string" && input.photoUuid.length > 0) {
+    photoPatch = { photo: input.photoUuid };
+  }
+
+  await directusServer().request(
+    updateItem("child_update" as never, reportId as never, {
+      title: trimmedTitle,
+      content: trimmedContent,
+      visibility: input.visibility,
+      status: "submitted_by_di",
+      correction_reason: null,
+      ...photoPatch,
+    } as never),
+  );
+
+  // Look up sponsorship_id for audit metadata (not on the
+  // ResubmittableReport return shape — re-read the row).
+  let sponsorshipId: string | null = null;
+  try {
+    const raw = await directusServer().request(
+      readItem("child_update" as never, reportId as never, {
+        fields: ["sponsorship"],
+      } as never),
+    );
+    const peek = raw as unknown as { sponsorship?: string | null } | null;
+    sponsorshipId = peek?.sponsorship ?? null;
+  } catch {
+    // Best-effort — audit can fire without it.
+  }
+
+  return {
+    reportId,
+    childId: existing.childId,
+    sponsorshipId,
+  };
 }

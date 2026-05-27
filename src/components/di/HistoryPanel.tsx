@@ -40,6 +40,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_withdrew_proposal: Trash2,
   di_uploaded_moment: Camera,
   di_submitted_report: FileBarChart,
+  di_resubmitted_report: RotateCcw,
   di_marked_delivery: Truck,
   di_started_task: ListChecks,
   di_completed_task: ListChecks,

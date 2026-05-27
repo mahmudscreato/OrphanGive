@@ -37,6 +37,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   di_withdrew_proposal: "Withdrew proposal",
   di_uploaded_moment: "Uploaded moment",
   di_submitted_report: "Submitted report",
+  di_resubmitted_report: "Resubmitted report after corrections",
   di_marked_delivery: "Marked aid delivery",
   di_started_task: "Started task",
   di_completed_task: "Completed task",

@@ -43,6 +43,11 @@ export type AuditAction =
   | "di_withdrew_proposal"
   | "di_uploaded_moment"
   | "di_submitted_report"
+  // Spine 1.2 — DI resubmits a report after admin sent it back for
+  // correction. status flips from 'correction_requested' back to
+  // 'submitted_by_di'. Distinct from di_submitted_report so the
+  // audit timeline shows the round-trip explicitly.
+  | "di_resubmitted_report"
   | "di_marked_delivery"
   | "di_started_task"
   | "di_completed_task"
@@ -420,6 +425,7 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   di_withdrew_proposal: (a) => `${a} withdrew a pending proposal`,
   di_uploaded_moment: (a) => `${a} uploaded a moment`,
   di_submitted_report: (a) => `${a} submitted a report`,
+  di_resubmitted_report: (a) => `${a} resubmitted a report after corrections`,
   di_marked_delivery: (a) => `${a} marked an aid delivery`,
   di_started_task: (a) => `${a} started a task`,
   di_completed_task: (a) => `${a} marked a task complete`,

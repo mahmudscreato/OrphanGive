@@ -5,7 +5,8 @@
 // pattern that doesn't require client JS.
 
 import Image from "next/image";
-import { Eye, Globe, Lock } from "lucide-react";
+import Link from "next/link";
+import { Edit3, Eye, Globe, Lock, RotateCcw } from "lucide-react";
 import { StatusPill } from "./StatusPill";
 import type { ReportSummary, ReportType } from "@/lib/di-reports";
 
@@ -42,7 +43,16 @@ function formatLongDate(iso: string | null): string | null {
   }).format(d);
 }
 
-export function ReportCard({ report }: { report: ReportSummary }) {
+export function ReportCard({
+  report,
+  childId,
+}: {
+  report: ReportSummary;
+  // Spine 1.2 — required for the "Edit & resubmit" link when the
+  // report is in correction_requested status. ReportsPanel always
+  // passes it; donor-side views never render this branch.
+  childId: string;
+}) {
   const VisIcon = report.visibility === "sponsor_only" ? Lock : Globe;
   const visLabel =
     report.visibility === "sponsor_only" ? "Sponsor only" : "All donors";
@@ -53,9 +63,46 @@ export function ReportCard({ report }: { report: ReportSummary }) {
     : report.content;
 
   const publishedLine = formatLongDate(report.publishedAt);
+  const needsCorrection = report.status === "correction_requested";
 
   return (
     <article className="rounded-2xl bg-white border border-stone-200 shadow-sm p-5 mb-3">
+      {/* Spine 1.2 — when admin sent the report back, the reason +
+          "Edit & resubmit" affordance go at the TOP so the DI can't
+          miss them. Banner copy uses amber per StatusPill's
+          correction_requested palette for visual continuity. */}
+      {needsCorrection ? (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-start gap-2">
+            <RotateCcw
+              className="w-4 h-4 text-amber-800 stroke-[2] shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-[13px] text-amber-900 leading-snug">
+                Admin asked for changes
+              </p>
+              {report.correctionReason ? (
+                <p className="mt-1 text-[13px] text-amber-900 leading-relaxed">
+                  {report.correctionReason}
+                </p>
+              ) : (
+                <p className="mt-1 text-[13px] italic text-amber-900/80">
+                  No specific note provided.
+                </p>
+              )}
+              <Link
+                href={`/di/children/${childId}/reports/${report.id}/edit`}
+                className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-tangerine text-white text-[13px] font-medium hover:bg-tangerine-deep transition-colors"
+              >
+                <Edit3 className="w-3.5 h-3.5 stroke-[1.75]" aria-hidden="true" />
+                Edit &amp; resubmit
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Type + status */}
       <div className="flex flex-wrap items-center gap-2">
         <span

@@ -52,7 +52,7 @@ export function ReportsPanel({
       ) : (
         <div>
           {reports.map((r) => (
-            <ReportCard key={r.id} report={r} />
+            <ReportCard key={r.id} report={r} childId={childId} />
           ))}
         </div>
       )}

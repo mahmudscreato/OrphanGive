@@ -1125,6 +1125,8 @@ function describeAuditAction(action: string, actor: string): string {
     case "admin_rejected_moment":
       return `${actor} rejected a moment`;
     // Spine 1.2 — admin report review.
+    case "di_resubmitted_report":
+      return `${actor} resubmitted a report after corrections`;
     case "admin_viewed_report":
       return `${actor} opened a report`;
     case "admin_claimed_report_review":
