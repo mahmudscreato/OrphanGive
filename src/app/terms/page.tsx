@@ -1,8 +1,6 @@
 // Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
 // Any further changes should be reviewed before publication.
 
-import { getSitePage } from "@/lib/site-page";
-import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
 import {
   LegalPageLayout,
   LegalList,
@@ -10,32 +8,25 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata() {
-  const page = await getSitePage("terms");
+// P3 content lot — metadata is hardcoded. See sibling page in
+// /privacy for the full rationale: the CMS site_page row had
+// divergent (non-counsel-reviewed) attribution and would have
+// suppressed the founder-approved Goodverse Foundation registration
+// number (Reg. S-14837/2026).
+export function generateMetadata() {
   return {
-    title: page?.title ? `${page.title} — OrphanGive` : "Terms of use — OrphanGive",
+    title: "Terms of use — OrphanGive",
     description:
-      page?.meta_description ??
-      "The rules and expectations governing your use of OrphanGive. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
+      "The rules and expectations governing your use of OrphanGive. Operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
   };
 }
 
-export default async function TermsPage() {
-  const page = await getSitePage("terms");
-
-  if (page?.content) {
-    return (
-      <SitePageRenderer
-        page={page}
-        fallback={{
-          title: "Terms of use",
-          description:
-            "The rules and expectations governing your use of OrphanGive.",
-        }}
-      />
-    );
-  }
-
+export default function TermsPage() {
+  // P3 content lot — CMS override DISABLED for this slug. See the
+  // matching comment block in src/app/privacy/page.tsx for the
+  // full rationale (counsel-reviewed content is the source of truth;
+  // the CMS row carried older copy that misnamed the operating
+  // entity). /cookies, /refund, /safeguarding still honour CMS.
   return (
     <LegalPageLayout
       eyebrowText="Terms of use"
@@ -64,14 +55,15 @@ export default async function TermsPage() {
               </p>
               <p>
                 These terms form a binding agreement between you and{" "}
-                <strong>Goodverse Foundation</strong>, the operating
-                entity behind OrphanGive. Goodverse Foundation is a
+                <strong>Goodverse Foundation</strong> (Reg.
+                S-14837/2026), the operating entity behind OrphanGive,
+                acting in partnership with{" "}
+                <strong>Children&apos;s Heaven Trust</strong> (Reg.
+                iv-98/2021). Goodverse Foundation is a
                 Bangladesh-registered organization with its
                 registered address at Ta 135/B, Gulshan Badda Link
                 Road, Dhaka 1212, Bangladesh.
               </p>
-              {/* TODO: Goodverse Foundation statutory registration
-                  number — to be added before final publication. */}
             </>
           ),
         },
