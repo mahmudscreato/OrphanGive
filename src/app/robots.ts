@@ -36,6 +36,13 @@ export default function robots(): MetadataRoute.Robots {
           "/admin/",
           "/di",
           "/di/",
+          // P1.1 — child profile routes. Verified named children
+          // must never reach a search engine index. The pages
+          // themselves emit robots:index:false; sitemap.ts excludes
+          // them; this disallow is the third layer. Pages remain
+          // accessible to human visitors.
+          "/children",
+          "/children/",
         ],
       },
     ],

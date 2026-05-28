@@ -6,21 +6,15 @@
 // don't need them and indexing them would either confuse SEO or
 // leak donor-side surfaces.
 //
-// Child profile pages are surfaced individually so each child can
-// be discovered organically. The profile metadata is privacy-
-// preserving (see /children/[id] generateMetadata) — donor-facing
-// data lives behind the reveal-request flow, not in <meta> tags.
-//
-// lastModified: the `child` collection currently has no
-// `date_updated` field (Directus timestamp tracking wasn't enabled
-// at create-time). Fallback is the current build's `new Date()` —
-// crawlers will see a fresh timestamp on every regeneration, which
-// is fine for a low-volume site. Add `date_updated` to the child
-// collection later if granular last-modified matters.
+// P1.1 — /children and every /children/[id] are explicitly excluded.
+// Those routes emit `robots: index:false, follow:false` per page
+// (see src/app/children/page.tsx and /children/[id]/page.tsx) and
+// robots.ts disallows the path. The sitemap omission is the third
+// layer of defense: there is no point telling Google about URLs
+// we've told Google not to index. The previous getActiveChildIds()
+// Directus fetch + childPages enumeration was removed wholesale.
 
 import type { MetadataRoute } from "next";
-import { readItems } from "@directus/sdk";
-import { directusServer } from "@/lib/directus";
 
 export const dynamic = "force-dynamic";
 
@@ -28,35 +22,13 @@ const BASE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://orphangive.org"
 ).replace(/\/$/, "");
 
-type ChildRow = { id: string };
-
-async function getActiveChildIds(): Promise<string[]> {
-  try {
-    const rows = (await directusServer().request(
-      readItems("child" as never, {
-        filter: { status: { _eq: "active" } },
-        fields: ["id"],
-        limit: -1,
-      } as never),
-    )) as unknown as ChildRow[];
-    return Array.isArray(rows) ? rows.map((r) => r.id).filter(Boolean) : [];
-  } catch {
-    // Sitemap should never 500 — better to ship a partial map than
-    // none. Static routes still surface even if Directus is briefly
-    // unreachable.
-    return [];
-  }
-}
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const childIds = await getActiveChildIds();
 
-  // Session 21 — priorities tuned per spec:
-  //   1.0   homepage (changefreq weekly per spec, retained `daily`
-  //         in this codebase since the homepage live-data band
-  //         changes that often)
-  //   0.9   /children — re-listed daily as new profiles land
+  // Session 21 priorities (P1.1 — /children removed since it's
+  // noindex'd; surfacing it in the sitemap would only create
+  // signal/noise for crawlers):
+  //   1.0   homepage
   //   0.7   foundational marketing pages (about, how-it-works)
   //   0.6   /faq — content stable, lower change cadence
   //   0.5   secondary content (contact, help, for-charities,
@@ -65,7 +37,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // /signin removed: no SEO value, only adds noise to the index.
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: now, changeFrequency: "daily", priority: 1.0 },
-    { url: `${BASE_URL}/children`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
     { url: `${BASE_URL}/about`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE_URL}/how-it-works`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE_URL}/faq`, lastModified: now, changeFrequency: "monthly", priority: 0.6 },
@@ -89,12 +60,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/safeguarding`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
   ];
 
-  const childPages: MetadataRoute.Sitemap = childIds.map((id) => ({
-    url: `${BASE_URL}/children/${id}`,
-    lastModified: now,
-    changeFrequency: "weekly" as const,
-    priority: 0.8,
-  }));
-
-  return [...staticPages, ...legalPages, ...childPages];
+  return [...staticPages, ...legalPages];
 }
