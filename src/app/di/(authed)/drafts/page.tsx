@@ -11,6 +11,7 @@ import { FileEdit, Plus } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import { listDraftsForUser } from "@/lib/di-proposals";
 import { DraftCard } from "@/components/di/DraftCard";
+import { DiPageHeader } from "@/components/di/DiPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -20,16 +21,14 @@ export default async function DiDraftsPage() {
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-3xl mx-auto">
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          Drafts
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          {drafts.length === 0
+      <DiPageHeader
+        title="Drafts"
+        subtitle={
+          drafts.length === 0
             ? "Anything you save without submitting lands here."
-            : `${drafts.length} draft${drafts.length === 1 ? "" : "s"} waiting for you to finish.`}
-        </p>
-      </header>
+            : `${drafts.length} draft${drafts.length === 1 ? "" : "s"} waiting for you to finish.`
+        }
+      />
 
       {drafts.length === 0 ? (
         <div className="rounded-2xl bg-white border border-stone-200 shadow-sm p-10 text-center">

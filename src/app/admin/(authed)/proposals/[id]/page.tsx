@@ -34,6 +34,7 @@ import {
 } from "@/lib/admin-proposals-list";
 import { listAdminDocumentsForChild } from "@/lib/admin-documents";
 import { getIntakePhotosForChild } from "@/lib/admin-intake-photos";
+import { intakePhotoStatusLabel } from "@/lib/status-labels";
 import { recordAuditEvent } from "@/lib/di-audit";
 import {
   getFieldMeta,
@@ -404,7 +405,7 @@ function IntakePhotosPanel({
                           : "bg-amber-50 text-amber-800"
                   }`}
                 >
-                  {p.status}
+                  {intakePhotoStatusLabel(p.status)}
                 </div>
               </div>
               <div className="px-2.5 py-2">

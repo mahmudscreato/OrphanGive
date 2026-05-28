@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ImagePlus, Loader2, Trash2, XCircle } from "lucide-react";
 import type { AdminIntakePhotoSummary } from "@/lib/admin-intake-photos";
+import { intakePhotoStatusLabel } from "@/lib/status-labels";
 import { AdminRemoveButton } from "./AdminRemoveButton";
 
 // Session 52d — admin direct upload limits mirror the DI ones
@@ -654,7 +655,7 @@ function DecidedPhotoCard({ photo }: { photo: AdminIntakePhotoSummary }) {
         <div
           className={`absolute top-1.5 right-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] uppercase tracking-wider font-semibold ${s.pill} ${s.pillText}`}
         >
-          {photo.status}
+          {intakePhotoStatusLabel(photo.status)}
         </div>
       </div>
       {photo.status === "rejected" && photo.rejectionReason ? (

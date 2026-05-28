@@ -16,6 +16,7 @@ import {
   listSelectableSponsorships,
   type SelectableSponsorship,
 } from "@/lib/admin-tasks";
+import { sponsorshipStatusLabel } from "@/lib/status-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -108,7 +109,7 @@ function SponsorshipRow({ s }: { s: SelectableSponsorship }) {
                   : "bg-tangerine-mist text-tangerine-deeper"
             }`}
           >
-            {s.status}
+            {sponsorshipStatusLabel(s.status)}
           </span>
         </div>
         <p className="text-[12.5px] text-ink-soft leading-snug">

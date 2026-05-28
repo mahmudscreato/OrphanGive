@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { AdminStripeCharge } from "@/lib/admin-sponsorships";
 import type { SponsorshipStatus } from "@/lib/sponsorship-data";
+import { paymentStatusLabel } from "@/lib/status-labels";
 
 interface ApiError {
   error?: string;
@@ -498,7 +499,7 @@ function RefundModal({
                           </span>
                         ) : !c.paid ? (
                           <span className="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-[#FCE9E9] text-[#A02020]">
-                            {c.status}
+                            {paymentStatusLabel(c.status)}
                           </span>
                         ) : null}
                       </div>
