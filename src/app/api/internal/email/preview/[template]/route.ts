@@ -12,6 +12,7 @@ import { SponsorshipPausedEmail } from "@/emails/SponsorshipPausedEmail";
 import { SponsorshipModifiedEmail } from "@/emails/SponsorshipModifiedEmail";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
 import { SponsorshipExtendedEmail } from "@/emails/SponsorshipExtendedEmail";
+import { ReportPublishedEmail } from "@/emails/ReportPublishedEmail";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,8 @@ const TEMPLATES = [
   "sponsorship-modified",
   "sponsorship-cancelled",
   "sponsorship-extended",
+  "report-published-progress",
+  "report-published-deployment",
 ] as const;
 type TemplateId = (typeof TEMPLATES)[number];
 
@@ -164,6 +167,33 @@ function buildSample(template: TemplateId, firstName: string) {
           ).toISOString(),
           paidNow: true,
           paymentAmountUsd: 75,
+          sponsorshipUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+        }),
+      };
+
+    // Spine Lot 2 — donor email when admin sends an approved report.
+    // Two preview variants matching the two report_type values.
+    case "report-published-progress":
+      return {
+        subject: `A new update on Mim Khatun`,
+        element: ReportPublishedEmail({
+          firstName,
+          childName: "Mim Khatun",
+          reportType: "progress",
+          sponsorshipUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+        }),
+      };
+    case "report-published-deployment":
+      return {
+        subject: `Your gift to Mim Khatun has been delivered`,
+        element: ReportPublishedEmail({
+          firstName,
+          childName: "Mim Khatun",
+          reportType: "deployment",
           sponsorshipUrl: siteUrl(
             "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
           ),

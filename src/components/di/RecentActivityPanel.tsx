@@ -73,6 +73,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_approved_report: CheckCircle2,
   admin_edited_report_donor_text: Edit3,
   admin_requested_report_correction: RotateCcw,
+  admin_sent_report_to_donor: CheckCircle2,
   // Session 52c — admin cleanup removes (distinct from rejection).
   admin_removed_document: Trash2,
   admin_removed_intake_photo: Trash2,
