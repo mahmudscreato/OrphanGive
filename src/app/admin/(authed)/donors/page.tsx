@@ -23,6 +23,7 @@ import {
   type DonorApprovalStatus,
   type DonorListSort,
 } from "@/lib/admin-donors";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -173,15 +174,10 @@ export default async function AdminDonorsListPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-6xl mx-auto">
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          Donors
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Every account that has signed up to sponsor a child. Approve new
-          donors, suspend troublemakers, and trace lifetime giving.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Donors"
+        subtitle="Every account that has signed up to sponsor a child. Approve new donors, suspend troublemakers, and trace lifetime giving."
+      />
 
       {/* Filter row 1: approval pills */}
       <nav

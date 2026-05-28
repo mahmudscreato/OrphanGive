@@ -15,6 +15,7 @@
 import Link from "next/link";
 import { ListChecks, Plus } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-auth";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   listAdminTasks,
   type AdminTaskRow,
@@ -100,32 +101,19 @@ export default async function AdminTasksPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
-      <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <div className="inline-flex items-center gap-2 mb-2">
-            <ListChecks
-              className="w-4 h-4 text-tangerine-deeper stroke-[1.75]"
-              aria-hidden="true"
-            />
-            <span className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-ink-soft font-medium">
-              Field tasks
-            </span>
-          </div>
-          <h1 className="font-display text-[28px] md:text-[32px] text-ink leading-tight tracking-tight">
-            Tasks
-          </h1>
-          <p className="mt-1 text-[14px] text-ink-soft leading-relaxed">
-            Every field task across the team — assignment, status, evidence.
-          </p>
-        </div>
-        <Link
-          href="/admin/tasks/new"
-          className="inline-flex items-center gap-1.5 rounded-full bg-tangerine-deep text-white px-4 py-2 text-[13px] font-medium hover:bg-tangerine-deeper transition-colors"
-        >
-          <Plus className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
-          New task
-        </Link>
-      </header>
+      <AdminPageHeader
+        title="Tasks"
+        subtitle="Every field task across the team — assignment, status, evidence."
+        action={
+          <Link
+            href="/admin/tasks/new"
+            className="inline-flex items-center gap-1.5 rounded-full bg-tangerine-deep text-white px-4 py-2 text-[13px] font-medium hover:bg-tangerine-deeper transition-colors"
+          >
+            <Plus className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+            New task
+          </Link>
+        }
+      />
 
       <FiltersBar diStatus={diStatus} adminStatus={adminStatus} />
 
