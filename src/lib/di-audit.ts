@@ -268,7 +268,27 @@ export type AuditAction =
   // is IDs-only: { taskId, sponsorshipId, childId, assigneeUserId,
   //                assignedVia: 'manual' | 'auto' }.
   // No Tier-3 child fields.
-  | "admin_created_task";
+  | "admin_created_task"
+  // ─── P2 — reveal lifecycle audit ───
+  //
+  // Donor / system actions on `reveal_request` (Tier-3 access grant
+  // for sponsoring donors). The admin approve/deny path is NOT here
+  // because there's no API route for it today — admins decide via
+  // the Directus admin UI directly. If/when an /api/admin/reveals/
+  // [id]/{approve,reject} route ships, add admin_approved_reveal +
+  // admin_rejected_reveal alongside.
+  //
+  // Metadata contract: IDs + field_name (the column name, which is
+  // public allowlist) + reason. NEVER the decrypted Tier-3 value;
+  // that lives encrypted on the child row and only reaches the
+  // viewer through fetchRevealedFieldValues at render time.
+  | "donor_requested_reveal"
+  | "donor_withdrew_reveal"
+  | "system_revoked_reveal"
+  // Cron-driven expiry (90 days after admin approval). Distinct from
+  // system_revoked_reveal so the timeline reader shows the closure
+  // reason — "expired (90 days)" vs "revoked (sponsorship ended)".
+  | "system_expired_reveal";
 
 // Phase 0 — "donor" added so /api/sponsorship/[id]/* lifecycle
 // endpoints can attribute the audit to the donor who initiated the
@@ -580,6 +600,11 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Admin cleared the fulfillment exception`,
   // Spine 1.1 — admin field-task creation.
   admin_created_task: (a) => `${a} created a field task`,
+  // P2 — reveal lifecycle.
+  donor_requested_reveal: () => `Donor requested a reveal`,
+  donor_withdrew_reveal: () => `Donor withdrew a reveal request`,
+  system_revoked_reveal: () => `Reveal revoked (sponsorship ended)`,
+  system_expired_reveal: () => `Reveal expired (90 days elapsed)`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

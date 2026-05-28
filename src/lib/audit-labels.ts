@@ -130,6 +130,12 @@ export const AUDIT_LABELS: Record<string, string> = {
 
   // ─── Spine 1.1 — Admin field-task creation ───
   admin_created_task: "Created field task",
+
+  // ─── P2 — reveal lifecycle ───
+  donor_requested_reveal: "Requested reveal",
+  donor_withdrew_reveal: "Withdrew reveal request",
+  system_revoked_reveal: "Revoked reveal (sponsorship ended)",
+  system_expired_reveal: "Expired reveal (90 days)",
 };
 
 /**

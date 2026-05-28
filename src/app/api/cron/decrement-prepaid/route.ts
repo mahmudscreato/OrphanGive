@@ -21,6 +21,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { readItems, updateItem } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
+// P2 — revoke active reveals when the cron flips a prepaid-cancelled
+// row to status='cancelled' at the end of its paid coverage.
+import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
 
 export const runtime = "nodejs";
 
@@ -36,6 +39,10 @@ type Row = {
   prepaid_months_remaining: number | null;
   scheduled_end_date: string | null;
   cancellation_scheduled_at: string | null;
+  // P2 — needed for revoke-on-cancel. Both are FKs at the column
+  // level; Directus returns the string id when not expanded.
+  donor: string | null;
+  child: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -84,6 +91,9 @@ export async function POST(req: NextRequest) {
           "prepaid_months_remaining",
           "scheduled_end_date",
           "cancellation_scheduled_at",
+          // P2 — needed for revokeRevealsForSponsorshipEnd.
+          "donor",
+          "child",
         ],
         limit: -1,
       } as never),
@@ -148,6 +158,32 @@ export async function POST(req: NextRequest) {
       console.log(
         `[cron/decrement-prepaid] sponsorship=${r.id} remaining ${currentRemaining} → ${expectedRemaining} (status: ${(patch.status as string) ?? r.status})`,
       );
+
+      // P2 — revoke active reveals when this row truly ended
+      // (cancelled OR completed). No-op if the donor still has
+      // another active/paused sponsorship of the child.
+      if (
+        (patch.status === "cancelled" || patch.status === "completed") &&
+        r.donor &&
+        r.child
+      ) {
+        try {
+          await revokeRevealsForSponsorshipEnd({
+            sponsorshipId: r.id,
+            donorId: r.donor,
+            childId: r.child,
+            reason:
+              patch.status === "cancelled"
+                ? "cron_prepaid_term_ended_with_cancel"
+                : "cron_prepaid_term_completed",
+          });
+        } catch (err) {
+          console.warn(
+            `[cron/decrement-prepaid] reveal revoke for ${r.id} failed (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
     }
   } catch (err) {
     stats.errors++;

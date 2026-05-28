@@ -35,6 +35,8 @@ import {
 // preserved exactly so the existing listAuditEventsForSponsorship
 // reader still finds these rows.
 import { recordAuditEvent } from "@/lib/di-audit";
+// P2 — revoke active reveals when admin ends a sponsorship.
+import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -167,6 +169,27 @@ export async function POST(
     },
     request: req,
   });
+
+  // P2 — revoke active reveals on this (donor, child). No-op if the
+  // donor still has another active/paused sponsorship of the child.
+  {
+    const childIdForRevoke = unwrapChildId(sponsorship);
+    if (childIdForRevoke) {
+      try {
+        await revokeRevealsForSponsorshipEnd({
+          sponsorshipId: sponsorship.id,
+          donorId: sponsorship.donor,
+          childId: childIdForRevoke,
+          reason: "admin_cancel",
+        });
+      } catch (err) {
+        console.warn(
+          "[admin/sponsorships/cancel] reveal revoke failed (non-fatal):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
 
   // Session 61.3 hotfix — donor email now attributes the cancel
   // to the OrphanGive team and surfaces the admin's stated reason
