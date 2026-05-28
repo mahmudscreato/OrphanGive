@@ -551,7 +551,12 @@ export async function getPaymentsForSponsorship(
 export type ChildUpdate = {
   id: string;
   title: string | null;
+  // DI's raw narrative — preserved as the forensic record. Spine Lot 2:
+  // the donor reader returns this for compatibility, but the donor UI
+  // should prefer `donor_text` when present (the admin's curated copy).
+  // The donor-facing convention is COALESCE(donor_text, content).
   content: string | null;
+  donor_text: string | null;
   type: string | null;
   photo: string | null;
   published_at: string | null;
@@ -930,7 +935,20 @@ export async function getApprovedChildUpdates(
             { published_at: { _lte: nowIso } },
           ],
         },
-        fields: ["id", "title", "content", "type", "photo", "published_at"],
+        fields: [
+          "id",
+          "title",
+          "content",
+          // Spine Lot 2 — admin-curated donor copy. Donor UI must
+          // render `donor_text || content` so admin's edits win
+          // over the DI's raw narrative when the admin polished it
+          // during review. content is kept on the row for forensic
+          // record; admin-only surfaces still display it verbatim.
+          "donor_text",
+          "type",
+          "photo",
+          "published_at",
+        ],
         sort: ["-published_at"],
         limit,
       } as never),

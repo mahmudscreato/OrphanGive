@@ -105,6 +105,13 @@ export type AuditAction =
   | "admin_approved_report"
   | "admin_edited_report_donor_text"
   | "admin_requested_report_correction"
+  // Spine Lot 2 — admin publishes an approved report to the donor.
+  // Status flips from 'approved' to 'published'; published_at +
+  // published_by stamped; donor email fired; donor's per-sponsorship
+  // Updates feed now shows the row. Donor sees the curated donor_text
+  // (or DI's content as fallback when admin didn't edit), never
+  // Tier-3 fields. Metadata: IDs only — NEVER the donor_text body.
+  | "admin_sent_report_to_donor"
   // Session 52c — admin cleanup removes, distinct from approve /
   // reject. Admin hits these when a DI uploaded by mistake — no
   // judgement recorded, just gone. Session 52d lifts the pending-
@@ -477,6 +484,7 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_edited_report_donor_text: () => `Admin edited the donor-facing copy`,
   admin_requested_report_correction: () =>
     `Admin sent your report back for correction`,
+  admin_sent_report_to_donor: () => `Admin sent your report to the donor`,
   admin_removed_document: () => `Admin removed a pending document`,
   admin_removed_intake_photo: () => `Admin removed a pending intake photo`,
   admin_removed_approved_document: () =>

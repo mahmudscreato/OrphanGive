@@ -70,6 +70,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   admin_approved_report: "Approved report",
   admin_edited_report_donor_text: "Edited report donor copy",
   admin_requested_report_correction: "Sent report back for correction",
+  admin_sent_report_to_donor: "Sent report to donor",
   admin_removed_document: "Removed pending document",
   admin_removed_intake_photo: "Removed pending intake photo",
   admin_removed_approved_document: "Removed approved document",

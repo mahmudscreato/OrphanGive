@@ -674,3 +674,99 @@ export async function requestReportCorrection(
     reason: trimmed,
   };
 }
+
+// ─── Spine Lot 2 — Send to donor ────────────────────────────────────
+//
+// The final spine hop: admin publishes an approved report to the
+// donor. Flips child_update.status from 'approved' to 'published'
+// and stamps published_at = now(). The donor's per-sponsorship
+// Updates feed reader (getApprovedChildUpdates in sponsorship-data.ts)
+// already filters status='published' — so the moment status flips,
+// the donor sees the row.
+//
+// Idempotency: re-sending a row already in 'published' throws
+// InvalidReportStatusTransitionError. Caller route returns 400.
+//
+// What this writes:
+//   - child_update.status         = 'published'
+//   - child_update.published_at   = NOW() (ISO)
+//
+// What this does NOT touch:
+//   - approve flow (status was already 'approved' from approveReport)
+//   - resolver (the fulfillment resolver reads published as-is)
+//   - fulfillment_exception columns
+//   - payment / refund logic
+//
+// Email is fired by the API route caller, NOT inside this mutator —
+// keeps the data layer free of email side-effects + the route layer
+// owns the audit + email + idempotency boundary together.
+
+export async function sendReportToDonor(
+  reportId: string,
+  adminUserId: string,
+): Promise<{
+  id: string;
+  status: "published";
+  childId: string | null;
+  uploaderId: string | null;
+  sponsorshipId: string | null;
+  reportType: "progress" | "deployment" | null;
+  publishedAt: string;
+}> {
+  if (!UUID_RE.test(reportId)) throw new ReportNotFoundError();
+  if (!UUID_RE.test(adminUserId)) {
+    throw new InvalidReportInputError("adminUserId", "must be a uuid");
+  }
+  const detail = await getAdminReportDetail(reportId);
+  if (!detail) throw new ReportNotFoundError();
+
+  // ONE legal predecessor — 'approved'. Anything else (still in
+  // review, correction_requested, already published, rejected) is
+  // rejected at this gate. This is the idempotency + integrity
+  // guard: re-clicking Send on a published row throws.
+  if (detail.status !== "approved") {
+    throw new InvalidReportStatusTransitionError(detail.status, "published");
+  }
+
+  const publishedAt = new Date().toISOString();
+  await directusServer().request(
+    updateItem("child_update" as never, reportId as never, {
+      status: "published",
+      published_at: publishedAt,
+    } as never),
+  );
+
+  await safeAuditWrite(
+    {
+      timestamp: new Date().toISOString(),
+      actor: adminUserId,
+      actor_role: "admin",
+      action: "admin_sent_report_to_donor",
+      collection: "child_update",
+      record_id: reportId,
+      // METADATA: IDs + enums + published_at only.
+      // NEVER donor_text, NEVER content, NEVER child Tier-3.
+      metadata: {
+        ...(detail.child_id ? { childId: detail.child_id } : {}),
+        ...(detail.sponsorship_id
+          ? { sponsorshipId: detail.sponsorship_id }
+          : {}),
+        ...(detail.report_type ? { reportType: detail.report_type } : {}),
+        from_status: "approved",
+        to_status: "published",
+        published_at: publishedAt,
+      },
+    },
+    `send:${reportId}`,
+  );
+
+  return {
+    id: reportId,
+    status: "published",
+    childId: detail.child_id,
+    uploaderId: detail.submitter_id,
+    sponsorshipId: detail.sponsorship_id,
+    reportType: detail.report_type,
+    publishedAt,
+  };
+}
