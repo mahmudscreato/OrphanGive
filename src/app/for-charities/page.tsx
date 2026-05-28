@@ -174,7 +174,7 @@ export default function ForCharitiesPage() {
           <p className="mt-6 max-w-2xl mx-auto text-lg text-ink-soft leading-[1.65]">
             OrphanGive is the donor-facing infrastructure your work
             deserves — not a competitor for the field work, but the
-            platform that lets donors find, trust, and support the
+            service that lets donors find, trust, and support the
             children you already serve.
           </p>
         </div>

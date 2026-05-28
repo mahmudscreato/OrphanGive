@@ -177,7 +177,7 @@ export function SiteFooter() {
               className="h-[70px] w-auto mb-5"
             />
             <p className="text-sm text-white/70 leading-relaxed">
-              OrphanGive is a project of{" "}
+              Operated by{" "}
               <a
                 href={GOODVERSE_URL}
                 target="_blank"
@@ -186,7 +186,7 @@ export function SiteFooter() {
               >
                 Goodverse Foundation
               </a>{" "}
-              and{" "}
+              in partnership with{" "}
               <a
                 href={CHILDRENS_HEAVEN_URL}
                 target="_blank"
@@ -194,8 +194,8 @@ export function SiteFooter() {
                 className="font-medium text-white hover:underline"
               >
                 Children&apos;s Heaven Trust
-              </a>
-              .
+              </a>{" "}
+              (Reg. iv-98/2021), Bangladesh.
             </p>
           </div>
 
