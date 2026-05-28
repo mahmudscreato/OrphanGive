@@ -11,6 +11,7 @@ import "server-only";
 import {
   createItem,
   deleteItem,
+  readFiles,
   readItem,
   readItems,
   readUsers,
@@ -126,8 +127,11 @@ async function resolveFileMime(
   const out = new Map<string, FileMeta>();
   if (fileUuids.length === 0) return out;
   try {
+    // Lot 4 Job A — Directus SDK v21 rejects readItems on core
+    // collections. directus_files has a dedicated `readFiles` helper;
+    // same filter/fields/return shape.
     const rows = (await directusServer().request(
-      readItems("directus_files" as never, {
+      readFiles({
         filter: { id: { _in: fileUuids } },
         fields: ["id", "type", "filename_download"],
         limit: -1,

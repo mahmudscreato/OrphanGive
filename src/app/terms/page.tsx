@@ -199,8 +199,8 @@ export default async function TermsPage() {
                   "Attempt to scrape, harvest, or otherwise systematically extract child profile data, photos, or donor data from the site.",
                   "Use the service to contact children, guardians, or partner field workers outside the formal reveal-request process.",
                   "Attempt to bypass the privacy tier model or access information your tier does not grant.",
-                  "Interfere with the service's operation, including denial-of-service attempts, exploiting vulnerabilities, or reverse-engineering the platform.",
-                  "Re-publish child photos, names, or stories on third-party sites, social media, or commercial platforms.",
+                  "Interfere with the service's operation, including denial-of-service attempts, exploiting vulnerabilities, or reverse-engineering the service.",
+                  "Re-publish child photos, names, or stories on third-party sites, social media, or commercial services.",
                 ]}
               />
             </>
