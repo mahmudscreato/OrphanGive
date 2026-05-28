@@ -95,6 +95,8 @@ export interface DiSponsorshipView {
 // uuid string when requested as a literal field.
 type ChildRow = {
   id: string;
+  // P1.3 — first_name (public) optional; null on legacy rows.
+  first_name?: string | null;
   display_name: string | null;
   date_of_birth: string | null;
   Photo: string | null;
@@ -646,6 +648,9 @@ export async function getBdDivisions(
 export interface ChildEditSnapshot {
   id: string;
   // Identity
+  // P1.3 — first_name is the new public-facing name. Legacy rows
+  // pre-P1.3 may carry null until the DI edits them.
+  first_name: string | null;
   display_name: string;
   gender: string | null;
   date_of_birth: string | null;
@@ -706,6 +711,9 @@ export interface ChildEditSnapshot {
 // has the slug PKs the cascade dropdown needs.
 const CHILD_EDIT_FIELDS = [
   "id",
+  // P1.3 — first_name added so the edit form pre-fills the
+  // public-name input.
+  "first_name",
   "display_name",
   "gender",
   "date_of_birth",
@@ -761,6 +769,8 @@ export async function getChildEditSnapshot(
   let row:
     | {
         id: string;
+        // P1.3 — first_name (public) returned for edit pre-fill.
+        first_name: string | null;
         display_name: string | null;
         gender: string | null;
         date_of_birth: string | null;
@@ -827,6 +837,9 @@ export async function getChildEditSnapshot(
   return {
     id: row.id,
     // Identity
+    // P1.3 — first_name surfaced for the form's public-name input.
+    // Legacy rows return null here until the DI edits + saves.
+    first_name: row.first_name?.trim() || null,
     display_name: row.display_name?.trim() || "",
     gender: row.gender ?? null,
     date_of_birth: row.date_of_birth ?? null,

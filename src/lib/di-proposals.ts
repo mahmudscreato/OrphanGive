@@ -75,6 +75,11 @@ export const VISIBLE_PROPOSAL_STATUSES: ReadonlyArray<ProposalStatus> = [
 
 export interface ChildEditableFields {
   // Identity
+  // P1.3 — first_name is the public-facing name (shown on Tier-1
+  // cards, profile, OG metadata). display_name is internal — shown
+  // to authed donors / admin / DI only. Both proposed via this
+  // shape; the proposal-approval flow copies both to the child row.
+  first_name?: string;
   display_name?: string;
   gender?: string;
   date_of_birth?: string; // ISO date (YYYY-MM-DD)
@@ -138,6 +143,12 @@ export interface ChildEditableFields {
 // Health/family/socioeconomic blocks are optional on create — DI may
 // not have everything at first intake.
 export interface ChildCreatableFields {
+  // P1.3 — public-facing first name. REQUIRED on create so a new
+  // child profile is never published without a safe public name.
+  // If a DI somehow leaves it blank, the data layer falls back to
+  // "A child" and the surface still renders dignifiedly — but the
+  // form-level validator below also requires it.
+  first_name: string;
   display_name: string;
   date_of_birth: string;
   bd_division: string;
@@ -406,6 +417,9 @@ class ValidationCollector {
 // in createUpdateProposal.
 const EDITABLE_FIELDS: ReadonlyArray<keyof ChildEditableFields> = [
   // Identity
+  // P1.3 — first_name comes FIRST so the proposal diff renders it
+  // above display_name (which is now the internal record name).
+  "first_name",
   "display_name",
   "gender",
   "date_of_birth",
@@ -741,6 +755,11 @@ async function createCreateProposal(
   const v = new ValidationCollector();
 
   // Required-field check.
+  // P1.3 — first_name is REQUIRED on create. The data layer falls
+  // back to "A child" if it's empty, but the form must collect a
+  // real first name so the published profile carries the donor-
+  // facing name with intent.
+  v.required("first_name", f.first_name);
   v.required("display_name", f.display_name);
   v.required("date_of_birth", f.date_of_birth);
   v.required("bd_division", f.bd_division);
@@ -832,6 +851,10 @@ async function createCreateProposal(
       date_created: new Date().toISOString(),
       previous_snapshot: null,
       // Identity
+      // P1.3 — first_name mirrors to child_proposal alongside
+      // display_name. Approval flow (admin-proposals.ts) copies
+      // BOTH to the child row.
+      first_name: f.first_name.trim(),
       display_name: f.display_name.trim(),
       gender: f.gender ?? null,
       date_of_birth: f.date_of_birth,

@@ -91,7 +91,13 @@ export async function generateMetadata({
   const { id } = await params;
   let name: string | null = null;
   try {
-    const child = await getChildById(id, "admin");
+    // P1.3 — fetch at the PUBLIC tier so the returned display_name
+    // is sourced from `first_name` only. The OG/twitter title is
+    // a public surface — the metadata read should match the
+    // privacy class of where it lands. (Previously fetched at
+    // "admin" tier, which would have surfaced the internal
+    // display_name once it diverged from first_name.)
+    const child = await getChildById(id, "public");
     name = child?.display_name?.trim() ?? null;
   } catch {
     // Fall through to the generic metadata below.
