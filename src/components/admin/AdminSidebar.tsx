@@ -80,6 +80,17 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     group: "primary",
   },
+  // Donation Lifecycle sub-phase 3 — fulfillment overview across
+  // every sponsorship. Distinct from Sponsorships (payment-axis):
+  // this is the fulfillment-axis "what's stuck / on hold / disputed"
+  // operational view.
+  {
+    href: "/admin/donations",
+    label: "Donations",
+    icon: HeartHandshake,
+    exact: false,
+    group: "primary",
+  },
   // Spine 1.1 — admin field-task surface. Sits next to Sponsorships
   // because the natural origin for a task is a sponsorship detail
   // page; the /admin/tasks queue is the operational triage view.

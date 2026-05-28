@@ -121,6 +121,12 @@ export const AUDIT_LABELS: Record<string, string> = {
   webhook_subscription_deleted: "Subscription ended",
   webhook_charge_refunded: "Charge refunded",
 
+  // ─── Donation Lifecycle sub-phase 3 — admin fulfillment exception ───
+  admin_set_fulfillment_on_hold: "Set fulfillment On Hold",
+  admin_set_fulfillment_disputed: "Set fulfillment Disputed",
+  admin_set_fulfillment_refund_requested: "Set fulfillment Refund Requested",
+  admin_cleared_fulfillment_exception: "Cleared fulfillment exception",
+
   // ─── Spine 1.1 — Admin field-task creation ───
   admin_created_task: "Created field task",
 };

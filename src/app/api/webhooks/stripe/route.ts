@@ -685,6 +685,13 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
         cancelled_at: refundedAtIso,
         ended_at: refundedAtIso,
         cancellation_reason: "refunded",
+        // Donation Lifecycle sub-phase 3 — reflect the refund on the
+        // fulfillment axis. SAFE: this is a column-only write on the
+        // SAME existing success signal that flipped sponsorship.status.
+        // No new Stripe call, no new money movement. Idempotent via
+        // the surrounding `cancellation_reason === 'refunded'` guard.
+        fulfillment_exception: "refunded",
+        fulfillment_exception_at: refundedAtIso,
       });
       console.log(
         `[stripe-webhook] sponsorship=${s.id} marked cancelled (refund of $${refundedAmountUsd})`,
