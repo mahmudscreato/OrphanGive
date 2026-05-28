@@ -27,6 +27,10 @@ import {
 // business-logic handling. The helper is best-effort: never throws,
 // never blocks payment processing.
 import { recordWebhookAuditEvent } from "@/lib/webhook-audit";
+// P2 — revoke active reveals when a sponsorship terminates via the
+// webhook (charge.refunded / customer.subscription.deleted). Best-
+// effort; never blocks the webhook ack.
+import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -724,6 +728,26 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
           refundReason,
         },
       });
+      // P2 — revoke active reveals on (donor, child). The helper
+      // is a no-op if the donor still has another active/paused
+      // sponsorship of this child.
+      const childIdForRevoke =
+        typeof s.child === "string" ? s.child : s.child?.id;
+      if (childIdForRevoke && typeof s.donor === "string") {
+        try {
+          await revokeRevealsForSponsorshipEnd({
+            sponsorshipId: s.id,
+            donorId: s.donor,
+            childId: childIdForRevoke,
+            reason: "webhook_charge_refunded",
+          });
+        } catch (err) {
+          console.warn(
+            `[stripe-webhook] reveal revoke for ${s.id} failed (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
     } catch (err) {
       console.warn(
         `[stripe-webhook] sponsorship ${s.id} refund update failed:`,
@@ -839,6 +863,31 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
         cancelled_at: nowIso,
         cancellation_reason: "stripe_cancelled",
       });
+    }
+
+    // P2 — revoke active reveals on (donor, child). No-op if the
+    // donor still has another active/paused sponsorship of this child.
+    // Best-effort; failures don't block the queue promote / audit below.
+    {
+      const childIdForRevoke =
+        typeof s.child === "string" ? s.child : s.child?.id;
+      if (childIdForRevoke && typeof s.donor === "string") {
+        try {
+          await revokeRevealsForSponsorshipEnd({
+            sponsorshipId: s.id,
+            donorId: s.donor,
+            childId: childIdForRevoke,
+            reason: isScheduledCompletion
+              ? "webhook_subscription_completed_term"
+              : "webhook_subscription_deleted",
+          });
+        } catch (err) {
+          console.warn(
+            `[stripe-webhook] reveal revoke for ${s.id} failed (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
     }
 
     // Session 14.7: if this row was the active sponsor (queue_position=0

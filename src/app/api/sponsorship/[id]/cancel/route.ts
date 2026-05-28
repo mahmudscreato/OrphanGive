@@ -12,6 +12,10 @@ import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
 // back to a "by donor" inference from row timestamps. With this call
 // the reader gets real attribution + reason + IP / UA capture.
 import { recordAuditEvent } from "@/lib/di-audit";
+// P2 — revoke active reveals when the sponsorship truly ends so the
+// (former) donor loses Tier-3 access. The helper is a no-op if the
+// donor still has any other active/paused sponsorship of this child.
+import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
 
 export const runtime = "nodejs";
 
@@ -406,6 +410,31 @@ export async function POST(
     },
     request: req,
   });
+
+  // P2 — revoke active reveals (no-op if donor still has another
+  // active/paused sponsorship of this child). Best-effort; failures
+  // never block the cancel.
+  {
+    const childIdForRevoke =
+      typeof sponsorship.child === "string"
+        ? sponsorship.child
+        : sponsorship.child.id;
+    if (childIdForRevoke) {
+      try {
+        await revokeRevealsForSponsorshipEnd({
+          sponsorshipId: sponsorship.id,
+          donorId: donor.id,
+          childId: childIdForRevoke,
+          reason: "donor_cancel",
+        });
+      } catch (err) {
+        console.warn(
+          "[sponsorship/cancel] reveal revoke failed (non-fatal):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
 
   try {
     const child = await fetchChildById(

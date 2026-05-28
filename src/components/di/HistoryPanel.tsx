@@ -17,12 +17,15 @@ import {
   CheckCircle2,
   CreditCard,
   Edit3,
+  Eye,
+  EyeOff,
   FileBarChart,
   FileText,
   HeartHandshake,
   History as HistoryIcon,
   ImagePlus,
   ListChecks,
+  Lock,
   PauseCircle,
   PlayCircle,
   Receipt,
@@ -151,6 +154,13 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // per-child DI History tab (action prefix filter is di_*), but
   // the map must be exhaustive over AuditAction for type-safety.
   admin_created_task: ListChecks,
+  // P2 — reveal lifecycle. These don't surface on the DI History
+  // tab (donor + system actions; no di_ prefix) but the map must
+  // stay exhaustive over AuditAction for type-safety.
+  donor_requested_reveal: Eye,
+  donor_withdrew_reveal: EyeOff,
+  system_revoked_reveal: Lock,
+  system_expired_reveal: Lock,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back

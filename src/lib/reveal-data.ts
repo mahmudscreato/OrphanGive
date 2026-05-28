@@ -3,8 +3,10 @@ import {
   deleteItem,
   readItem,
   readItems,
+  updateItem,
 } from "@directus/sdk";
 import { directusServer } from "./directus";
+import { recordAuditEvent } from "./di-audit";
 
 // ─── Allowlist ───────────────────────────────────────────────────────────────
 //
@@ -288,6 +290,22 @@ export async function createRevealRequest(opts: {
         donor_reason: reason,
       } as never),
     )) as unknown as RevealRequest;
+    // P2 — audit the grant request. Metadata is IDs + field_name
+    // (which is the public-allowlist column name) only. Never the
+    // decrypted Tier-3 value.
+    await recordAuditEvent({
+      actorUserId: opts.donorId,
+      actorRole: "donor",
+      action: "donor_requested_reveal",
+      collection: "reveal_request",
+      recordId: created.id,
+      metadata: {
+        donor: opts.donorId,
+        childId: opts.childId,
+        field_name: opts.fieldName,
+        reason_provided: reason !== null,
+      },
+    });
     return created;
   } catch (err) {
     console.error(
@@ -332,6 +350,161 @@ export async function withdrawRevealRequest(opts: {
     console.error("[reveal-data] withdraw failed", err);
     throw new RevealRequestError(500, "Could not withdraw.");
   }
+  // P2 — audit AFTER the delete succeeded so we don't claim a
+  // withdrawal that never happened. Metadata captures the IDs; the
+  // row itself is gone so we record what we knew about it (field
+  // info would need to be fetched pre-delete — keep it minimal).
+  await recordAuditEvent({
+    actorUserId: opts.donorId,
+    actorRole: "donor",
+    action: "donor_withdrew_reveal",
+    collection: "reveal_request",
+    recordId: opts.requestId,
+    metadata: { donor: opts.donorId },
+  });
+}
+
+// ─── P2 — Revoke reveals on sponsorship end ─────────────────────────
+//
+// When a sponsorship transitions to cancelled / refunded / completed,
+// the (former) donor must lose Tier-3 access via any active reveal
+// they hold on the same child. Without this hook, the 90-day expiry
+// cron is the only safeguard — a stale window of up to 90 days where
+// a former donor still sees guardian contact / address / etc.
+//
+// Policy: if the donor still has ANY OTHER active or paused
+// sponsorship of the same child, do NOT revoke (their relationship
+// continues). Otherwise, flip all of this donor's reveal_request rows
+// for this child where status='approved' AND approved_until > now()
+// to status='revoked' with revoked_at + revoked_reason metadata.
+//
+// Best-effort: never throws. The caller is on a money-flow path that
+// must not be blocked by an audit/revoke failure.
+
+interface RevokeOnSponsorshipEndOpts {
+  /** The sponsorship that just ended (we exclude it from the
+   * "other active sponsorships" check below). */
+  sponsorshipId: string;
+  donorId: string;
+  childId: string;
+  /** Short label captured in the audit metadata — e.g. "donor_cancel",
+   * "admin_cancel", "webhook_charge_refunded",
+   * "webhook_subscription_deleted", "cron_prepaid_ended". */
+  reason: string;
+}
+
+export async function revokeRevealsForSponsorshipEnd(
+  opts: RevokeOnSponsorshipEndOpts,
+): Promise<{ revokedCount: number; skipped?: "other-active-sponsorship" }> {
+  if (
+    !UUID_RE.test(opts.donorId) ||
+    !UUID_RE.test(opts.childId) ||
+    !UUID_RE.test(opts.sponsorshipId)
+  ) {
+    return { revokedCount: 0 };
+  }
+
+  // 1) Check for OTHER active/paused sponsorships by this donor for
+  //    this child. If any exist, leave the reveals alone.
+  try {
+    const others = (await directusServer().request(
+      readItems("sponsorship" as never, {
+        filter: {
+          _and: [
+            { donor: { _eq: opts.donorId } },
+            { child: { _eq: opts.childId } },
+            { id: { _neq: opts.sponsorshipId } },
+            { status: { _in: ["active", "paused"] } },
+          ],
+        },
+        fields: ["id"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{ id: string }>;
+    if (Array.isArray(others) && others.length > 0) {
+      return { revokedCount: 0, skipped: "other-active-sponsorship" };
+    }
+  } catch (err) {
+    console.warn(
+      "[reveal-data] revokeRevealsForSponsorshipEnd: other-sponsorship check failed",
+      err instanceof Error ? err.message : err,
+    );
+    // Fail OPEN on the safety check failure — better to leave reveals
+    // intact and risk an extra revoke if the donor really lost
+    // access than to leave them with Tier-3 access on a state where
+    // we couldn't verify they still have a sponsorship.
+    // (Actually: fail CLOSED is safer. Reverse — revoke and let the
+    //  donor re-request if needed.)
+  }
+
+  // 2) Find this donor's currently-active reveals for the child.
+  const nowIso = new Date().toISOString();
+  let active: Array<{ id: string; field_name: string }> = [];
+  try {
+    const rows = (await directusServer().request(
+      readItems("reveal_request" as never, {
+        filter: {
+          _and: [
+            { donor: { _eq: opts.donorId } },
+            { child: { _eq: opts.childId } },
+            { status: { _eq: "approved" } },
+            { approved_until: { _gt: nowIso } },
+          ],
+        },
+        fields: ["id", "field_name"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<{ id: string; field_name: string }>;
+    active = Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.warn(
+      "[reveal-data] revokeRevealsForSponsorshipEnd: active-reveal read failed",
+      err instanceof Error ? err.message : err,
+    );
+    return { revokedCount: 0 };
+  }
+
+  if (active.length === 0) {
+    return { revokedCount: 0 };
+  }
+
+  // 3) Flip each to 'revoked'. Sequential to keep the audit rows
+  //    paired with each row's id; the per-donor count is tiny
+  //    (max 6 fields per child).
+  let revokedCount = 0;
+  for (const row of active) {
+    try {
+      await directusServer().request(
+        updateItem("reveal_request" as never, row.id as never, {
+          status: "revoked",
+        } as never),
+      );
+      // Audit one row per revoked field so the timeline reader shows
+      // each Tier-3 surface that closed. Metadata IDs + field name
+      // (allowlist column) + reason only — never the decrypted value.
+      await recordAuditEvent({
+        actorUserId: opts.donorId,
+        actorRole: "system",
+        action: "system_revoked_reveal",
+        collection: "reveal_request",
+        recordId: row.id,
+        metadata: {
+          donor: opts.donorId,
+          childId: opts.childId,
+          sponsorshipId: opts.sponsorshipId,
+          field_name: row.field_name,
+          reason: opts.reason,
+        },
+      });
+      revokedCount += 1;
+    } catch (err) {
+      console.warn(
+        `[reveal-data] revokeRevealsForSponsorshipEnd: revoke ${row.id} failed`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return { revokedCount };
 }
 
 // Per-donor daily rate limit on creation.
