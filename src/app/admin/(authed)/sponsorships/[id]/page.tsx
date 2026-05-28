@@ -43,6 +43,9 @@ import {
   shouldShowUsdEquivalent,
 } from "@/lib/donor-currency-format";
 import { SponsorshipActionBar } from "@/components/admin/SponsorshipActionBar";
+// Donation Lifecycle sub-phase 3 — admin fulfillment exception controls.
+import { AdminFulfillmentPanel } from "@/components/admin/AdminFulfillmentPanel";
+import { getSponsorshipFulfillment } from "@/lib/sponsorship-fulfillment-fetch";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // payment-row charge / payment-intent id renders.
 import { StripeLink } from "@/components/admin/StripeLink";
@@ -109,18 +112,22 @@ export default async function AdminSponsorshipDetailPage({
   // Session 61.4 hotfix — audit events for the timeline panel. Best-
   // effort; failure returns empty array → timeline falls back to
   // unattributed events.
-  const [payments, charges, auditEvents, availableDIs] = await Promise.all([
-    getPaymentsForSponsorship(detail.id),
-    listChargesForSponsorship(detail.id, {
-      customerId: detail.raw.stripe_customer_id,
-      paymentIntentId: detail.raw.stripe_payment_intent_id,
-      limit: 5,
-    }),
-    listAuditEventsForSponsorship(detail.id, 50),
-    // Spine 1.1 — DIs eligible for the "Create field task" affordance,
-    // pre-sorted with division-coverers first. Tier-1 fields only.
-    listAssignableDIs(detail.child_division_code),
-  ]);
+  const [payments, charges, auditEvents, availableDIs, fulfillment] =
+    await Promise.all([
+      getPaymentsForSponsorship(detail.id),
+      listChargesForSponsorship(detail.id, {
+        customerId: detail.raw.stripe_customer_id,
+        paymentIntentId: detail.raw.stripe_payment_intent_id,
+        limit: 5,
+      }),
+      listAuditEventsForSponsorship(detail.id, 50),
+      // Spine 1.1 — DIs eligible for the "Create field task" affordance,
+      // pre-sorted with division-coverers first. Tier-1 fields only.
+      listAssignableDIs(detail.child_division_code),
+      // Donation Lifecycle sub-phase 3 — admin-side resolver call.
+      // We pass `internal` to the panel; donor never sees this.
+      getSponsorshipFulfillment(detail.id),
+    ]);
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
@@ -179,6 +186,20 @@ export default async function AdminSponsorshipDetailPage({
         paymentMode={detail.raw.payment_mode}
         charges={charges}
       />
+
+      {/* Donation Lifecycle sub-phase 3 — admin fulfillment exception
+          controls. Sits BELOW the payment-axis ActionBar so admin
+          reads payment lifecycle first (Stripe-driven) and then the
+          fulfillment axis (admin-driven). The panel renders the
+          resolver's INTERNAL view; the donor's view is rendered
+          separately on /dashboard/sponsorship/[id] via the resolver's
+          .donor output. */}
+      <div className="mt-6">
+        <AdminFulfillmentPanel
+          sponsorshipId={detail.id}
+          internal={fulfillment?.internal ?? null}
+        />
+      </div>
     </div>
   );
 }

@@ -73,6 +73,22 @@ export type Sponsorship = {
   // 'active' until the prepaid period ends, at which point the cron
   // flips status to 'cancelled'.
   cancellation_scheduled_at: string | null;
+  // Donation Lifecycle sub-phase 1 — fulfillment exception axis.
+  // Separate from the Stripe-driven `status` field. The resolver in
+  // src/lib/fulfillment-status.ts reads these to compute the
+  // donor-visible fulfillment phase. `refunded` is SYSTEM-set by the
+  // charge.refunded webhook (sub-phase 3); the other three are
+  // admin-set. fulfillment_reason is PRIVATE (admin-only); donor
+  // surface uses fulfillment_donor_visible_reason exclusively.
+  fulfillment_exception:
+    | "on_hold"
+    | "disputed"
+    | "refund_requested"
+    | "refunded"
+    | null;
+  fulfillment_exception_at: string | null;
+  fulfillment_reason: string | null;
+  fulfillment_donor_visible_reason: string | null;
   // Coverage package / cause — donor's stated allocation intent at
   // sponsor-flow time. Charity admin may override in Directus admin
   // (hybrid model). See src/lib/cause.ts for the canonical enum.
