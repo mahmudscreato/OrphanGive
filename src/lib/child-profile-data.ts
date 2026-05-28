@@ -80,6 +80,14 @@ export type ChildProfileTier2 = {
 
 export type ChildProfile = {
   id: string;
+  /**
+   * P1.3 — public-safe name. On `tier === "public"` this is the
+   * `first_name` column (or "A child" fallback when null/empty).
+   * On Tier-2 / admin tiers it's the raw `display_name` column
+   * (or `first_name` / "A child" fallback). The field NAME stays
+   * `display_name` so existing consumers don't need refactor; the
+   * VALUE is per-tier safe by data-layer construction.
+   */
   display_name: string;
   age: number | null;
   birth_year: number | null;
@@ -113,12 +121,19 @@ export type ChildProfile = {
 
 // Hotfix R1 — bd_district.* moved OUT of PUBLIC_FIELDS into TIER2_FIELDS.
 // Tier 1 sees Bangladesh DIVISION only; the district is one level too
-// specific for the public contract (64 districts vs 8 divisions narrows
+// specific for the public contract (64 divisions vs 8 divisions narrows
 // a child's location too far). bd_division.* stays in PUBLIC_FIELDS so
 // the public location pill still renders.
+//
+// P1.3 — `display_name` moved OUT of PUBLIC_FIELDS into TIER2_FIELDS.
+// Public viewers receive `first_name` only; if a DI ever types a
+// surname into `display_name` it cannot reach the Tier-1 SQL response
+// because it isn't selected. The composeProfile function below sets
+// the returned `display_name` field to first_name on public tier (or
+// "A child" fallback), keeping the consumer surface unchanged.
 const PUBLIC_FIELDS = [
   "id",
-  "display_name",
+  "first_name",
   "gender",
   "date_of_birth",
   "story",
@@ -141,6 +156,10 @@ const PUBLIC_FIELDS = [
 // expanding `.id`, `.name`, `.type` matches the bd_division /
 // bd_district expansion pattern already used for location fields.
 const TIER2_FIELDS = [
+  // P1.3 — display_name reserved for Tier 2+. Internal record name;
+  // public viewers see first_name only via PUBLIC_FIELDS. Authed
+  // donors / admin / DI see display_name as today.
+  "display_name",
   // Hotfix R1 — bd_district promoted to Tier 2. See PUBLIC_FIELDS comment.
   "bd_district.code",
   "bd_district.name",
@@ -172,6 +191,10 @@ const ENCRYPTED_FIELDS = [
 
 type DirectusChildRow = {
   id: string;
+  // P1.3 — `first_name` is the Tier-1 public name (PUBLIC_FIELDS).
+  // `display_name` is reserved for Tier 2+ (TIER2_FIELDS) so public
+  // responses don't even contain the internal name in the payload.
+  first_name?: string | null;
   display_name?: string | null;
   date_of_birth?: string | null;
   story?: string | null;
@@ -356,9 +379,25 @@ export async function getChildById(
         }
       : null;
 
+  // P1.3 — public-safe name. For `tier === "public"` the SQL response
+  // contains `first_name` only (display_name is in TIER2_FIELDS), so
+  // we always source from `first_name` and fall back to "A child"
+  // when null/empty. For Tier 2+ the response contains both columns;
+  // prefer `display_name` (the internal record name) but fall back
+  // through `first_name` → "A child" so a row with neither set
+  // still renders something sensible.
+  const safeFirstName =
+    (row.first_name ?? "").trim() || "A child awaiting sponsorship";
+  const safeDisplayNameAuthed =
+    (row.display_name ?? "").trim() ||
+    (row.first_name ?? "").trim() ||
+    "A child awaiting sponsorship";
+  const publicSafeName =
+    tier === "public" ? safeFirstName : safeDisplayNameAuthed;
+
   return {
     id: row.id,
-    display_name: (row.display_name ?? "").trim() || "A child awaiting sponsorship",
+    display_name: publicSafeName,
     age: calcAge(row.date_of_birth),
     birth_year: birthYear(row.date_of_birth),
     // Hotfix R1 — district is Tier 2+. When tier === "public",

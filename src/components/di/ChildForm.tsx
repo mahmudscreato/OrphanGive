@@ -128,7 +128,10 @@ const errorClass = "mt-1.5 text-[12.5px] text-[#D04848]";
 // Keys mirror the error map keys (which mirror the server's `field`
 // names). Anything missing falls back to the raw key.
 const FIELD_LABELS: Record<string, string> = {
-  display_name: "Name",
+  // P1.3 — first_name is the public name (cards / profile / OG).
+  // display_name is the internal record name.
+  first_name: "First name (public)",
+  display_name: "Display name (internal)",
   gender: "Gender",
   date_of_birth: "Date of birth",
   photo_consent: "Photo consent",
@@ -182,6 +185,9 @@ function fieldLabel(field: string): string {
 // bottom of the summary in undefined order.
 const FIELD_ORDER: ReadonlyArray<string> = [
   // Identity
+  // P1.3 — first_name first so the error-summary panel lists the
+  // public name above the internal display_name.
+  "first_name",
   "display_name",
   "gender",
   "date_of_birth",
@@ -268,6 +274,9 @@ export interface ChildFormDivisionOption {
 // the DB layer); the form binds to a Set<string> internally.
 export interface ChildFormExistingChild {
   id: string;
+  // P1.3 — first_name is the new public-facing name; existing rows
+  // may have it null until the DI edits the profile.
+  first_name: string | null;
   display_name: string;
   gender: string | null;
   date_of_birth: string | null;
@@ -349,6 +358,8 @@ export interface ChildFormProps {
 
 interface FormState {
   // Identity
+  // P1.3 — first_name (public) + display_name (internal).
+  first_name: string;
   display_name: string;
   gender: string;
   date_of_birth: string;
@@ -405,6 +416,7 @@ interface FormState {
 
 function blankState(): FormState {
   return {
+    first_name: "",
     display_name: "",
     gender: "",
     date_of_birth: "",
@@ -449,6 +461,7 @@ function blankState(): FormState {
 
 function stateFromExisting(c: ChildFormExistingChild): FormState {
   return {
+    first_name: c.first_name ?? "",
     display_name: c.display_name ?? "",
     gender: c.gender ?? "",
     date_of_birth: c.date_of_birth ?? "",
@@ -547,6 +560,7 @@ function draftRowToExistingShape(
 
   return {
     id: (row.id as string) ?? live?.id ?? "",
+    first_name: pick("first_name"),
     display_name: pick("display_name"),
     gender: pick("gender"),
     date_of_birth: pick("date_of_birth"),
@@ -736,6 +750,9 @@ export function ChildForm({
     if (mode === "create") {
       // Required-on-create per Mahmud's V1 decision (Session 48a
       // added parent_loss + guardian_phone to the required set).
+      // P1.3 — first_name required so the new profile is never
+      // published without a public-facing name.
+      if (!form.first_name.trim()) e.first_name = "Required.";
       if (!form.display_name.trim()) e.display_name = "Required.";
       if (!form.date_of_birth) e.date_of_birth = "Required.";
       if (!form.bd_division) e.bd_division = "Required.";
@@ -755,6 +772,9 @@ export function ChildForm({
       if (!form.photo_uuid) e.Photo = "A photo is required for new children.";
     } else {
       // Edit: shape-only checks on non-empty values.
+      if (form.first_name && !form.first_name.trim()) {
+        e.first_name = "Cannot be blank.";
+      }
       if (form.display_name && !form.display_name.trim()) {
         e.display_name = "Cannot be blank.";
       }
@@ -836,7 +856,9 @@ export function ChildForm({
       return {
         operation: "create" as const,
         fields: {
-          // Required (Session 48a — added parent_loss + guardian_phone)
+          // Required (Session 48a — added parent_loss + guardian_phone;
+          // P1.3 — added first_name as the public-facing required name)
+          first_name: form.first_name.trim(),
           display_name: form.display_name.trim(),
           date_of_birth: form.date_of_birth,
           bd_division: form.bd_division,
@@ -954,6 +976,12 @@ export function ChildForm({
       s.trim() === "" ? null : Number(s);
     const fields: Record<string, unknown> = {
       // Identity
+      // P1.3 — first_name included only when non-empty so drafts
+      // don't trip required-field rules; the create flow requires it
+      // at submit time.
+      ...(form.first_name.trim()
+        ? { first_name: form.first_name.trim() }
+        : {}),
       ...(form.display_name.trim()
         ? { display_name: form.display_name.trim() }
         : {}),
@@ -1376,9 +1404,37 @@ export function ChildForm({
 
       {/* Section 1 — Identity */}
       <Section title="Identity">
+        {/* P1.3 — first_name is the ONLY name rendered on Tier-1
+            (public) surfaces: homepage cards, /children browse,
+            /children/[id] profile, OG metadata. Required on create.
+            DI must enter ONLY a first name here. */}
+        <Field>
+          <label className={labelClass} htmlFor="first_name">
+            First name (shown publicly) *
+          </label>
+          <input
+            id="first_name"
+            type="text"
+            className={inputClass}
+            value={form.first_name}
+            onChange={(e) => set("first_name", e.target.value)}
+            placeholder="e.g. Fahim"
+            maxLength={64}
+            disabled={pending}
+            {...errProps("first_name")}
+          />
+          <p className={helperClass}>
+            <strong>First name only.</strong> Never enter a surname here.
+            This is the name donors see on cards, the profile, and in
+            social previews.
+          </p>
+          {errors.first_name ? (
+            <p className={errorClass}>{errors.first_name}</p>
+          ) : null}
+        </Field>
         <Field>
           <label className={labelClass} htmlFor="display_name">
-            Display name *
+            Display name (internal) *
           </label>
           <input
             id="display_name"
@@ -1390,7 +1446,10 @@ export function ChildForm({
             disabled={pending}
             {...errProps("display_name")}
           />
-          <p className={helperClass}>Use what&apos;s safe to share publicly.</p>
+          <p className={helperClass}>
+            Internal record name — visible to admin and DI only. Never
+            shown on public surfaces.
+          </p>
           {errors.display_name ? (
             <p className={errorClass}>{errors.display_name}</p>
           ) : null}
@@ -2548,6 +2607,11 @@ function dirtyFieldsForUpdate(
     s.trim() === "" ? null : Number(s);
 
   // Identity
+  // P1.3 — first_name diffed against existing.first_name (may be null
+  // on legacy rows that pre-date this column).
+  if (!sameStr(form.first_name, existing.first_name)) {
+    out.first_name = form.first_name.trim();
+  }
   if (!sameStr(form.display_name, existing.display_name)) {
     out.display_name = form.display_name.trim();
   }

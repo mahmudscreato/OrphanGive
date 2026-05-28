@@ -223,6 +223,14 @@ export type ChildrenFilters = {
 
 export type ChildSummary = {
   id: string;
+  /**
+   * P1.3 — public-safe name. Sourced from the `first_name` column
+   * with a "A child" fallback when null/empty. The field name stays
+   * `display_name` so existing card consumers don't change; the
+   * VALUE is data-layer-guaranteed safe (never the internal
+   * display_name column). All Tier-1 cards (BrowseChildCard,
+   * FeaturedChildren, RelatedChildren / ChildCard) render this.
+   */
   display_name: string | null;
   gender: string | null;
   age: number | null;
@@ -238,7 +246,9 @@ type RelationRow = { code?: string | null; name?: string | null } | null;
 
 type DirectusChildRow = {
   id: string | number;
-  display_name?: string | null;
+  // P1.3 — `first_name` is the Tier-1 public name; SAFE_FIELDS pulls
+  // only this and never the internal `display_name`.
+  first_name?: string | null;
   gender?: string | null;
   date_of_birth?: string | null;
   // Region/district are now M2O relations to bd_division / bd_district.
@@ -262,9 +272,15 @@ type DirectusChildRow = {
 // internal — see `listDistricts` below — and is unaffected; the public
 // browse exposes division-level filtering only per the privacy note at
 // the top of this file.
+//
+// P1.3 — `display_name` swapped for `first_name`. SAFE_FIELDS is the
+// authoritative Tier-1 SQL projection for this surface; the internal
+// record name (`display_name` column) MUST NOT reach the public list
+// payload. Card consumers still read `child.display_name`, which is
+// now populated from `first_name` (with safe fallback).
 const SAFE_FIELDS = [
   "id",
-  "display_name",
+  "first_name",
   "gender",
   "date_of_birth",
   "bd_division.code",
@@ -360,7 +376,12 @@ function buildDirectusFilter(filters: ChildrenFilters) {
 function rowToSummary(row: DirectusChildRow): ChildSummary {
   return {
     id: String(row.id),
-    display_name: row.display_name?.trim() ?? null,
+    // P1.3 — public-safe name from `first_name`. The field name on
+    // ChildSummary stays `display_name` so existing card props don't
+    // need refactoring. Returns null when first_name is missing; the
+    // card component's `safeDisplayName` helper then renders the
+    // dignified "A child" placeholder (NEVER the internal display_name).
+    display_name: row.first_name?.trim() || null,
     gender: row.gender ?? null,
     age: calcAge(row.date_of_birth),
     region: row.bd_division?.name?.trim() ?? null,
