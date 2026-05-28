@@ -44,6 +44,14 @@ const bodySchema = z
     content: z.string().min(50).max(2000),
     visibility: z.enum(["sponsor_only", "all_donors"]),
     photoUuid: z.string().min(8).optional(),
+    // Spine 1.2 — when set, this is a sponsorship-tied report. Triggers
+    // report_type derivation + status='submitted_by_di' on the new
+    // lifecycle. When absent the route falls back to the legacy
+    // 'pending'-status flow (existing readers + admin tooling).
+    sponsorshipId: z.string().uuid().optional(),
+    // Spine 1.2 — optional task link (server validates assignee+
+    // sponsorship match in di-reports.ts:createReport).
+    taskId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -75,16 +83,29 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { reportId } = await createReport(session.userId, parsed.data);
+    const { reportId, reportType, status } = await createReport(
+      session.userId,
+      parsed.data,
+    );
     await recordAuditEvent({
       actorUserId: session.userId,
       action: "di_submitted_report",
       collection: "child_update",
       recordId: reportId,
+      // Spine 1.2 — extend metadata with the sponsorship-tied
+      // context. IDs + enums + boolean only — no Tier-3 child fields.
       metadata: {
         childId: parsed.data.childId,
         type: parsed.data.type,
         visibility: parsed.data.visibility,
+        ...(parsed.data.sponsorshipId
+          ? {
+              sponsorshipId: parsed.data.sponsorshipId,
+              reportType,
+              status,
+            }
+          : { status }),
+        ...(parsed.data.taskId ? { taskId: parsed.data.taskId } : {}),
       },
       request: req,
     });
@@ -95,7 +116,7 @@ export async function POST(req: NextRequest) {
       childId: parsed.data.childId,
       summary: `New ${parsed.data.type} report: "${parsed.data.title.slice(0, 60)}"`,
     });
-    return NextResponse.json({ reportId });
+    return NextResponse.json({ reportId, reportType, status });
   } catch (err) {
     if (err instanceof OutOfScopeError) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -1124,6 +1124,19 @@ function describeAuditAction(action: string, actor: string): string {
       return `${actor} approved a moment`;
     case "admin_rejected_moment":
       return `${actor} rejected a moment`;
+    // Spine 1.2 — admin report review.
+    case "di_resubmitted_report":
+      return `${actor} resubmitted a report after corrections`;
+    case "admin_viewed_report":
+      return `${actor} opened a report`;
+    case "admin_claimed_report_review":
+      return `${actor} claimed a report for review`;
+    case "admin_approved_report":
+      return `${actor} approved a report`;
+    case "admin_edited_report_donor_text":
+      return `${actor} edited a report's donor-facing copy`;
+    case "admin_requested_report_correction":
+      return `${actor} sent a report back for correction`;
     case "admin_removed_document":
       return `${actor} removed a pending document`;
     case "admin_removed_intake_photo":

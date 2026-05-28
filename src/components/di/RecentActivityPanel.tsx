@@ -34,6 +34,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_withdrew_proposal: Trash2,
   di_uploaded_moment: Camera,
   di_submitted_report: FileBarChart,
+  di_resubmitted_report: RotateCcw,
   di_marked_delivery: Truck,
   di_started_task: ListChecks,
   di_completed_task: ListChecks,
@@ -66,6 +67,12 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_viewed_moment: Home,
   admin_approved_moment: CheckCircle2,
   admin_rejected_moment: XCircle,
+  // Spine 1.2 — admin report review icons.
+  admin_viewed_report: Home,
+  admin_claimed_report_review: Home,
+  admin_approved_report: CheckCircle2,
+  admin_edited_report_donor_text: Edit3,
+  admin_requested_report_correction: RotateCcw,
   // Session 52c — admin cleanup removes (distinct from rejection).
   admin_removed_document: Trash2,
   admin_removed_intake_photo: Trash2,

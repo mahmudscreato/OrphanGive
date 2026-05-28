@@ -5,10 +5,17 @@
 // dedicated list page.
 
 import Link from "next/link";
-import { ChevronRight, Camera, FileText, ImagePlus } from "lucide-react";
+import {
+  ChevronRight,
+  Camera,
+  FileBarChart,
+  FileText,
+  ImagePlus,
+} from "lucide-react";
 import { directusServer } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
 import { countPendingDocuments } from "@/lib/admin-documents";
+import { countPendingReports } from "@/lib/admin-reports";
 
 export const dynamic = "force-dynamic";
 
@@ -35,14 +42,19 @@ async function safeCount(
 }
 
 export default async function AdminReviewsIndexPage() {
-  const [pendingDocs, pendingIntake, pendingMoments] = await Promise.all([
-    // Documents — Session 52d delegates to the single
-    // countPendingDocuments function in admin-documents so home
-    // tile + queue list + this index page all return the same N.
-    countPendingDocuments(),
-    safeCount("child_intake_photo", { status: { _eq: "pending" } }),
-    safeCount("child_moment", { status: { _eq: "pending" } }),
-  ]);
+  const [pendingDocs, pendingIntake, pendingMoments, pendingReports] =
+    await Promise.all([
+      // Documents — Session 52d delegates to the single
+      // countPendingDocuments function in admin-documents so home
+      // tile + queue list + this index page all return the same N.
+      countPendingDocuments(),
+      safeCount("child_intake_photo", { status: { _eq: "pending" } }),
+      safeCount("child_moment", { status: { _eq: "pending" } }),
+      // Spine 1.2 — report queue covers submitted_by_di +
+      // under_admin_review + legacy 'pending'. The helper handles the
+      // _or filter so home tile and this page stay in sync.
+      countPendingReports(),
+    ]);
 
   const queues = [
     {
@@ -69,6 +81,14 @@ export default async function AdminReviewsIndexPage() {
         "Ongoing life-update photos. Donors see these once you publish.",
       count: pendingMoments,
     },
+    {
+      href: "/admin/reviews/reports",
+      label: "Reports",
+      icon: FileBarChart,
+      description:
+        "DI-filed progress reports + deployment confirmations. Edit donor copy or send back for correction.",
+      count: pendingReports,
+    },
   ];
 
   return (
@@ -78,7 +98,7 @@ export default async function AdminReviewsIndexPage() {
           Reviews
         </h1>
         <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Three queues — pick a flavour to start triaging.
+          Pick a queue to start triaging.
         </p>
       </header>
 

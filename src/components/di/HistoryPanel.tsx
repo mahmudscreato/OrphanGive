@@ -40,6 +40,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   di_withdrew_proposal: Trash2,
   di_uploaded_moment: Camera,
   di_submitted_report: FileBarChart,
+  di_resubmitted_report: RotateCcw,
   di_marked_delivery: Truck,
   di_started_task: ListChecks,
   di_completed_task: ListChecks,
@@ -76,6 +77,13 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_viewed_moment: HistoryIcon,
   admin_approved_moment: CheckCircle2,
   admin_rejected_moment: XCircle,
+  // Spine 1.2 — admin report review. View/claim stay admin-only;
+  // approve / edit-donor-text / send-back surface on per-child History.
+  admin_viewed_report: HistoryIcon,
+  admin_claimed_report_review: HistoryIcon,
+  admin_approved_report: CheckCircle2,
+  admin_edited_report_donor_text: Edit3,
+  admin_requested_report_correction: RotateCcw,
   // Session 52c — admin removes use the trash icon to signal
   // "gone" (vs the X-circle for "rejected with feedback").
   admin_removed_document: Trash2,

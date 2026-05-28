@@ -37,6 +37,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   di_withdrew_proposal: "Withdrew proposal",
   di_uploaded_moment: "Uploaded moment",
   di_submitted_report: "Submitted report",
+  di_resubmitted_report: "Resubmitted report after corrections",
   di_marked_delivery: "Marked aid delivery",
   di_started_task: "Started task",
   di_completed_task: "Completed task",
@@ -62,6 +63,13 @@ export const AUDIT_LABELS: Record<string, string> = {
   admin_viewed_moment: "Viewed moment",
   admin_approved_moment: "Approved moment",
   admin_rejected_moment: "Rejected moment",
+
+  // ─── Spine 1.2 — admin report review queue ───
+  admin_viewed_report: "Viewed report",
+  admin_claimed_report_review: "Claimed report for review",
+  admin_approved_report: "Approved report",
+  admin_edited_report_donor_text: "Edited report donor copy",
+  admin_requested_report_correction: "Sent report back for correction",
   admin_removed_document: "Removed pending document",
   admin_removed_intake_photo: "Removed pending intake photo",
   admin_removed_approved_document: "Removed approved document",
@@ -237,6 +245,21 @@ export function resolveAuditSubjectLink(
 ): AuditSubjectLink | null {
   if (!collection) return null;
 
+  // Spine 1.2 — child_update (reports) has its own admin review
+  // detail page. Link directly by recordId; child fallback used if
+  // recordId is missing.
+  if (collection === "child_update") {
+    if (recordId) {
+      return {
+        href: `/admin/reviews/reports/${recordId}`,
+        label: "Report",
+      };
+    }
+    const childId = readMetadataChildId(metadata);
+    if (childId) return { href: `/admin/children/${childId}`, label: "Child" };
+    return null;
+  }
+
   // Child-attached review rows: the URL needs childId, not the row's
   // own id. Pull from metadata.childId if present; null link otherwise.
   if (
@@ -311,6 +334,7 @@ export type AuditSubjectBucket =
   | "document"
   | "intake_photo"
   | "moment"
+  | "report"
   | "sponsorship"
   | "donor"
   | "file"
@@ -326,6 +350,7 @@ export const AUDIT_SUBJECT_BUCKETS: ReadonlyArray<{
   { value: "document", label: "Document" },
   { value: "intake_photo", label: "Intake photo" },
   { value: "moment", label: "Moment" },
+  { value: "report", label: "Report" },
   { value: "sponsorship", label: "Sponsorship" },
   { value: "donor", label: "Donor" },
   { value: "file", label: "File upload" },
@@ -349,6 +374,8 @@ export function bucketForCollection(
       return "intake_photo";
     case "child_moment":
       return "moment";
+    case "child_update":
+      return "report";
     case "sponsorship":
       return "sponsorship";
     case "directus_users":
@@ -382,6 +409,8 @@ export function collectionsForBucket(
       return ["child_intake_photo"];
     case "moment":
       return ["child_moment"];
+    case "report":
+      return ["child_update"];
     case "sponsorship":
       return ["sponsorship"];
     case "donor":
