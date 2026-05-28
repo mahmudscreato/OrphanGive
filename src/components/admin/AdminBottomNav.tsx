@@ -18,7 +18,16 @@ import {
   UserCircle,
 } from "lucide-react";
 
-type BadgeKey = "proposals" | "reviews" | "donors" | "children";
+// P4 — `partnerships` added to keep the BadgeKey union aligned with
+// AdminSidebar. The mobile bottom nav doesn't currently surface a
+// partnerships tab (no room for a 6th); the badge key is here so
+// the layout's badges object type-checks without splitting types.
+type BadgeKey =
+  | "proposals"
+  | "reviews"
+  | "donors"
+  | "children"
+  | "partnerships";
 
 type Tab = {
   href: string;

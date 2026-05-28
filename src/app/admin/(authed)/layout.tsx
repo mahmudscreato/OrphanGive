@@ -15,6 +15,8 @@ import { getAdminHomeStats } from "@/lib/admin-home-stats";
 import { countPendingDonorApprovals } from "@/lib/admin-donors";
 // Session 66 — active-children count for the Children nav badge.
 import { countActiveChildrenForBadge } from "@/lib/admin-children";
+// P4 — `new`-status partnership inquiries badge.
+import { countNewPartnershipInquiries } from "@/lib/partnership-inquiries";
 import { AdminBottomNav } from "@/components/admin/AdminBottomNav";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -32,10 +34,12 @@ export default async function AdminAuthedLayout({
 
   // Sessions 60 + 65 + 66 — pending counts for the nav badges,
   // fetched in parallel.
-  const [stats, donorPending, activeChildren] = await Promise.all([
+  // P4 — partnerships `new` count added to the parallel set.
+  const [stats, donorPending, activeChildren, partnershipsNew] = await Promise.all([
     getAdminHomeStats(),
     countPendingDonorApprovals(),
     countActiveChildrenForBadge(),
+    countNewPartnershipInquiries(),
   ]);
   // Spine 1.2 — Reviews badge must include the reports queue.
   // pendingReportCount uses the SAME helper (countPendingReports) the
@@ -57,6 +61,7 @@ export default async function AdminAuthedLayout({
         : reviewsCount,
     donors: donorPending,
     children: activeChildren,
+    partnerships: partnershipsNew,
   };
 
   return (

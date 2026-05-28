@@ -154,7 +154,7 @@ export function Hero(_props: HeroProps) {
                 transition={{ duration: 0.2 }}
               >
                 <Link
-                  href="#how-it-works-video"
+                  href="#how-it-works"
                   aria-label="Watch how OrphanGive works"
                   title="Watch how OrphanGive works"
                   className="group inline-flex items-center justify-center w-[52px] h-[52px] rounded-full border-2 border-[#ED8B3F] bg-transparent text-[#ED8B3F] transition-colors duration-200 hover:bg-[#ED8B3F] hover:text-white"
