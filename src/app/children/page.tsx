@@ -42,12 +42,23 @@ import { buildPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = buildPageMetadata({
-  path: "/children",
-  title: "Children waiting for sponsors",
-  description:
-    "Browse verified profiles of orphaned and vulnerable children in Bangladesh waiting for monthly sponsorship. Each profile is reviewed with their guardian's consent and verified by our field team.",
-});
+// P1.1 — child profile routes are noindex'd to keep verified named
+// children out of search-engine results. Mirrors Lot 4's exact
+// pattern on admin/di/dashboard layouts: `index: false, follow: false`
+// (consistent grep-able pattern across all noindex'd surfaces; no
+// PageRank passed from these pages). robots.ts also disallows the
+// path, and sitemap.ts excludes child URLs — three-layer defense.
+// The page itself remains fully accessible to human visitors; this
+// only affects crawlers.
+export const metadata = {
+  ...buildPageMetadata({
+    path: "/children",
+    title: "Children waiting for sponsors",
+    description:
+      "Browse verified profiles of orphaned and vulnerable children in Bangladesh waiting for monthly sponsorship. Each profile is reviewed with their guardian's consent and verified by our field team.",
+  }),
+  robots: { index: false, follow: false },
+};
 
 const CARD_PATH_KEYS: FramePathKey[] = [
   "circleA",

@@ -104,11 +104,18 @@ export async function generateMetadata({
     ? `Help ${name} in Bangladesh through monthly sponsorship. Profile verified by Children's Heaven Trust — name and photo published only with the guardian's consent.`
     : "Help a verified child in Bangladesh through monthly sponsorship. All profiles reviewed by Children's Heaven Trust before publication.";
 
-  return buildPageMetadata({
-    path: `/children/${id}`,
-    title,
-    description,
-  });
+  // P1.1 — child profile pages noindex'd (mirrors Lot 4's pattern on
+  // admin/di/dashboard surfaces). See src/app/children/page.tsx for
+  // the full rationale. Real-named child profiles must NEVER reach a
+  // search-engine index. robots.ts + sitemap.ts also enforce.
+  return {
+    ...buildPageMetadata({
+      path: `/children/${id}`,
+      title,
+      description,
+    }),
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function ChildProfilePage({
