@@ -1,4 +1,7 @@
 import type { NextRequest } from "next/server";
+import { classifyAssetById } from "@/lib/asset-classifier";
+import { getAdminSession } from "@/lib/admin-auth";
+import { getDirectusSession } from "@/lib/di-auth";
 
 // Session 52c — added `key` so registered Directus storage presets
 // (`directus_settings.storage_asset_presets`) can be invoked through
@@ -32,6 +35,27 @@ export async function GET(
   const token = process.env.DIRECTUS_SERVER_TOKEN;
   if (!base || !token) {
     return new Response("Asset proxy not configured", { status: 500 });
+  }
+
+  // P1.5 — classify the asset BEFORE forwarding to upstream. Public
+  // photos and child-moment videos serve openly (D4). Private
+  // documents (PDFs / scanned-image birth certificates etc.) require
+  // an admin or DI session — they MUST NOT be reachable by anyone
+  // who happens to have the UUID. See src/lib/asset-classifier.ts
+  // for the classification rules.
+  const classification = await classifyAssetById(id);
+  if (classification.classification === "private") {
+    // Non-throwing lookups — neither helper redirects.
+    const [adminSession, diSession] = await Promise.all([
+      getAdminSession(),
+      getDirectusSession(),
+    ]);
+    if (!adminSession && !diSession) {
+      // 401 (not 403) so a client trying to display a thumbnail can
+      // distinguish "asset doesn't exist" from "needs auth". Body
+      // text is generic — never expose the classifier's reason.
+      return new Response("Authentication required", { status: 401 });
+    }
   }
 
   const upstream = new URL(`${base.replace(/\/$/, "")}/assets/${id}`);
