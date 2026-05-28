@@ -33,7 +33,9 @@ const COLUMNS: FooterColumn[] = [
       { href: "/faq", label: "FAQ" },
       { href: "/stories", label: "Stories" },
       { href: "/for-charities", label: "For Charities" },
-      { href: "/about", label: "Transparency" },
+      // Broken-link scan H3 — was `{ href: "/about", label: "Transparency" }`.
+      // Routes to the dedicated /transparency page now.
+      { href: "/transparency", label: "Transparency" },
     ],
   },
   {
@@ -44,7 +46,10 @@ const COLUMNS: FooterColumn[] = [
       { href: "/refund", label: "Refund Policy" },
       { href: "/cookies", label: "Cookie Policy" },
       { href: "/safeguarding", label: "Safeguarding Policy" },
-      { href: "/safeguarding", label: "Child Protection Policy" },
+      // Broken-link scan M4 — duplicate "Child Protection Policy"
+      // pointing at the same /safeguarding route removed. Founder F4
+      // can re-add a standalone /child-protection page later if the
+      // policy diverges.
     ],
   },
 ];

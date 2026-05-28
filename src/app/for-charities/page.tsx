@@ -12,6 +12,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { buildPageMetadata } from "@/lib/page-metadata";
+// P4 — partnership reach-out form. Replaces the mailto-only CTA so
+// inquiries land in a queryable Directus collection instead of a
+// support@ inbox blob.
+import { PartnershipInquiryForm } from "@/components/charities/PartnershipInquiryForm";
 
 export const dynamic = "force-dynamic";
 
@@ -275,7 +279,13 @@ export default function ForCharitiesPage() {
         </div>
       </section>
 
-      {/* Application CTA — full-bleed orange band. */}
+      {/* Application CTA — full-bleed orange band wrapping the
+          P4 partnership-inquiry form. The form persists to the
+          Directus `partnership_inquiry` collection (see
+          /api/partnership-inquiry); admin reviews queue at
+          /admin/partnerships. The email fallback link is preserved
+          beneath the form so users who prefer email can still
+          reach support@. */}
       <section className="px-6 py-16 max-md:py-12 bg-orange-solid text-white">
         <div className="max-w-[720px] mx-auto text-center">
           <h2>
@@ -287,24 +297,22 @@ export default function ForCharitiesPage() {
             </span>
           </h2>
           <p className="mt-5 max-w-md mx-auto text-base text-white/90 leading-[1.6]">
-            Drop us an email with a short note about your
-            organization, who you serve, and what you&apos;re hoping a
-            partnership could unlock.
+            Send us a note about your organization, who you serve,
+            and what you&apos;re hoping a partnership could unlock.
           </p>
-          <div className="mt-7">
+
+          <PartnershipInquiryForm />
+
+          <p className="mt-6 text-[12.5px] text-white/85 leading-relaxed">
+            Prefer email?{" "}
             <a
               href={PARTNERSHIPS_MAILTO}
-              className="group inline-flex items-center gap-2 rounded-full bg-white text-tangerine-deep font-body font-semibold px-8 py-4 text-base shadow-lg transition-all duration-[250ms] ease-soft hover:shadow-xl hover:-translate-y-px"
+              className="underline-offset-2 underline hover:opacity-90"
             >
-              Reach out
-              <span
-                aria-hidden="true"
-                className="inline-block transition-transform duration-200 group-hover:translate-x-1"
-              >
-                →
-              </span>
+              Write to us directly
             </a>
-          </div>
+            .
+          </p>
         </div>
       </section>
 

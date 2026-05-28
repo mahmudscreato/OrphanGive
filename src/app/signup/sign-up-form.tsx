@@ -212,11 +212,11 @@ export function SignUpForm() {
           />
           <span className="text-[14px] text-slate leading-[1.55]">
             I agree to the{" "}
-            <a href="/legal/terms" className="text-tangerine-deeper border-b border-tangerine">
+            <a href="/terms" className="text-tangerine-deeper border-b border-tangerine">
               Terms of Service
             </a>{" "}
             and{" "}
-            <a href="/legal/privacy" className="text-tangerine-deeper border-b border-tangerine">
+            <a href="/privacy" className="text-tangerine-deeper border-b border-tangerine">
               Privacy Policy
             </a>
             .
