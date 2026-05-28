@@ -217,7 +217,16 @@ export type AuditAction =
   | "webhook_invoice_paid"
   | "webhook_subscription_created"
   | "webhook_subscription_deleted"
-  | "webhook_charge_refunded";
+  | "webhook_charge_refunded"
+  // ─── Spine 1.1 — Admin task creation (hop 3 of the accountability
+  //                 spine, per docs/admin-os/02-spine-design.md) ───
+  //
+  // Admin creates a field task linked to a sponsorship (Phase 0
+  // task.sponsorship FK) and assigned to a Data Inputter. Metadata
+  // is IDs-only: { taskId, sponsorshipId, childId, assigneeUserId,
+  //                assignedVia: 'manual' | 'auto' }.
+  // No Tier-3 child fields.
+  | "admin_created_task";
 
 // Phase 0 — "donor" added so /api/sponsorship/[id]/* lifecycle
 // endpoints can attribute the audit to the donor who initiated the
@@ -508,6 +517,8 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   webhook_subscription_created: () => `Stripe subscription created`,
   webhook_subscription_deleted: () => `Stripe subscription ended`,
   webhook_charge_refunded: () => `Stripe charge refunded`,
+  // Spine 1.1 — admin field-task creation.
+  admin_created_task: (a) => `${a} created a field task`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

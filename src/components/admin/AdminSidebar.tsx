@@ -80,6 +80,16 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     group: "primary",
   },
+  // Spine 1.1 — admin field-task surface. Sits next to Sponsorships
+  // because the natural origin for a task is a sponsorship detail
+  // page; the /admin/tasks queue is the operational triage view.
+  {
+    href: "/admin/tasks",
+    label: "Tasks",
+    icon: ListChecks,
+    exact: false,
+    group: "primary",
+  },
   // Session 65 — donor management.
   {
     href: "/admin/donors",

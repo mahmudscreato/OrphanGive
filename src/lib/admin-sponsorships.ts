@@ -77,6 +77,12 @@ export interface AdminSponsorshipDetail {
   child_photo_uuid: string | null;
   child_status: string | null;
   child_district: string | null;
+  // Spine 1.1 — admin needs the child's division to power the
+  // "Create field task" auto-assign affordance + the DI picker's
+  // in-scope filter. division is Tier-1 (already on the public
+  // /children profile); safe to surface on admin task UI too.
+  child_division_code: string | null;
+  child_division_name: string | null;
   payment_label: string;
   // Session 58.7 — donor-currency + package context for new-flow
   // rows. All nullable so legacy rows render unchanged (the detail
@@ -102,6 +108,8 @@ type SponsorshipRowFlat = {
         Photo?: string | null;
         status?: string | null;
         bd_district?: { name?: string | null } | null;
+        // Spine 1.1 — division (Tier-1) for the create-task affordance.
+        bd_division?: { code?: string | null; name?: string | null } | null;
       }
     | null;
   status: string | null;
@@ -144,6 +152,9 @@ const LIST_FIELDS = [
   "child.Photo",
   "child.status",
   "child.bd_district.name",
+  // Spine 1.1 — division (Tier-1) for the admin task affordance.
+  "child.bd_division.code",
+  "child.bd_division.name",
 ] as const;
 
 const DETAIL_FIELDS = [
@@ -668,6 +679,8 @@ export async function getAdminSponsorshipDetail(
     child_photo_uuid: childObj?.Photo ?? null,
     child_status: childObj?.status ?? null,
     child_district: districtName,
+    child_division_code: childObj?.bd_division?.code ?? null,
+    child_division_name: childObj?.bd_division?.name?.trim() ?? null,
     payment_label: paymentLabel(
       row.payment_mode,
       row.payment_schedule,

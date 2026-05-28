@@ -112,6 +112,9 @@ export const AUDIT_LABELS: Record<string, string> = {
   webhook_subscription_created: "Subscription created",
   webhook_subscription_deleted: "Subscription ended",
   webhook_charge_refunded: "Charge refunded",
+
+  // ─── Spine 1.1 — Admin field-task creation ───
+  admin_created_task: "Created field task",
 };
 
 /**

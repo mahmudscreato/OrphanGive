@@ -133,6 +133,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   webhook_subscription_created: PlayCircle,
   webhook_subscription_deleted: XCircle,
   webhook_charge_refunded: RotateCcw,
+  // Spine 1.1 — admin field-task creation. Never surfaces on the
+  // per-child DI History tab (action prefix filter is di_*), but
+  // the map must be exhaustive over AuditAction for type-safety.
+  admin_created_task: ListChecks,
 };
 
 // Compact relative time for the activity feed. Bigger gaps fall back
