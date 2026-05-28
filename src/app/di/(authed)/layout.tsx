@@ -11,12 +11,20 @@
 // /di/login. Server-side check happens at request time; cookies are
 // read from the incoming request.
 
+import type { Metadata } from "next";
 import { requireDiUser } from "@/lib/di-auth";
 import { getDraftCountForUser } from "@/lib/di-proposals";
 import { DiBottomNav } from "@/components/di/DiBottomNav";
 import { DiHeader } from "@/components/di/DiHeader";
 import { DiSidebar } from "@/components/di/DiSidebar";
 import { DiTopBar } from "@/components/di/DiTopBar";
+
+// Lot 4 Job B — defence-in-depth on top of robots.txt. All DI
+// surfaces are auth-gated; this prevents any leaked URL from
+// being indexed.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function DiAuthedLayout({
   children,

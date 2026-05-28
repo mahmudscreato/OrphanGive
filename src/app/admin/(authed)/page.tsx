@@ -1,19 +1,42 @@
-// Session 51 — Admin Dashboard home / overview screen.
+// Admin Lot 1 — admin home dashboard.
 //
-// Server component. The (authed) layout has already validated the
-// session and redirected to /admin/login if missing, so we can
-// safely call requireAdminUser() here without re-handling null.
+// A four-section landing surface for daily operations:
+//   1. Pending work        — what's queued, click-through to triage
+//   2. Operational snapshot — active/live counts at a glance
+//   3. Attention items     — fulfillment exceptions (only when present)
+//   4. Recent activity     — last N audit events with human labels
 //
-// V1 surface per the brief: 4 stat tiles, no Quick Actions section
-// (admins approve, they don't create). Each tile click routes to
-// the matching review queue. Only Proposals has a real list page in
-// Session 51; the other three currently land on the /admin/reviews
-// placeholder where Session 52 will fill in the queues.
+// Read-only. Every count comes from existing counter helpers or a
+// single safeCount call in admin-dashboard.ts. No writes, no schema,
+// no business-logic touch.
+//
+// Privacy: Tier-1 labels only. Recent-activity feed renders via the
+// centralised audit-labels helpers — never dereferences audit
+// metadata directly.
 
-import { ClipboardCheck, Camera, FileText, Truck } from "lucide-react";
+import {
+  AlertTriangle,
+  Camera,
+  ClipboardCheck,
+  CreditCard,
+  FileBarChart,
+  FileText,
+  HeartHandshake,
+  ImagePlus,
+  ListChecks,
+  PauseCircle,
+  ShieldAlert,
+  Truck,
+  UserCircle,
+  Users,
+} from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-auth";
-import { getAdminHomeStats } from "@/lib/admin-home-stats";
+import { getAdminDashboardData } from "@/lib/admin-dashboard";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatTile } from "@/components/admin/AdminStatTile";
+import { AttentionCard } from "@/components/admin/AttentionCard";
+import { DashboardSection } from "@/components/admin/DashboardSection";
+import { RecentActivityFeed } from "@/components/admin/RecentActivityFeed";
 
 export const dynamic = "force-dynamic";
 
@@ -23,77 +46,203 @@ function formatCount(n: number | null): string {
 }
 
 export default async function AdminHomePage() {
-  // Layout has already enforced auth + redirect; this is just for
-  // the greeting copy.
   const session = await requireAdminUser();
   const greeting =
     session?.firstName && session.firstName.trim().length > 0
       ? `Good day, ${session.firstName.trim()}.`
       : "Good day.";
 
-  const stats = await getAdminHomeStats();
+  const data = await getAdminDashboardData();
+  const { base } = data;
 
-  // Combine moments + intake photos for the "Pending moments" tile.
-  // The tooltip shows the breakdown so admin doesn't lose visibility.
+  // Aggregate moments + intake photos as a single "Moments & photos"
+  // tile because admin treats them as one batch when triaging.
   const momentsCombined =
-    stats.pendingMomentCount === null && stats.pendingIntakePhotoCount === null
+    base.pendingMomentCount === null && base.pendingIntakePhotoCount === null
       ? null
-      : (stats.pendingMomentCount ?? 0) + (stats.pendingIntakePhotoCount ?? 0);
-  const momentsTooltip = `${formatCount(stats.pendingMomentCount)} timeline moment${(stats.pendingMomentCount ?? 0) === 1 ? "" : "s"} · ${formatCount(stats.pendingIntakePhotoCount)} intake photo${(stats.pendingIntakePhotoCount ?? 0) === 1 ? "" : "s"}`;
+      : (base.pendingMomentCount ?? 0) + (base.pendingIntakePhotoCount ?? 0);
+
+  // Surface attention items only when any > 0 — avoid four amber
+  // cards on a quiet day. fulfillment_exception columns are on main
+  // (sub-phase 1) so this query never throws.
+  const exceptionsTotal =
+    (data.fulfillmentOnHold ?? 0) +
+    (data.fulfillmentDisputed ?? 0) +
+    (data.fulfillmentRefundRequested ?? 0) +
+    (data.fulfillmentRefunded ?? 0);
 
   return (
-    <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
-      {/* Greeting block */}
-      <header className="mb-8 md:mb-10">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          {greeting}
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Review queues across the platform — what&apos;s waiting on you.
-        </p>
-        <p className="mt-1 font-script italic text-[18px] text-tangerine-deeper">
-          Approve thoughtfully, reject with kindness.
-        </p>
-      </header>
+    <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-6xl mx-auto">
+      <AdminPageHeader
+        title={greeting}
+        subtitle="Today's queues, operational state, and what changed recently."
+        flourish="Approve thoughtfully, reject with kindness."
+      />
 
-      <section className="mb-12 md:mb-16">
-        <h2 className="sr-only">At a glance</h2>
+      {/* ─── Pending work ─────────────────────────────────────────── */}
+      <DashboardSection
+        eyebrow="What's waiting"
+        title="Pending work"
+        viewAllHref="/admin/reviews"
+      >
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <AdminStatTile
-            label="Pending proposals"
-            value={formatCount(stats.pendingProposalCount)}
+            label="Proposals"
+            value={formatCount(base.pendingProposalCount)}
             href="/admin/proposals?filter=pending"
             icon={ClipboardCheck}
-            hint="profile changes from DI team"
+            hint="profile changes from DI"
           />
           <AdminStatTile
-            label="Pending moments"
+            label="Reports"
+            value={formatCount(base.pendingReportCount)}
+            href="/admin/reviews/reports"
+            icon={FileBarChart}
+            hint="donor-facing updates"
+          />
+          <AdminStatTile
+            label="Moments & photos"
             value={formatCount(momentsCombined)}
-            href="/admin/reviews"
+            href="/admin/reviews/moments"
             icon={Camera}
-            tooltip={momentsTooltip}
-            hint="timeline + intake photos"
+            tooltip={`${formatCount(base.pendingMomentCount)} timeline · ${formatCount(base.pendingIntakePhotoCount)} intake`}
+            hint="timeline + intake"
           />
           <AdminStatTile
-            label="Pending deliveries"
-            value={formatCount(stats.pendingDeliveryCount)}
+            label="Documents"
+            value={formatCount(base.pendingDocumentCount)}
+            href="/admin/reviews/documents"
+            icon={FileText}
+            hint="legal/identity evidence"
+          />
+          <AdminStatTile
+            label="Deliveries"
+            value={formatCount(base.pendingDeliveryCount)}
             href="/admin/reviews"
             icon={Truck}
             hint="aid drops awaiting review"
           />
           <AdminStatTile
-            label="Pending documents"
-            value={formatCount(stats.pendingDocumentCount)}
-            href="/admin/reviews"
-            icon={FileText}
-            hint="legal/identity evidence"
+            label="Intake photos"
+            value={formatCount(base.pendingIntakePhotoCount)}
+            href="/admin/reviews/intake-photos"
+            icon={ImagePlus}
+            hint="initial-visit evidence"
+          />
+          <AdminStatTile
+            label="Open tasks"
+            value={formatCount(data.openTasks)}
+            href="/admin/tasks"
+            icon={ListChecks}
+            hint="field work in progress"
+          />
+          <AdminStatTile
+            label="Tasks to verify"
+            value={formatCount(data.tasksAwaitingVerification)}
+            href="/admin/tasks"
+            icon={ClipboardCheck}
+            hint="DI marked complete"
           />
         </div>
-      </section>
+      </DashboardSection>
 
-      {/* No Quick Actions on admin home (Session 51 brief).
-          Subsequent sessions add review queue panels here when
-          there's actual content to surface. */}
+      {/* ─── Operational snapshot ─────────────────────────────────── */}
+      <DashboardSection
+        eyebrow="State of the platform"
+        title="Operational snapshot"
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <AdminStatTile
+            label="Active sponsorships"
+            value={formatCount(data.activeSponsorships)}
+            href="/admin/sponsorships?filter=active"
+            icon={HeartHandshake}
+            hint="currently funding a child"
+          />
+          <AdminStatTile
+            label="Active children"
+            value={formatCount(data.activeChildren)}
+            href="/admin/children"
+            icon={Users}
+            hint="in the program now"
+          />
+          <AdminStatTile
+            label="Donors awaiting approval"
+            value={formatCount(data.pendingDonorApprovals)}
+            href="/admin/donors?filter=pending"
+            icon={UserCircle}
+            hint="signup queue"
+          />
+          <AdminStatTile
+            label="Audit log"
+            value="Open"
+            href="/admin/audit"
+            icon={CreditCard}
+            hint="forensic history"
+          />
+        </div>
+      </DashboardSection>
+
+      {/* ─── Attention items (only when present) ──────────────────── */}
+      {exceptionsTotal > 0 ? (
+        <DashboardSection
+          eyebrow="Fulfillment exceptions"
+          title="Needs your attention"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            {(data.fulfillmentOnHold ?? 0) > 0 ? (
+              <AttentionCard
+                label="On hold"
+                count={data.fulfillmentOnHold ?? 0}
+                description="Fulfillment paused — non-payment reasons"
+                href="/admin/sponsorships"
+                icon={PauseCircle}
+                tone="amber"
+              />
+            ) : null}
+            {(data.fulfillmentDisputed ?? 0) > 0 ? (
+              <AttentionCard
+                label="Under review"
+                count={data.fulfillmentDisputed ?? 0}
+                description="Donor flagged a concern"
+                href="/admin/sponsorships"
+                icon={ShieldAlert}
+                tone="amber"
+              />
+            ) : null}
+            {(data.fulfillmentRefundRequested ?? 0) > 0 ? (
+              <AttentionCard
+                label="Refund requested"
+                count={data.fulfillmentRefundRequested ?? 0}
+                description="Donor asked, not yet processed"
+                href="/admin/sponsorships"
+                icon={AlertTriangle}
+                tone="stone"
+              />
+            ) : null}
+            {(data.fulfillmentRefunded ?? 0) > 0 ? (
+              <AttentionCard
+                label="Refunded"
+                count={data.fulfillmentRefunded ?? 0}
+                description="Stripe refund completed"
+                href="/admin/sponsorships"
+                icon={CreditCard}
+                tone="stone"
+              />
+            ) : null}
+          </div>
+        </DashboardSection>
+      ) : null}
+
+      {/* ─── Recent activity ──────────────────────────────────────── */}
+      <DashboardSection
+        eyebrow="What's been happening"
+        title="Recent activity"
+        viewAllHref="/admin/audit"
+        viewAllLabel="Open audit log"
+      >
+        <RecentActivityFeed events={data.recentActivity} />
+      </DashboardSection>
     </div>
   );
 }

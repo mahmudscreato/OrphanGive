@@ -142,7 +142,7 @@ export default function TransparencyPage() {
             </div>
             <h2 className="mt-3">
               <span className="font-display font-normal text-ink leading-[1.1] tracking-[-0.025em] text-[clamp(1.75rem,3.5vw,2.5rem)]">
-                The split between programs and platform.
+                The split between programs and operations.
               </span>
             </h2>
           </div>

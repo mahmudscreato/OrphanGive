@@ -26,6 +26,7 @@ import { InactiveChildNotice } from "./InactiveChildNotice";
 // never reaches this page.
 import { FulfillmentPanel } from "./FulfillmentPanel";
 import { getSponsorshipFulfillment } from "@/lib/sponsorship-fulfillment-fetch";
+import { paymentStatusLabel } from "@/lib/status-labels";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -509,7 +510,7 @@ function PaymentRowItem({ p }: { p: PaymentRow }) {
         <span
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border ${statusClass}`}
         >
-          {p.status}
+          {paymentStatusLabel(p.status)}
         </span>
         {receiptHref ? (
           <a
@@ -557,6 +558,13 @@ function UpdatesSection({
 function UpdateItem({ u }: { u: ChildUpdate }) {
   const photoSrc = directusAssetUrl(u.photo);
   const date = formatDate(u.published_at);
+  // Spine Lot 2 — donor sees the admin-curated `donor_text` when
+  // present (admin's polish/anonymisation/softening during review),
+  // falls back to DI's raw `content` when admin didn't edit. This
+  // is the load-bearing privacy boundary: DI may write Tier-3-leaning
+  // detail in `content` that admin scrubs in `donor_text` before
+  // sending. Donor surface MUST prefer donor_text.
+  const donorBody = u.donor_text?.trim() || u.content?.trim() || null;
   return (
     <li className="rounded-[16px] bg-white border border-ink/[0.06] px-5 py-4">
       <div className="flex items-baseline justify-between gap-3 mb-2 flex-wrap">
@@ -579,9 +587,9 @@ function UpdateItem({ u }: { u: ChildUpdate }) {
           />
         </div>
       ) : null}
-      {u.content ? (
+      {donorBody ? (
         <p className="text-[14.5px] text-ink leading-[1.65] whitespace-pre-line">
-          {u.content}
+          {donorBody}
         </p>
       ) : null}
     </li>

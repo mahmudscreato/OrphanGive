@@ -20,6 +20,7 @@ import {
   type DiChildSummary,
 } from "@/lib/di-children";
 import { ChildCard } from "@/components/di/ChildCard";
+import { DiPageHeader } from "@/components/di/DiPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -78,20 +79,11 @@ export default async function DiChildrenPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
-      {/* Header */}
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          My Children
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          {subtitle}
-          {total === 1 ? (
-            <span className="font-script italic text-[18px] text-tangerine-deeper ml-2">
-              just one, for now
-            </span>
-          ) : null}
-        </p>
-      </header>
+      <DiPageHeader
+        title="My Children"
+        subtitle={subtitle}
+        flourish={total === 1 ? "just one, for now" : undefined}
+      />
 
       {/* Status filter pills (only render when there are children) */}
       {total > 0 ? (

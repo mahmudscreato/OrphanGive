@@ -16,6 +16,7 @@ import { directusServer } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
 import { countPendingDocuments } from "@/lib/admin-documents";
 import { countPendingReports } from "@/lib/admin-reports";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -93,14 +94,10 @@ export default async function AdminReviewsIndexPage() {
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-3xl mx-auto">
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          Reviews
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Pick a queue to start triaging.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Reviews"
+        subtitle="Pick a queue to start triaging."
+      />
 
       <ul className="space-y-3">
         {queues.map((q) => {

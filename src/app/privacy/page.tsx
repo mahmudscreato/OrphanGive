@@ -232,7 +232,7 @@ export default async function PrivacyPage() {
               <p>
                 We do <strong>not</strong> sell donor or child data, do
                 <strong> not</strong> share data with advertisers, data brokers,
-                or social media platforms, and do <strong>not</strong>{" "}
+                or social media services, and do <strong>not</strong>{" "}
                 participate in cross-site tracking networks.
               </p>
             </>

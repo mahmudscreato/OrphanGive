@@ -105,6 +105,13 @@ export type AuditAction =
   | "admin_approved_report"
   | "admin_edited_report_donor_text"
   | "admin_requested_report_correction"
+  // Spine Lot 2 — admin publishes an approved report to the donor.
+  // Status flips from 'approved' to 'published'; published_at +
+  // published_by stamped; donor email fired; donor's per-sponsorship
+  // Updates feed now shows the row. Donor sees the curated donor_text
+  // (or DI's content as fallback when admin didn't edit), never
+  // Tier-3 fields. Metadata: IDs only — NEVER the donor_text body.
+  | "admin_sent_report_to_donor"
   // Session 52c — admin cleanup removes, distinct from approve /
   // reject. Admin hits these when a DI uploaded by mistake — no
   // judgement recorded, just gone. Session 52d lifts the pending-
@@ -234,6 +241,25 @@ export type AuditAction =
   | "webhook_subscription_created"
   | "webhook_subscription_deleted"
   | "webhook_charge_refunded"
+  // ─── Donation Lifecycle sub-phase 3 — admin fulfillment exception writes ───
+  //
+  // Admin sets the fulfillment exception axis on a sponsorship.
+  // SEPARATE from sponsorship.status (payment lifecycle, Stripe-driven).
+  // The 'refunded' value is NOT in this list — it's system-set by the
+  // existing charge.refunded webhook and audited under
+  // webhook_charge_refunded with extra refund-fulfillment metadata.
+  //
+  // METADATA contract (privacy):
+  //   - childId, donor, sponsorshipId, exception, prior_exception
+  //   - NEVER fulfillment_reason (private admin note)
+  //   - NEVER fulfillment_donor_visible_reason verbatim either —
+  //     we only mark whether one was provided (boolean). The text
+  //     lives on the sponsorship row; the audit captures the
+  //     STATE TRANSITION, not the copy.
+  | "admin_set_fulfillment_on_hold"
+  | "admin_set_fulfillment_disputed"
+  | "admin_set_fulfillment_refund_requested"
+  | "admin_cleared_fulfillment_exception"
   // ─── Spine 1.1 — Admin task creation (hop 3 of the accountability
   //                 spine, per docs/admin-os/02-spine-design.md) ───
   //
@@ -477,6 +503,7 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_edited_report_donor_text: () => `Admin edited the donor-facing copy`,
   admin_requested_report_correction: () =>
     `Admin sent your report back for correction`,
+  admin_sent_report_to_donor: () => `Admin sent your report to the donor`,
   admin_removed_document: () => `Admin removed a pending document`,
   admin_removed_intake_photo: () => `Admin removed a pending intake photo`,
   admin_removed_approved_document: () =>
@@ -544,6 +571,13 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   webhook_subscription_created: () => `Stripe subscription created`,
   webhook_subscription_deleted: () => `Stripe subscription ended`,
   webhook_charge_refunded: () => `Stripe charge refunded`,
+  // Donation Lifecycle sub-phase 3 — admin fulfillment exception writes.
+  admin_set_fulfillment_on_hold: () => `Admin paused fulfillment (on hold)`,
+  admin_set_fulfillment_disputed: () => `Admin marked the delivery as disputed`,
+  admin_set_fulfillment_refund_requested: () =>
+    `Admin marked a refund as requested`,
+  admin_cleared_fulfillment_exception: () =>
+    `Admin cleared the fulfillment exception`,
   // Spine 1.1 — admin field-task creation.
   admin_created_task: (a) => `${a} created a field task`,
 };

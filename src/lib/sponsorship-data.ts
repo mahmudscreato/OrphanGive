@@ -73,6 +73,22 @@ export type Sponsorship = {
   // 'active' until the prepaid period ends, at which point the cron
   // flips status to 'cancelled'.
   cancellation_scheduled_at: string | null;
+  // Donation Lifecycle sub-phase 1 — fulfillment exception axis.
+  // Separate from the Stripe-driven `status` field. The resolver in
+  // src/lib/fulfillment-status.ts reads these to compute the
+  // donor-visible fulfillment phase. `refunded` is SYSTEM-set by the
+  // charge.refunded webhook (sub-phase 3); the other three are
+  // admin-set. fulfillment_reason is PRIVATE (admin-only); donor
+  // surface uses fulfillment_donor_visible_reason exclusively.
+  fulfillment_exception:
+    | "on_hold"
+    | "disputed"
+    | "refund_requested"
+    | "refunded"
+    | null;
+  fulfillment_exception_at: string | null;
+  fulfillment_reason: string | null;
+  fulfillment_donor_visible_reason: string | null;
   // Coverage package / cause — donor's stated allocation intent at
   // sponsor-flow time. Charity admin may override in Directus admin
   // (hybrid model). See src/lib/cause.ts for the canonical enum.
@@ -551,7 +567,12 @@ export async function getPaymentsForSponsorship(
 export type ChildUpdate = {
   id: string;
   title: string | null;
+  // DI's raw narrative — preserved as the forensic record. Spine Lot 2:
+  // the donor reader returns this for compatibility, but the donor UI
+  // should prefer `donor_text` when present (the admin's curated copy).
+  // The donor-facing convention is COALESCE(donor_text, content).
   content: string | null;
+  donor_text: string | null;
   type: string | null;
   photo: string | null;
   published_at: string | null;
@@ -930,7 +951,20 @@ export async function getApprovedChildUpdates(
             { published_at: { _lte: nowIso } },
           ],
         },
-        fields: ["id", "title", "content", "type", "photo", "published_at"],
+        fields: [
+          "id",
+          "title",
+          "content",
+          // Spine Lot 2 — admin-curated donor copy. Donor UI must
+          // render `donor_text || content` so admin's edits win
+          // over the DI's raw narrative when the admin polished it
+          // during review. content is kept on the row for forensic
+          // record; admin-only surfaces still display it verbatim.
+          "donor_text",
+          "type",
+          "photo",
+          "published_at",
+        ],
         sort: ["-published_at"],
         limit,
       } as never),

@@ -1,8 +1,16 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { signOutAction } from "@/app/(auth)/actions";
 import { ToastProvider } from "@/components/ui/Toast";
 import { DashboardSidebar } from "./components/DashboardSidebar";
+
+// Lot 4 Job B — donor dashboard is private (auth-gated) and should
+// never be indexed. robots.txt already disallows /dashboard/, this
+// adds a per-layout noindex as belt-and-braces.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function DashboardLayout({
   children,

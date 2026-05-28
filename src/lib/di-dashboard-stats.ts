@@ -37,6 +37,12 @@ export interface DiDashboardStats {
   pendingCount: number | null;
   approvedThisMonthCount: number | null;
   changesRequestedCount: number | null;
+  // DI Lot 3 — surfaces the DI's task + report queue so the home
+  // page can lead with "what needs your action today" before the
+  // proposal-lifecycle stats. None are new logic — just counts.
+  openTaskCount: number | null; // task.di_status IN (open, in_progress) AND assignee = me
+  tasksAwaitingVerification: number | null; // di_status=completed_pending_verification AND admin_status=open AND assignee=me
+  reportsNeedingResubmit: number | null; // child_update.status='correction_requested' AND created_by = me
 }
 
 async function safeCount(
@@ -88,6 +94,9 @@ export async function getDiDashboardStats(
     pendingCount,
     approvedThisMonthCount,
     changesRequestedCount,
+    openTaskCount,
+    tasksAwaitingVerification,
+    reportsNeedingResubmit,
   ] = await Promise.all([
     // 1. Drafts in progress — same shape getDraftCountForUser uses
     //    in di-proposals.ts; inlined here so we can issue all four
@@ -157,6 +166,42 @@ export async function getDiDashboardStats(
         { rejection_reason: { _nempty: true } },
       ],
     }),
+
+    // 5. Open tasks — DI's `task` rows in 'open' or 'in_progress'.
+    //    These are the DI's active fieldwork queue.
+    safeCount("task", {
+      _and: [
+        { assignee: { _eq: userId } },
+        {
+          _or: [
+            { di_status: { _eq: "open" } },
+            { di_status: { _eq: "in_progress" } },
+          ],
+        },
+      ],
+    }),
+
+    // 6. Tasks awaiting verification — DI marked done; admin hasn't
+    //    looked yet. Surfaced as informational ("you've handed it
+    //    off"), distinct from the open queue.
+    safeCount("task", {
+      _and: [
+        { assignee: { _eq: userId } },
+        { di_status: { _eq: "completed_pending_verification" } },
+        { admin_status: { _eq: "open" } },
+      ],
+    }),
+
+    // 7. Reports admin sent back for correction. These are the highest-
+    //    priority items because admin is explicitly waiting on the DI
+    //    to act. Surfaced as an attention card at the top of the home
+    //    page (DI Lot 3).
+    safeCount("child_update", {
+      _and: [
+        { created_by: { _eq: userId } },
+        { status: { _eq: "correction_requested" } },
+      ],
+    }),
   ]);
 
   return {
@@ -164,5 +209,8 @@ export async function getDiDashboardStats(
     pendingCount,
     approvedThisMonthCount,
     changesRequestedCount,
+    openTaskCount,
+    tasksAwaitingVerification,
+    reportsNeedingResubmit,
   };
 }

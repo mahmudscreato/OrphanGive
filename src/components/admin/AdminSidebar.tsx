@@ -36,17 +36,48 @@ const FAVICON_URL =
 // Sessions 60 + 65 + 66 — combined badge key union.
 type BadgeKey = "proposals" | "reviews" | "donors" | "children";
 
+// Admin Lot 1 — section axis for visual grouping. `group` is kept
+// for backwards-compat (existing primary/secondary divider logic
+// elsewhere doesn't break) but `section` is what now drives the
+// rendered section labels + dividers. Future entries should pick the
+// section that best fits their daily use:
+//   - "overview"    — landing surfaces (Home)
+//   - "operations"  — triage queues + the things admin actions
+//                     on most days (proposals, reviews, tasks)
+//   - "people"      — record-level surfaces (children, donors,
+//                     sponsorships)
+//   - "config"      — settings / catalog (packages, currency rates)
+//   - "forensic"    — read-only history (audit log)
+type Section = "overview" | "operations" | "people" | "config" | "forensic";
+
+const SECTION_LABEL: Record<Section, string | null> = {
+  overview: null, // Home stands alone, no label needed
+  operations: "Operations",
+  people: "People",
+  config: "Config",
+  forensic: "Forensic",
+};
+
 type NavItem = {
   href: string;
   label: string;
   icon: typeof Home;
   exact: boolean;
   badgeKey?: BadgeKey;
+  // Legacy axis from Session 67; new rendering uses `section`.
   group: "primary" | "secondary";
+  section: Section;
 };
 
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
-  { href: "/admin", label: "Home", icon: Home, exact: true, group: "primary" },
+  {
+    href: "/admin",
+    label: "Home",
+    icon: Home,
+    exact: true,
+    group: "primary",
+    section: "overview",
+  },
   {
     href: "/admin/proposals",
     label: "Proposals",
@@ -54,6 +85,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     badgeKey: "proposals",
     group: "primary",
+    section: "operations",
   },
   {
     href: "/admin/reviews",
@@ -62,6 +94,31 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     badgeKey: "reviews",
     group: "primary",
+    section: "operations",
+  },
+  // Spine 1.1 — admin field-task surface. Lives next to Reviews
+  // because both are "what admin actions on most days."
+  {
+    href: "/admin/tasks",
+    label: "Tasks",
+    icon: ListChecks,
+    exact: false,
+    group: "primary",
+    section: "operations",
+  },
+  // Donation Lifecycle sub-phase 3 — fulfillment overview across
+  // every sponsorship. Distinct from Sponsorships (payment-axis):
+  // this is the fulfillment-axis "what's stuck / on hold / disputed"
+  // operational view. Lives in `operations` per Lot 1's section axis
+  // because it IS a triage queue ("what's stuck"), even though it
+  // reads against the sponsorship record.
+  {
+    href: "/admin/donations",
+    label: "Donations",
+    icon: HeartHandshake,
+    exact: false,
+    group: "primary",
+    section: "operations",
   },
   // Session 66 — children gets an active-count badge.
   {
@@ -71,6 +128,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     badgeKey: "children",
     group: "primary",
+    section: "people",
   },
   // Session 61 — live sponsorships management surface.
   {
@@ -79,16 +137,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: HeartHandshake,
     exact: false,
     group: "primary",
-  },
-  // Spine 1.1 — admin field-task surface. Sits next to Sponsorships
-  // because the natural origin for a task is a sponsorship detail
-  // page; the /admin/tasks queue is the operational triage view.
-  {
-    href: "/admin/tasks",
-    label: "Tasks",
-    icon: ListChecks,
-    exact: false,
-    group: "primary",
+    section: "people",
   },
   // Session 65 — donor management.
   {
@@ -98,17 +147,18 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     exact: false,
     badgeKey: "donors",
     group: "primary",
+    section: "people",
   },
-  // Session 58.2 — donation_package + currency_rate admin. Sits in the
-  // primary cluster next to Donors since both are donor-side data;
-  // Mahmud touches these to adjust pricing presets and FX rates
-  // without needing a deploy.
+  // Session 58.2 — donation_package + currency_rate admin. Mahmud
+  // touches these to adjust pricing presets and FX rates without
+  // needing a deploy.
   {
     href: "/admin/donation-packages",
     label: "Packages",
     icon: Gift,
     exact: false,
     group: "primary",
+    section: "config",
   },
   {
     href: "/admin/currency-rates",
@@ -116,16 +166,18 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     icon: Banknote,
     exact: false,
     group: "primary",
+    section: "config",
   },
-  // Session 67 — forensic surface. Secondary group; lives at the
-  // bottom of the nav above Sign out so it's accessible without
-  // crowding the daily-use cluster.
+  // Session 67 — forensic surface. Lives at the bottom of the nav
+  // above Sign out so it's accessible without crowding the daily-use
+  // cluster.
   {
     href: "/admin/audit",
     label: "Audit log",
     icon: ScrollText,
     exact: false,
     group: "secondary",
+    section: "forensic",
   },
 ];
 
@@ -181,25 +233,40 @@ export function AdminSidebar({
         </Link>
       </div>
 
-      <nav className="flex-1">
-        <ul className="space-y-1">
+      <nav className="flex-1 overflow-y-auto">
+        <ul className="space-y-0.5">
           {NAV_ITEMS.map((item, idx) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href, item.exact);
             const count = item.badgeKey ? badges?.[item.badgeKey] ?? null : null;
             const showBadge = typeof count === "number" && count > 0;
-            // Session 67 — divider before the first secondary item.
+            // Admin Lot 1 — section-driven dividers + tiny labels.
+            // We render a divider + uppercase eyebrow at every section
+            // transition (except the first item, which is the "overview"
+            // Home and gets no label).
             const previousItem = idx > 0 ? NAV_ITEMS[idx - 1] : null;
+            const isFirstInSection =
+              !previousItem || previousItem.section !== item.section;
+            const sectionLabel = SECTION_LABEL[item.section];
+            const showSectionHeader =
+              isFirstInSection && sectionLabel !== null;
             const showDivider =
-              item.group === "secondary" &&
-              (!previousItem || previousItem.group !== "secondary");
+              isFirstInSection && idx > 0;
             return (
               <li key={item.href}>
                 {showDivider ? (
                   <div
-                    className="my-2 border-t border-ink/[0.08]"
+                    className="my-2 border-t border-ink/[0.06]"
                     aria-hidden="true"
                   />
+                ) : null}
+                {showSectionHeader ? (
+                  <p
+                    className="px-3 pt-1 pb-1.5 font-mono text-[9.5px] tracking-[0.16em] uppercase text-slate-soft font-medium"
+                    aria-hidden="true"
+                  >
+                    {sectionLabel}
+                  </p>
                 ) : null}
                 <Link
                   href={item.href}

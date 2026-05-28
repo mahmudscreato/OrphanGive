@@ -8,6 +8,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import { getSponsorshipForDonor } from "@/lib/sponsorship-data";
+import { sponsorshipStatusLabel } from "@/lib/status-labels";
 import { ShiftDecisionCard } from "./ShiftDecisionCard";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +80,7 @@ export default async function QueueShiftDecisionPage({
         <ReadOnlyNotice
           reason={
             sponsorship.status !== "active"
-              ? `This sponsorship is now ${sponsorship.status}. No further decision is needed.`
+              ? `This sponsorship is now ${sponsorshipStatusLabel(sponsorship.status).toLowerCase()}. No further decision is needed.`
               : "This sponsorship isn't queued anymore."
           }
         />

@@ -29,6 +29,9 @@ import {
 export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Give to a cause — OrphanGive",
+  description:
+    "Make a one-time gift to a cause we support in Bangladesh — verified by Children's Heaven Trust. Choose a package, give in your local currency.",
+  robots: { index: false, follow: false },
 };
 
 const ONE_TIME_BDT_FLOOR = 500;

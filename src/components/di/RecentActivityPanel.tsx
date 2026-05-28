@@ -73,6 +73,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_approved_report: CheckCircle2,
   admin_edited_report_donor_text: Edit3,
   admin_requested_report_correction: RotateCcw,
+  admin_sent_report_to_donor: CheckCircle2,
   // Session 52c — admin cleanup removes (distinct from rejection).
   admin_removed_document: Trash2,
   admin_removed_intake_photo: Trash2,
@@ -128,6 +129,11 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   webhook_subscription_created: PlayCircle,
   webhook_subscription_deleted: XCircle,
   webhook_charge_refunded: RotateCcw,
+  // Donation Lifecycle sub-phase 3 — admin fulfillment exception writes.
+  admin_set_fulfillment_on_hold: PauseCircle,
+  admin_set_fulfillment_disputed: AlertTriangle,
+  admin_set_fulfillment_refund_requested: RotateCcw,
+  admin_cleared_fulfillment_exception: CheckCircle2,
   // Spine 1.1 — admin field-task creation. Type-safety placeholder;
   // the DI Recent Activity feed filters to the DI's own actions +
   // admin actions on scoped children, so admin_created_task rows

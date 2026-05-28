@@ -1,7 +1,15 @@
 // Session 51 — Admin Dashboard authed layout.
 
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { requireAdminUser } from "@/lib/admin-auth";
+
+// Lot 4 Job B — defence-in-depth on top of robots.txt. Every admin
+// surface is auth-gated, but an explicit per-layout noindex prevents
+// any accidental crawler reach if a route ever leaks publicly.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 import { getAdminHomeStats } from "@/lib/admin-home-stats";
 // Session 65 — donor pending count for the Donors nav badge.
 import { countPendingDonorApprovals } from "@/lib/admin-donors";

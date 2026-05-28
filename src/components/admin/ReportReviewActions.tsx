@@ -25,6 +25,7 @@ import {
   Edit3,
   Loader2,
   RotateCcw,
+  Send,
 } from "lucide-react";
 
 interface ApiError {
@@ -65,7 +66,11 @@ export function ReportReviewActions({
   const [serverError, setServerError] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  const isTerminal = status === "approved" || status === "rejected";
+  // Spine Lot 2 — 'approved' is no longer terminal; it gets a
+  // "Send to donor" action. Truly terminal states are 'published'
+  // (already donor-visible) and 'rejected'.
+  const isTerminal = status === "rejected" || status === "published";
+  const isApproved = status === "approved";
   const trimmed = donorText.trim();
   const tooShort = trimmed.length < 50;
   const tooLong = trimmed.length > 4000;
@@ -199,12 +204,116 @@ export function ReportReviewActions({
     });
   }
 
+  // Spine Lot 2 — Send to donor. Flips approved → published, fires
+  // donor email, donor sees the row in their dashboard updates feed.
+  function onSendToDonor() {
+    setServerError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/reports/${reportId}/send`,
+          { method: "POST" },
+        );
+        const body = (await res.json().catch(() => ({}))) as ApiError & {
+          emailSent?: boolean;
+          emailError?: string;
+        };
+        if (!res.ok) {
+          setServerError(
+            handleApiError(body, "Couldn't send to donor. Try again."),
+          );
+          return;
+        }
+        const emailNote = body.emailSent
+          ? `Sent to ${childDisplayName}'s donor. Email delivered.`
+          : `Sent to ${childDisplayName}'s donor. Email skipped (${body.emailError ?? "no provider"}).`;
+        setSuccessToast(emailNote);
+        window.setTimeout(() => {
+          router.push("/admin/reviews/reports");
+          router.refresh();
+        }, 900);
+      } catch {
+        setServerError("Network error. Try again.");
+      }
+    });
+  }
+
   if (isTerminal) {
+    const message =
+      status === "published"
+        ? `This report has been sent to ${childDisplayName}'s donor.`
+        : `This report is rejected. No further admin action available.`;
+    const sub =
+      status === "published"
+        ? `The donor can read it on their dashboard.`
+        : null;
     return (
-      <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 text-[13.5px] text-ink-soft">
-        This report is{" "}
-        <span className="font-medium text-ink">{status}</span>. No further
-        admin action available in this phase.
+      <div
+        className={`rounded-xl border p-4 text-[13.5px] ${
+          status === "published"
+            ? "border-moss/30 bg-moss-soft text-moss-deep"
+            : "border-stone-200 bg-stone-50 text-ink-soft"
+        }`}
+      >
+        <p className="font-medium">{message}</p>
+        {sub ? <p className="mt-1 text-[12.5px] opacity-80">{sub}</p> : null}
+      </div>
+    );
+  }
+
+  // Spine Lot 2 — when status='approved', the only meaningful admin
+  // action left is "Send to donor". Editing donor_text + approve are
+  // already done. We render a focused, single-purpose panel so admin
+  // can't accidentally re-edit or undo from this state without
+  // explicit intent (a future "Unapprove" affordance would be a
+  // separate sub-phase; for now the surface is forward-only).
+  if (isApproved) {
+    return (
+      <div className="space-y-4">
+        {serverError ? (
+          <div
+            className="rounded-xl border border-[#A02B2B]/30 bg-[#A02B2B]/[0.06] px-4 py-3 text-[13.5px] text-[#A02B2B]"
+            role="alert"
+          >
+            {serverError}
+          </div>
+        ) : null}
+        {successToast ? (
+          <div
+            className="rounded-xl border border-moss/40 bg-moss-soft px-4 py-3 text-[13.5px] text-moss-deep"
+            role="status"
+          >
+            {successToast}
+          </div>
+        ) : null}
+
+        <div className="rounded-2xl border border-moss/30 bg-moss-soft/40 p-5 md:p-6">
+          <p className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-moss-deep font-medium mb-2">
+            Approved · ready to send
+          </p>
+          <h3 className="font-display text-[20px] text-ink leading-tight mb-2">
+            Send to {childDisplayName}&rsquo;s donor
+          </h3>
+          <p className="text-[13.5px] text-ink-soft leading-relaxed mb-4">
+            The donor will see the curated copy on their dashboard and
+            receive a short email pointing them there. The email contains
+            only the child&rsquo;s name and a link — no report body, no
+            sensitive details.
+          </p>
+          <button
+            type="button"
+            onClick={onSendToDonor}
+            disabled={pending}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-moss text-white font-medium text-[14.5px] hover:bg-moss-deep disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {pending ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Send className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+            )}
+            {pending ? "Sending…" : "Send to donor"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -282,9 +391,9 @@ export function ReportReviewActions({
           Donor-facing copy
         </label>
         <p className="text-[12.5px] text-ink-soft leading-relaxed mb-2">
-          Donors will read this verbatim when 1.3 ships. Keep it warm,
-          specific, and free of admin-only details (no district, no
-          guardian info, no medical specifics).
+          The donor will read this verbatim after you Approve + Send.
+          Keep it warm, specific, and free of admin-only details (no
+          district, no guardian info, no medical specifics).
         </p>
         <textarea
           id="donor-text"
