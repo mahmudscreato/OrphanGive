@@ -29,6 +29,7 @@ import {
   type AdminSponsorshipSummary,
   type SponsorshipListTypeFilter,
 } from "@/lib/admin-sponsorships";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import type { SponsorshipStatus } from "@/lib/sponsorship-data";
 import {
   formatDonorAmount,
@@ -177,16 +178,10 @@ export default async function AdminSponsorshipsListPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          Sponsorships
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Manage live commitments — pause, resume, cancel, or refund.
-          Use the search to find by sponsorship ID, donor name/email, or
-          child name.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Sponsorships"
+        subtitle="Manage live commitments — pause, resume, cancel, or refund. Search by sponsorship ID, donor name/email, or child name."
+      />
 
       {/* Status tabs */}
       <nav

@@ -17,6 +17,7 @@ import {
   type AdminChildPageRow,
   type AdminChildSponsorState,
 } from "@/lib/admin-children";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -171,16 +172,10 @@ export default async function AdminChildrenListPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-6xl mx-auto">
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          Children
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Every child on record. Click into a row for the full admin detail
-          — editable fields, documents, intake photos, sponsorships, audit
-          trail, and admin actions.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Children"
+        subtitle="Every child on record. Click into a row for the full admin detail — editable fields, documents, intake photos, sponsorships, audit trail, and admin actions."
+      />
 
       {/* Status tabs */}
       <nav

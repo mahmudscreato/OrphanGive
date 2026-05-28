@@ -27,6 +27,7 @@ import {
   type ProposalStatus,
   type ProposalType,
 } from "@/lib/admin-proposals-list";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { getBdDivisions } from "@/lib/di-children";
 
 export const dynamic = "force-dynamic";
@@ -151,14 +152,10 @@ export default async function AdminProposalsListPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-4xl mx-auto">
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          Proposals
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Profile changes from the DI team waiting on your approval.
-        </p>
-      </header>
+      <AdminPageHeader
+        title="Proposals"
+        subtitle="Profile changes from the DI team waiting on your approval."
+      />
 
       {/* Status tabs */}
       <nav
