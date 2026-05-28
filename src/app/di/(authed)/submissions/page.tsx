@@ -21,6 +21,7 @@ import {
 } from "@/lib/di-proposals";
 import { SubmissionCard } from "@/components/di/SubmissionCard";
 import { JustSubmittedBanner } from "@/components/di/JustSubmittedBanner";
+import { DiPageHeader } from "@/components/di/DiPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -67,15 +68,10 @@ export default async function DiSubmissionsPage({
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
-      {/* Header */}
-      <header className="mb-6 md:mb-8">
-        <h1 className="font-display text-[28px] md:text-[36px] text-ink leading-tight tracking-tight">
-          My submissions
-        </h1>
-        <p className="mt-2 text-[14px] md:text-[15px] text-ink-soft leading-relaxed">
-          Track what you&apos;ve sent for admin review.
-        </p>
-      </header>
+      <DiPageHeader
+        title="My submissions"
+        subtitle="Track what you've sent for admin review."
+      />
 
       {justSubmittedId ? (
         <JustSubmittedBanner proposalId={justSubmittedId} />

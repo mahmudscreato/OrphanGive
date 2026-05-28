@@ -20,6 +20,7 @@ import {
   type ReportType,
   type ReportVisibility,
 } from "@/lib/di-report-options";
+import { sponsorshipStatusLabel } from "@/lib/status-labels";
 import { PhotoUploadField } from "./PhotoUploadField";
 
 const inputClass =
@@ -217,7 +218,7 @@ export function ReportForm({
                         ? "Monthly"
                         : "Unknown"}
                   {" · "}
-                  {s.status}
+                  {sponsorshipStatusLabel(s.status)}
                 </option>
               ))}
             </select>

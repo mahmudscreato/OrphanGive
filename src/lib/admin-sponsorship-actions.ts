@@ -15,7 +15,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { readItem, readItems } from "@directus/sdk";
+import { readItem, readItems, readUsers } from "@directus/sdk";
 import { requireAdminUser, type AdminSession } from "./admin-auth";
 import { directusServer } from "./directus";
 import type { Sponsorship } from "./sponsorship-data";
@@ -168,8 +168,15 @@ export async function fetchDonorForEmail(
 ): Promise<AdminEmailDonor | null> {
   if (!donorId) return null;
   try {
+    // DI Lot 3 fix — was `readItems("directus_users", …)` which the
+    // v21 SDK rejects ("Cannot use readItems for core collections"),
+    // silently failing every donor email on refund / cancel / pause /
+    // resume / extend. The SDK exposes `readUsers` as the dedicated
+    // helper for the directus_users core collection. Same fields,
+    // identical return shape — all 4 caller routes continue to work
+    // unchanged.
     const rows = (await directusServer().request(
-      readItems("directus_users" as never, {
+      readUsers({
         filter: { id: { _eq: donorId } },
         fields: ["id", "first_name", "last_name", "email"],
         limit: 1,

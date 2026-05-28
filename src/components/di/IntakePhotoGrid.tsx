@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { PHOTO_LIMITS } from "@/lib/di-photo-limits";
 import type { IntakePhotoSummary } from "@/lib/di-intake-photos";
+import { intakePhotoStatusLabel } from "@/lib/status-labels";
 
 const MAX_INTAKE_PHOTOS = 5;
 const RECOMMENDED_MIN = 3;
@@ -650,7 +651,7 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
                         aria-hidden="true"
                       />
                     ) : null}
-                    {slot.status}
+                    {intakePhotoStatusLabel(slot.status)}
                   </div>
                 ) : null}
 

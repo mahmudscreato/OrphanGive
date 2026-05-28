@@ -26,6 +26,7 @@ import { InactiveChildNotice } from "./InactiveChildNotice";
 // never reaches this page.
 import { FulfillmentPanel } from "./FulfillmentPanel";
 import { getSponsorshipFulfillment } from "@/lib/sponsorship-fulfillment-fetch";
+import { paymentStatusLabel } from "@/lib/status-labels";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -509,7 +510,7 @@ function PaymentRowItem({ p }: { p: PaymentRow }) {
         <span
           className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-mono text-[10px] tracking-[0.12em] uppercase font-medium border ${statusClass}`}
         >
-          {p.status}
+          {paymentStatusLabel(p.status)}
         </span>
         {receiptHref ? (
           <a

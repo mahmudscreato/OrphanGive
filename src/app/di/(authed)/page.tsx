@@ -28,6 +28,9 @@ import {
   Inbox,
   CheckCircle2,
   AlertCircle,
+  ListChecks,
+  RotateCcw,
+  Truck,
 } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import { getDiDashboardStats } from "@/lib/di-dashboard-stats";
@@ -180,9 +183,69 @@ export default async function DiHomePage() {
         </p>
       </header>
 
+      {/* ── Needs your attention (DI Lot 3) ──
+          Shown only when something needs the DI to ACT. Distinct
+          from "Awaiting admin review" — those are sitting with
+          admin, not the DI. The amber/tangerine treatment signals
+          "do something." If nothing's amber, the DI scrolls
+          straight past to the operational stats. */}
+      {(stats.reportsNeedingResubmit ?? 0) > 0 ||
+      (stats.openTaskCount ?? 0) > 0 ||
+      (stats.changesRequestedCount ?? 0) > 0 ? (
+        <section className="mb-10 md:mb-12">
+          <header className="mb-3">
+            <p className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-slate font-medium mb-1">
+              Your queue
+            </p>
+            <h2 className="font-display text-[20px] md:text-[22px] text-ink leading-tight tracking-tight">
+              Needs your attention
+            </h2>
+          </header>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+            {(stats.reportsNeedingResubmit ?? 0) > 0 ? (
+              <AttentionTile
+                count={stats.reportsNeedingResubmit ?? 0}
+                label="Reports to resubmit"
+                description="Admin sent back for correction"
+                href="/di/submissions"
+                icon={RotateCcw}
+                tone="amber"
+              />
+            ) : null}
+            {(stats.openTaskCount ?? 0) > 0 ? (
+              <AttentionTile
+                count={stats.openTaskCount ?? 0}
+                label="Open tasks"
+                description="Field work in progress"
+                href="/di/tasks"
+                icon={ListChecks}
+                tone="tangerine"
+              />
+            ) : null}
+            {(stats.changesRequestedCount ?? 0) > 0 ? (
+              <AttentionTile
+                count={stats.changesRequestedCount ?? 0}
+                label="Proposal changes requested"
+                description="Admin asked for edits"
+                href="/di/drafts"
+                icon={AlertCircle}
+                tone="amber"
+              />
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {/* ── Stat tiles row ── */}
       <section className="mb-12 md:mb-14">
-        <h2 className="sr-only">Your submissions at a glance</h2>
+        <header className="mb-3">
+          <p className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-slate font-medium mb-1">
+            Submissions at a glance
+          </p>
+          <h2 className="font-display text-[20px] md:text-[22px] text-ink leading-tight tracking-tight">
+            Your work
+          </h2>
+        </header>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatTile
             label="Drafts in progress"
@@ -203,15 +266,11 @@ export default async function DiHomePage() {
             icon={CheckCircle2}
           />
           <StatTile
-            label="Changes requested"
-            value={formatCount(stats.changesRequestedCount)}
-            href="/di/drafts"
-            icon={AlertCircle}
-            hint={
-              (stats.changesRequestedCount ?? 0) > 0
-                ? "Admin sent some back — check drafts"
-                : undefined
-            }
+            label="Tasks awaiting admin"
+            value={formatCount(stats.tasksAwaitingVerification)}
+            href="/di/tasks"
+            icon={Truck}
+            hint="you marked done; admin to verify"
           />
         </div>
       </section>
@@ -258,4 +317,71 @@ function listJoin(items: string[]): string {
   if (items.length === 1) return items[0]!;
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+/**
+ * Attention tile — colored card for items the DI needs to ACT on.
+ * Distinct from StatTile (which is purely informational). Tones:
+ *   - amber: things admin sent back that the DI must address
+ *   - tangerine: in-flight work the DI is doing
+ *
+ * Hidden by the caller when count=0 (no empty amber cards on quiet
+ * days).
+ */
+function AttentionTile({
+  count,
+  label,
+  description,
+  href,
+  icon: Icon,
+  tone,
+}: {
+  count: number;
+  label: string;
+  description: string;
+  href: string;
+  icon: typeof ClipboardList;
+  tone: "amber" | "tangerine";
+}) {
+  const palette =
+    tone === "amber"
+      ? {
+          bg: "bg-amber-50",
+          border: "border-amber-200",
+          icon: "bg-amber-100 text-amber-900",
+          text: "text-amber-900",
+        }
+      : {
+          bg: "bg-tangerine-mist",
+          border: "border-tangerine-soft",
+          icon: "bg-tangerine text-white",
+          text: "text-tangerine-deep",
+        };
+  return (
+    <Link
+      href={href}
+      className={`group flex items-start gap-3 rounded-2xl border ${palette.bg} ${palette.border} p-4 md:p-5 transition-all duration-200 hover:shadow-card hover:-translate-y-px`}
+    >
+      <div
+        className={`shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl ${palette.icon}`}
+      >
+        <Icon className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span
+            className={`font-display text-[24px] leading-none font-medium tracking-tight ${palette.text}`}
+          >
+            {count}
+          </span>
+          <span className={`text-[13px] font-medium ${palette.text}`}>
+            {label}
+          </span>
+        </div>
+        <p className={`mt-1 text-[12px] ${palette.text} opacity-80 leading-snug`}>
+          {description}
+        </p>
+      </div>
+    </Link>
+  );
 }

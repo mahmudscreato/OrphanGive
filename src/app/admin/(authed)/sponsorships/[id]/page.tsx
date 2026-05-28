@@ -50,6 +50,7 @@ import { StripeLink } from "@/components/admin/StripeLink";
 // spine per docs/admin-os/02-spine-design.md §2.
 import { CreateTaskButton } from "@/components/admin/CreateTaskButton";
 import { listAssignableDIs } from "@/lib/admin-tasks";
+import { paymentStatusLabel } from "@/lib/status-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -492,7 +493,9 @@ function PaymentsPanel({
                     {formatMoney(p.amount_usd, p.currency || currency)}
                   </span>{" "}
                   · {p.payment_method_type || "card"} ·{" "}
-                  <span className="text-ink-soft">{p.status}</span>
+                  <span className="text-ink-soft">
+                    {paymentStatusLabel(p.status)}
+                  </span>
                 </p>
                 <span className="font-mono text-[11px] text-slate-soft tabular-nums shrink-0">
                   {formatTimestamp(p.paid_at ?? p.date_created)}
