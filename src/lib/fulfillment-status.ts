@@ -23,27 +23,34 @@
 //   - `donor`: scrubbed view. Surfaces ONLY fulfillment_donor_visible_reason
 //     (curated copy). NEVER fulfillment_reason. NEVER Tier-3.
 //
-// PRECEDENCE (encoded in resolve order — first match wins):
+// PRECEDENCE (encoded in resolve order — first match wins).
 //
-//   1. sponsorship.status ∈ {cancelled, failed}
-//      AND fulfillment_exception NOT IN {refunded, refund_requested}
-//      → CANCELLED  (or terminal composite — see Q5)
-//      Q5 lock: if a child_update.status='published' exists for this
-//      sponsorship, the donor view shows "Delivered • Sponsorship
-//      ended [date]" and the phase remains delivered with an attached
-//      sponsorshipEndedAt.
+// Option A (locked, post-sub-phase-2): ALL four exception column
+// values take precedence over payment-cancelled, not just the refund
+// flow. This matches design §B.2's "strictly independent axes"
+// intent — an admin's explicit fulfillment exception is always
+// surfaced to the donor regardless of payment status. The Q5
+// composite still fires for the no-exception delivered+cancelled
+// case (admin took no fulfillment action; the cancellation is purely
+// payment-side after a successful delivery).
 //
-//   2. fulfillment_exception='refunded'        → REFUNDED (terminal)
-//   3. fulfillment_exception='refund_requested' → REFUND_REQUESTED
-//   4. fulfillment_exception='disputed'        → DISPUTED
-//   5. fulfillment_exception='on_hold'         → ON_HOLD
-//      ALSO: sponsorship.status='paused' renders as ON_HOLD
+//   1. fulfillment_exception='refunded'         → REFUNDED (terminal)
+//   2. fulfillment_exception='refund_requested' → REFUND_REQUESTED
+//   3. fulfillment_exception='disputed'         → DISPUTED
+//   4. fulfillment_exception='on_hold'          → ON_HOLD
+//
+//   5. sponsorship.status ∈ {cancelled, failed} AND no exception:
+//      - if a child_update.status='published' exists → DELIVERED
+//        with sponsorshipEndedAt (Q5 terminal composite)
+//      - otherwise                                  → CANCELLED
+//
+//   6. sponsorship.status='paused' AND no exception → ON_HOLD
 //      (Q1 lock: DISPLAYED not WRITTEN — no exception column write
-//      needed; resuming payment auto-resumes fulfillment)
+//      needed; resuming payment auto-resumes fulfillment.)
 //
-//   6. sponsorship.status='pending_payment'    → null (donation not "in" yet)
+//   7. sponsorship.status='pending_payment'     → null (donation not "in" yet)
 //
-//   7. Derived spine phase:
+//   8. Derived spine phase:
 //      - child_update.status='published'        → DELIVERED
 //      - child_update.status ∈ {submitted_by_di,
 //        under_admin_review, approved,
@@ -351,38 +358,12 @@ export function resolveFulfillment(input: {
     return { internal, donor };
   }
 
-  // ─── 1. Payment cancelled / failed — possibly with terminal composite (Q5) ───
+  // ─── 1-4. Exception column precedence ────────────────────────────
   //
-  // We branch INSIDE this case because the order is:
-  //   - if a 'refunded' exception is set, that's a more specific signal
-  //     than payment-cancelled (refund is fulfillment-side; cancel is
-  //     payment-side; both can co-occur and refund wins)
-  //   - if a refund is in progress (refund_requested), same — let case 3 handle
-  //   - otherwise: if a published report exists, render Q5 terminal composite
-
-  const isPaymentTerminal =
-    sponsorship.status === "cancelled" || sponsorship.status === "failed";
-  const refundedOrRequesting =
-    sponsorship.fulfillment_exception === "refunded" ||
-    sponsorship.fulfillment_exception === "refund_requested";
-
-  if (isPaymentTerminal && !refundedOrRequesting) {
-    if (latestReport && latestReport.status === "published") {
-      // Q5: terminal composite. The phase stays "delivered" because that
-      // was the last meaningful event the donor saw; sponsorshipEndedAt
-      // carries the cancellation context for the UI to render
-      // "Delivered • Sponsorship ended [date]".
-      return emit(
-        "delivered",
-        "spine_report_published",
-        latestReport.published_at,
-        sponsorship.cancelled_at,
-      );
-    }
-    return emit("cancelled", "payment_cancelled", sponsorship.cancelled_at);
-  }
-
-  // ─── 2-5. Exception column precedence ───
+  // Option A (locked): any explicit fulfillment_exception always wins
+  // over the payment axis. Admin's deliberate gesture is the strongest
+  // fulfillment signal — payment-cancelled below only fires when admin
+  // hasn't taken a fulfillment action.
 
   if (sponsorship.fulfillment_exception === "refunded") {
     return emit("refunded", "exception", sponsorship.fulfillment_exception_at);
@@ -401,6 +382,32 @@ export function resolveFulfillment(input: {
     return emit("on_hold", "exception", sponsorship.fulfillment_exception_at);
   }
 
+  // ─── 5. Payment cancelled / failed (no exception) — Q5 composite or CANCELLED ───
+  //
+  // No exception is set; the cancellation is purely payment-side.
+  // Q5: if a published report exists, the last meaningful event the
+  // donor saw was the delivered report — render that with
+  // sponsorshipEndedAt carrying the cancellation timestamp so the
+  // UI shows "Delivered • Sponsorship ended [date]". Otherwise the
+  // sponsorship was cancelled before delivery → CANCELLED.
+
+  const isPaymentTerminal =
+    sponsorship.status === "cancelled" || sponsorship.status === "failed";
+
+  if (isPaymentTerminal) {
+    if (latestReport && latestReport.status === "published") {
+      return emit(
+        "delivered",
+        "spine_report_published",
+        latestReport.published_at,
+        sponsorship.cancelled_at,
+      );
+    }
+    return emit("cancelled", "payment_cancelled", sponsorship.cancelled_at);
+  }
+
+  // ─── 6. Payment paused (no exception) — Q1 displayed-not-written ───
+  //
   // Q1 (locked): sponsorship.status='paused' displays as on_hold WITHOUT
   // writing the exception column. Resuming payment auto-resumes
   // fulfillment because there's no stored override to clear.
@@ -408,7 +415,7 @@ export function resolveFulfillment(input: {
     return emit("on_hold", "payment_paused", null);
   }
 
-  // ─── 6. Pending payment — donation not "in" yet ───
+  // ─── 7. Pending payment — donation not "in" yet ───
 
   if (sponsorship.status === "pending_payment") {
     // Caller can choose to render nothing or "Awaiting payment". The

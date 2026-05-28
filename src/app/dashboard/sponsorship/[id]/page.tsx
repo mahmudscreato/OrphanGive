@@ -21,6 +21,11 @@ import { VisibilityEditor } from "./VisibilityEditor";
 import { ReSupportButtons } from "./ReSupportButtons";
 import { GiveMoreCTA } from "./GiveMoreCTA";
 import { InactiveChildNotice } from "./InactiveChildNotice";
+// Donation Lifecycle sub-phase 2 — fulfillment status display.
+// Reads resolver.donor ONLY; the internal view (with privateReason)
+// never reaches this page.
+import { FulfillmentPanel } from "./FulfillmentPanel";
+import { getSponsorshipFulfillment } from "@/lib/sponsorship-fulfillment-fetch";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -64,9 +69,13 @@ export default async function SponsorshipDetailPage({
     typeof sponsorship.child === "string"
       ? sponsorship.child
       : sponsorship.child.id;
-  const [payments, updates] = await Promise.all([
+  const [payments, updates, fulfillment] = await Promise.all([
     getPaymentsForSponsorship(sponsorship.id),
     getApprovedChildUpdates(childId, 20),
+    // Donation Lifecycle sub-phase 2 — resolves fulfillment phase
+    // from sponsorship row + latest task + latest report. Returns
+    // both internal + donor views; we use ONLY .donor on this page.
+    getSponsorshipFulfillment(sponsorship.id),
   ]);
 
   const childName = childObj?.display_name?.trim() || "Child";
@@ -131,6 +140,15 @@ export default async function SponsorshipDetailPage({
         need. Your stated intent guides allocation but funds may be
         applied where most needed.
       </p>
+
+      {/* Donation Lifecycle sub-phase 2 — fulfillment phase panel.
+          The resolver returns null when the donation hasn't entered
+          fulfillment yet (sponsorship.status='pending_payment'); we
+          hide the panel in that case so the donor sees the existing
+          "Awaiting payment" treatment without competing affordances. */}
+      {fulfillment?.donor ? (
+        <FulfillmentPanel donor={fulfillment.donor} />
+      ) : null}
 
       {/* Actions — hidden entirely for completed/cancelled. The
           SponsorshipActions client component itself decides which
