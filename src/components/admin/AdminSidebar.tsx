@@ -23,6 +23,7 @@ import {
   ListChecks,
   Users,
   HeartHandshake,
+  Handshake,
   UserCircle,
   ScrollText,
   LogOut,
@@ -34,7 +35,8 @@ const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
 
 // Sessions 60 + 65 + 66 — combined badge key union.
-type BadgeKey = "proposals" | "reviews" | "donors" | "children";
+// P4 — `partnerships` badge for new inquiries from /for-charities.
+type BadgeKey = "proposals" | "reviews" | "donors" | "children" | "partnerships";
 
 // Admin Lot 1 — section axis for visual grouping. `group` is kept
 // for backwards-compat (existing primary/secondary divider logic
@@ -117,6 +119,17 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     label: "Donations",
     icon: HeartHandshake,
     exact: false,
+    group: "primary",
+    section: "operations",
+  },
+  // P4 — partnership reach-out queue (inquiries from /for-charities).
+  // `new` count surfaces as a badge.
+  {
+    href: "/admin/partnerships",
+    label: "Partnerships",
+    icon: Handshake,
+    exact: false,
+    badgeKey: "partnerships",
     group: "primary",
     section: "operations",
   },

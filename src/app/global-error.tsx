@@ -95,10 +95,10 @@ export default function GlobalError({ error, reset }: Props) {
             Try reloading the page in a moment. If it persists, send a
             note to{" "}
             <a
-              href="mailto:hello@orphangive.org"
+              href="mailto:support@orphangive.org"
               style={{ color: "#D17424", textDecoration: "underline" }}
             >
-              hello@orphangive.org
+              support@orphangive.org
             </a>{" "}
             and we&rsquo;ll look into it.
           </p>

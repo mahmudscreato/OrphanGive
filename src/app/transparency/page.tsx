@@ -1,25 +1,16 @@
 // =====================================================================
-// Session 20 — /transparency page (Session 32 review applied).
+// Session 20 — /transparency page.
 //
-//   ⚠️  TODO: confirm with Mahmud BEFORE pushing public.
+// Public fund-allocation breakdown. The numbers are FOUNDER-FINAL as
+// of 2026-05-28 (P3 content lot):
 //
-//   Per Session 32 review: TBD-NGOAB and TBD-BB-FXCLEAR removed
-//   entirely. Goodverse and Children's Heaven Trust are the
-//   regulated parties (referenced in the operating-entity +
-//   verification-partner rows of the Regulatory Standing block);
-//   OrphanGive itself is not separately regulated. TBD-AUDITOR
-//   replaced with stable copy referencing a Bangladesh Chartered
-//   Accountant firm (no individual auditor named).
+//   - 85%   to the children
+//   - 12.5% OG portal / operating cost
+//   - 2.5%  payment gateway fees
 //
-//   Remaining items needing sign-off:
-//
-//     - TBD-ALLOCATION:   85 / 10 / 5 split between child support,
-//                         operations, and service infra. Confirm with
-//                         the finance team that these numbers reflect
-//                         actual fund allocation.
-//
-//   Until TBD-ALLOCATION is filled in OR the percentages are
-//   removed, this page is in draft.
+// Sums to 100%. Labels are exact and not paraphrased — they're the
+// approved public wording. Any future change goes through the same
+// founder/finance review.
 //
 // =====================================================================
 
@@ -36,7 +27,8 @@ export const metadata = buildPageMetadata({
     "Public commitment to transparency in operations and funds. Fund allocation, reporting cadence, verification model, regulatory standing.",
 });
 
-// TBD-ALLOCATION — confirm with finance team before publish.
+// Founder-final allocation. Labels are the approved public wording;
+// do not paraphrase. Sums to 100%.
 type Allocation = {
   pct: number;
   label: string;
@@ -45,21 +37,21 @@ type Allocation = {
 const ALLOCATIONS: Allocation[] = [
   {
     pct: 85,
-    label: "Child support",
+    label: "To the children",
     description:
       "Sponsorship payouts, clothing, education materials, healthcare — the funds that reach children directly.",
   },
   {
-    pct: 10,
-    label: "Operations",
+    pct: 12.5,
+    label: "OG portal / operating cost",
     description:
-      "Verification of new profiles, on-ground field visits, partner organization support and audits.",
+      "Verification of new profiles, on-ground field visits, partner organization support, audits, technology, hosting, and the day-to-day operations that keep the service running.",
   },
   {
-    pct: 5,
-    label: "Service infrastructure",
+    pct: 2.5,
+    label: "Payment gateway fees",
     description:
-      "Technology, payment processing fees, hosting, security, and the systems that keep donations moving.",
+      "What Stripe and the underlying card / bank networks deduct to clear donor payments before they reach OrphanGive.",
   },
 ];
 
@@ -147,7 +139,9 @@ export default function TransparencyPage() {
             </h2>
           </div>
 
-          {/* TBD-ALLOCATION — placeholder figures. */}
+          {/* Founder-final allocation rendered as percentage bars.
+              The label + pct values come from the ALLOCATIONS array
+              above; the array is the single source of truth. */}
           <div className="space-y-7 max-md:space-y-6">
             {ALLOCATIONS.map((a) => (
               <div key={a.label}>

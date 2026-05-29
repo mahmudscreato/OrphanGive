@@ -15,6 +15,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { readItems, updateItem } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
+// P2 — audit each cron-driven expiry. system actor, IDs only;
+// never the decrypted Tier-3 value (only field_name, which is the
+// public allowlist column name).
+import { recordAuditEvent } from "@/lib/di-audit";
 
 export const runtime = "nodejs";
 
@@ -52,10 +56,18 @@ export async function POST(req: NextRequest) {
             { decided_at: { _lt: cutoffIso } },
           ],
         },
-        fields: ["id"],
+        // P2 — pull donor / child / field_name so the audit row can
+        // carry IDs without a second lookup. All three are public
+        // allowlist values; never the decrypted Tier-3 column value.
+        fields: ["id", "donor", "child", "field_name"],
         limit: 5000,
       } as never),
-    )) as unknown as Array<{ id: string }>;
+    )) as unknown as Array<{
+      id: string;
+      donor: string | null;
+      child: string | null;
+      field_name: string | null;
+    }>;
 
     const nowIso = new Date().toISOString();
     for (const row of stale ?? []) {
@@ -70,6 +82,30 @@ export async function POST(req: NextRequest) {
         console.log(
           `[cron/expire-reveals] expired reveal_request=${row.id}`,
         );
+        // P2 — audit each expiry. system actor. Best-effort; a
+        // single audit failure shouldn't break the loop.
+        if (row.donor) {
+          try {
+            await recordAuditEvent({
+              actorUserId: row.donor,
+              actorRole: "system",
+              action: "system_expired_reveal",
+              collection: "reveal_request",
+              recordId: row.id,
+              metadata: {
+                donor: row.donor,
+                childId: row.child,
+                field_name: row.field_name,
+                reason: "ninety_day_window",
+              },
+            });
+          } catch (auditErr) {
+            console.warn(
+              `[cron/expire-reveals] audit for ${row.id} failed (non-fatal):`,
+              auditErr instanceof Error ? auditErr.message : auditErr,
+            );
+          }
+        }
       } catch (err) {
         errors++;
         console.warn(

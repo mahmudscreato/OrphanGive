@@ -7,8 +7,6 @@
 // renders (legal can edit copy without a code commit). Otherwise
 // the hardcoded counsel-reviewed version below renders.
 
-import { getSitePage } from "@/lib/site-page";
-import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
 import {
   LegalPageLayout,
   LegalList,
@@ -16,34 +14,33 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata() {
-  const page = await getSitePage("privacy");
+// P3 content lot — metadata is hardcoded. CMS title/description
+// override removed for the same reason the CMS body override is
+// removed below (counsel-reviewed content is the source of truth).
+export function generateMetadata() {
   return {
-    title: page?.title ? `${page.title} — OrphanGive` : "Privacy policy — OrphanGive",
+    title: "Privacy policy — OrphanGive",
     description:
-      page?.meta_description ??
-      "How OrphanGive collects, uses, and protects donor and child data. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
+      "How OrphanGive collects, uses, and protects donor and child data. Operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021), Bangladesh.",
   };
 }
 
 export default async function PrivacyPage() {
-  const page = await getSitePage("privacy");
-
-  // CMS override: published row with content wins. Hardcoded draft
-  // below is the fallback when no CMS content has been authored yet.
-  if (page?.content) {
-    return (
-      <SitePageRenderer
-        page={page}
-        fallback={{
-          title: "Privacy policy",
-          description:
-            "How OrphanGive collects, uses, and protects donor and child data.",
-        }}
-      />
-    );
-  }
-
+  // P3 content lot — CMS override DISABLED for this slug. The
+  // hardcoded content below is counsel-reviewed (see file header
+  // comment) and carries the founder-approved attribution +
+  // registration numbers for both Goodverse Foundation
+  // (Reg. S-14837/2026) and Children's Heaven Trust
+  // (Reg. iv-98/2021). A `site_page` row with `slug='privacy'` was
+  // overriding this with an older, non-counsel-reviewed copy that
+  // misnamed the operating entity. Per docs/admin-os/07-safety-fix-
+  // plan.md §P3.1 D5 the recommendation was to kill the CMS path on
+  // audit-sensitive legal slugs; this applies that decision to
+  // /privacy. /cookies, /refund, /safeguarding still honour CMS.
+  //
+  // `getSitePage` is intentionally NOT called — we no longer want
+  // CMS content to override on this page. If legal needs to edit,
+  // the workflow is now: edit the file via PR (counsel review).
   return (
     <LegalPageLayout
       eyebrowText="Privacy policy"
@@ -60,19 +57,16 @@ export default async function PrivacyPage() {
             <>
               <p>
                 OrphanGive is a child-sponsorship service operated by{" "}
-                <strong>Goodverse Foundation</strong>, a
-                Bangladesh-registered organization (registered
-                address: Ta 135/B, Gulshan Badda Link Road, Dhaka
-                1212, Bangladesh), in partnership with{" "}
+                <strong>Goodverse Foundation</strong> (Reg.
+                S-14837/2026), a Bangladesh-registered organization
+                (registered address: Ta 135/B, Gulshan Badda Link
+                Road, Dhaka 1212, Bangladesh), in partnership with{" "}
                 <strong>Children&apos;s Heaven Trust</strong> (Reg.
-                iv-98/2021).
-                Goodverse Foundation is the operating entity that
-                holds donor data and runs the donor-facing service;
-                Children&apos;s Heaven Trust performs ground
+                iv-98/2021). Goodverse Foundation is the operating
+                entity that holds donor data and runs the donor-facing
+                service; Children&apos;s Heaven Trust performs ground
                 verification of every listed child.
               </p>
-              {/* TODO: Goodverse Foundation statutory registration
-                  number — to be added before final publication. */}
               <p>
                 For the purposes of this policy, &quot;we,&quot; &quot;us,&quot;
                 and &quot;OrphanGive&quot; refer to Goodverse Foundation acting

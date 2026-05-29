@@ -24,6 +24,10 @@
 import "server-only";
 import { DOCUMENT_LIMITS, PHOTO_LIMITS } from "./di-photo-limits";
 import { VIDEO_LIMITS } from "./di-video-limits";
+// P1.2 — strip EXIF/IPTC/XMP from every uploaded image before
+// the bytes leave the app. See image-metadata-strip.ts header
+// for why and how.
+import { stripImageMetadata } from "./image-metadata-strip";
 
 // Widen to ReadonlySet<string> so File.type (which is a generic
 // string) can be has()-checked without a TS error.
@@ -127,6 +131,18 @@ export async function uploadPhotoToDirectus(
     throw new FileTooLargeError(file.size);
   }
 
+  // P1.2 — strip EXIF (incl. GPS) before the bytes leave the app.
+  // For jpeg/png/webp this re-encodes through sharp and bakes any
+  // EXIF Orientation tag into the pixels first; metadata blocks
+  // are dropped wholesale. If decoding fails (corrupt input), we
+  // surface that as InvalidFileTypeError so the route returns 415.
+  let cleanFile: File;
+  try {
+    cleanFile = await stripImageMetadata(file);
+  } catch (err) {
+    throw new InvalidFileTypeError(file.type);
+  }
+
   const folderId = process.env.DIRECTUS_DI_PENDING_FOLDER_ID?.trim() || null;
 
   const form = new FormData();
@@ -139,7 +155,7 @@ export async function uploadPhotoToDirectus(
     `${titlePrefix} ${uploadedByUserId} on ${new Date().toISOString()}`,
   );
   // The file field MUST be named "file" — Directus's REST contract.
-  form.append("file", file);
+  form.append("file", cleanFile);
 
   let res: Response;
   try {
@@ -290,6 +306,17 @@ export async function uploadDocumentToDirectus(
     throw new FileTooLargeError(file.size, MAX_DOCUMENT_BYTES);
   }
 
+  // P1.2 — image documents (scanned birth certs, NIDs) carry EXIF
+  // when the DI photographed them on a phone. Same strip as the
+  // photo path. PDFs pass through untouched (their own metadata
+  // is out of scope for this lot).
+  let cleanFile: File;
+  try {
+    cleanFile = await stripImageMetadata(file);
+  } catch (err) {
+    throw new InvalidFileTypeError(file.type);
+  }
+
   const folderId = process.env.DIRECTUS_DI_PENDING_FOLDER_ID?.trim() || null;
 
   const form = new FormData();
@@ -299,7 +326,7 @@ export async function uploadDocumentToDirectus(
     "title",
     `${titlePrefix} ${uploadedByUserId} on ${new Date().toISOString()}`,
   );
-  form.append("file", file);
+  form.append("file", cleanFile);
 
   let res: Response;
   try {

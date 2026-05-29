@@ -116,6 +116,11 @@ const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const editableFieldsSchema = z
   .object({
     // Identity
+    // P1.3 — first_name is the public-facing name (shown on
+    // Tier-1 cards, profile, OG metadata). display_name remains
+    // for internal record/admin/DI use. Length cap 64 mirrors the
+    // Directus column constraint.
+    first_name: z.string().min(1).max(64).optional(),
     display_name: z.string().min(1).max(200).optional(),
     gender: z.enum(GENDERS).optional(),
     date_of_birth: dateField.optional(),
@@ -183,6 +188,9 @@ const creatableFieldsSchema = z
   .object({
     // Required-on-create per Mahmud's V1 decision (Session 48a added
     // parent_loss + guardian_phone to the required set).
+    // P1.3 — first_name added to the required-on-create set so
+    // a published profile never lacks a public-facing name.
+    first_name: z.string().min(1).max(64),
     display_name: z.string().min(1).max(200),
     date_of_birth: dateField,
     bd_division: z.string().min(1).max(50),

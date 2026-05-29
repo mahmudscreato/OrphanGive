@@ -75,7 +75,7 @@ const TOPICS: Topic[] = [
   {
     title: "Setting up monthly sponsorship",
     body: "How to choose a child, pick an amount, and complete checkout.",
-    href: "/faq#sponsorship-donation",
+    href: "/faq#sponsorship",
   },
   {
     title: "Updating my payment method",
@@ -85,7 +85,7 @@ const TOPICS: Topic[] = [
   {
     title: "Cancelling my sponsorship",
     body: "Pausing or cancelling a monthly contribution — no friction, no penalty.",
-    href: "/faq#sponsorship-donation",
+    href: "/faq#sponsorship",
   },
   {
     title: "Understanding child profiles",
@@ -95,7 +95,7 @@ const TOPICS: Topic[] = [
   {
     title: "Tax receipts and Zakat",
     body: "Receipt issuance, Zakat eligibility, and what you should run by your scholar.",
-    href: "/faq#sponsorship-donation",
+    href: "/faq#sponsorship",
   },
   {
     title: "Refund policy",

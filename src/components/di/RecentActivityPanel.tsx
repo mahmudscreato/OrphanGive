@@ -11,12 +11,15 @@ import {
   CheckCircle2,
   CreditCard,
   Edit3,
+  Eye,
+  EyeOff,
   FileBarChart,
   FileText,
   HeartHandshake,
   Home,
   ImagePlus,
   ListChecks,
+  Lock,
   PauseCircle,
   PlayCircle,
   Receipt,
@@ -139,6 +142,12 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // admin actions on scoped children, so admin_created_task rows
   // never surface here (no childId metadata key from this audit).
   admin_created_task: ListChecks,
+  // P2 — reveal lifecycle. Donor + system actions; never surface on
+  // the DI feed (no di_ prefix). Type-safety placeholders only.
+  donor_requested_reveal: Eye,
+  donor_withdrew_reveal: EyeOff,
+  system_revoked_reveal: Lock,
+  system_expired_reveal: Lock,
 };
 
 function relativeTime(iso: string | null): string {

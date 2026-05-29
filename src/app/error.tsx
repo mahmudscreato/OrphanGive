@@ -55,10 +55,10 @@ export default function RouteError({ error, reset }: Props) {
           The team has been notified. You can try the page again, or
           drop us a note at{" "}
           <a
-            href="mailto:hello@orphangive.org"
+            href="mailto:support@orphangive.org"
             className="text-tangerine-deeper underline-offset-4 hover:underline"
           >
-            hello@orphangive.org
+            support@orphangive.org
           </a>
           .
         </p>

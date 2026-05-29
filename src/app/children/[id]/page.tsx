@@ -91,7 +91,13 @@ export async function generateMetadata({
   const { id } = await params;
   let name: string | null = null;
   try {
-    const child = await getChildById(id, "admin");
+    // P1.3 — fetch at the PUBLIC tier so the returned display_name
+    // is sourced from `first_name` only. The OG/twitter title is
+    // a public surface — the metadata read should match the
+    // privacy class of where it lands. (Previously fetched at
+    // "admin" tier, which would have surfaced the internal
+    // display_name once it diverged from first_name.)
+    const child = await getChildById(id, "public");
     name = child?.display_name?.trim() ?? null;
   } catch {
     // Fall through to the generic metadata below.
@@ -104,11 +110,18 @@ export async function generateMetadata({
     ? `Help ${name} in Bangladesh through monthly sponsorship. Profile verified by Children's Heaven Trust — name and photo published only with the guardian's consent.`
     : "Help a verified child in Bangladesh through monthly sponsorship. All profiles reviewed by Children's Heaven Trust before publication.";
 
-  return buildPageMetadata({
-    path: `/children/${id}`,
-    title,
-    description,
-  });
+  // P1.1 — child profile pages noindex'd (mirrors Lot 4's pattern on
+  // admin/di/dashboard surfaces). See src/app/children/page.tsx for
+  // the full rationale. Real-named child profiles must NEVER reach a
+  // search-engine index. robots.ts + sitemap.ts also enforce.
+  return {
+    ...buildPageMetadata({
+      path: `/children/${id}`,
+      title,
+      description,
+    }),
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function ChildProfilePage({
