@@ -25,6 +25,13 @@ import { CampaignDonationThankYouEmail } from "@/emails/CampaignDonationThankYou
 import { OperationalNoticeEmail } from "@/emails/OperationalNoticeEmail";
 import { AdminPendingSubmissionEmail } from "@/emails/AdminPendingSubmissionEmail";
 import { OtpVerificationEmail } from "@/emails/OtpVerificationEmail";
+// Form-acks lot — submitter acknowledgement templates added to
+// the preview surface so the founder-walkthrough send script can
+// exercise them.
+import { PartnershipInquiryAckEmail } from "@/emails/PartnershipInquiryAckEmail";
+import { ContactFormAckEmail } from "@/emails/ContactFormAckEmail";
+import { VolunteerAckEmail } from "@/emails/VolunteerAckEmail";
+import { OrphanReferralAckEmail } from "@/emails/OrphanReferralAckEmail";
 
 export const runtime = "nodejs";
 
@@ -50,6 +57,12 @@ const TEMPLATES = [
   "operational-notice",
   "admin-pending-submission",
   "otp-verification",
+  // Form-acks lot additions:
+  "partnership-inquiry-ack",
+  "partnership-inquiry-admin-alert",
+  "contact-form-ack",
+  "volunteer-ack",
+  "orphan-referral-ack",
 ] as const;
 type TemplateId = (typeof TEMPLATES)[number];
 
@@ -365,6 +378,69 @@ function buildSample(template: TemplateId, firstName: string) {
         element: OtpVerificationEmail({
           fullName: firstName,
           code: "482917",
+        }),
+      };
+
+    // ─── Form-acks lot — 4 ack templates + 1 admin alert variant ──
+    case "partnership-inquiry-ack":
+      return {
+        subject: `Thanks for reaching out — we received your inquiry`,
+        element: PartnershipInquiryAckEmail({
+          contactName: firstName,
+          organisationName: "Acme Children's Foundation",
+          inquiryType: "partner",
+        }),
+      };
+
+    case "partnership-inquiry-admin-alert":
+      return {
+        subject: `New partnership inquiry from ${firstName}`,
+        element: OperationalNoticeEmail({
+          heading: "New partnership inquiry",
+          eyebrow: "Partnership",
+          intro: `${firstName} (${firstName.toLowerCase()}@example.com) from Acme Children's Foundation has submitted a partnership inquiry.`,
+          sections: [
+            {
+              label: "Submitted by",
+              body: `${firstName}\n${firstName.toLowerCase()}@example.com\n+44 20 7946 0123`,
+            },
+            { label: "Organisation", body: "Acme Children's Foundation" },
+            { label: "Role", body: "Programme director" },
+            { label: "Inquiry type", body: "Partnership / collaboration" },
+            {
+              label: "Message",
+              body:
+                "Hi — we run children's services in north Bangladesh and would love to explore how our work could fit alongside OrphanGive's. We'd particularly like to understand your sponsor-matching process and what data flow you support. Happy to set up a call.",
+            },
+          ],
+          replyToNudge: `${firstName.toLowerCase()}@example.com`,
+        }),
+      };
+
+    case "contact-form-ack":
+      return {
+        subject: `We got your message — thanks for getting in touch`,
+        element: ContactFormAckEmail({
+          senderName: firstName,
+          subjectLabel: "Sponsorship question",
+        }),
+      };
+
+    case "volunteer-ack":
+      return {
+        subject: `Thank you for offering to help`,
+        element: VolunteerAckEmail({
+          senderName: firstName,
+          skillsSummary: "Translation, social media, photography",
+        }),
+      };
+
+    case "orphan-referral-ack":
+      return {
+        subject: `We received your referral — thank you`,
+        element: OrphanReferralAckEmail({
+          senderName: firstName,
+          childFirstName: "Rifat",
         }),
       };
   }

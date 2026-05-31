@@ -17,6 +17,7 @@
 // (Tracked in Session 17.5 Bucket C.)
 
 import { NextResponse, type NextRequest } from "next/server";
+import type { ReactElement } from "react";
 import { createItem } from "@directus/sdk";
 import { sendEmail } from "@/lib/email";
 import { directusServer } from "@/lib/directus";
@@ -24,6 +25,12 @@ import {
   OperationalNoticeEmail,
   type OperationalSection,
 } from "@/emails/OperationalNoticeEmail";
+// Form-acks lot — submitter acknowledgement templates. One per
+// form kind. Built inside the kind branches below so each picks
+// up only the data its template actually needs.
+import { ContactFormAckEmail } from "@/emails/ContactFormAckEmail";
+import { OrphanReferralAckEmail } from "@/emails/OrphanReferralAckEmail";
+import { VolunteerAckEmail } from "@/emails/VolunteerAckEmail";
 
 export const runtime = "nodejs";
 
@@ -149,6 +156,12 @@ export async function POST(req: NextRequest) {
   let eyebrow: string | null = null;
   let intro: string | null = null;
   let sections: OperationalSection[] = [];
+  // Form-acks lot — per-kind submitter ack. Built inline below
+  // because each ack template needs different fields from the
+  // (already-validated) payload. ackSubject + ackTemplate are
+  // dispatched in parallel with the admin alert at the bottom.
+  let ackSubject: string;
+  let ackTemplate: ReactElement;
   const senderName = p.name!.trim();
   const senderEmail = p.email!.trim();
 
@@ -168,6 +181,8 @@ export async function POST(req: NextRequest) {
       { label: "Subject", body: subjectLabel },
       { label: "Message", body: c.message!.trim() },
     ];
+    ackSubject = `We got your message — thanks for getting in touch`;
+    ackTemplate = ContactFormAckEmail({ senderName, subjectLabel });
   } else if (kind === "orphan_referral") {
     const o = p as Partial<OrphanReferralPayload>;
     const orphan = o.orphan;
@@ -196,6 +211,11 @@ export async function POST(req: NextRequest) {
         ? [{ label: "Additional message", body: o.message.trim() }]
         : []),
     ];
+    ackSubject = `We received your referral — thank you`;
+    ackTemplate = OrphanReferralAckEmail({
+      senderName,
+      childFirstName: orphan.childFirstName.trim(),
+    });
   } else {
     // volunteer
     const v = p as Partial<VolunteerPayload>;
@@ -224,6 +244,11 @@ export async function POST(req: NextRequest) {
         ? [{ label: "Motivation", body: v.motivation!.trim() }]
         : []),
     ];
+    ackSubject = `Thank you for offering to help`;
+    ackTemplate = VolunteerAckEmail({
+      senderName,
+      skillsSummary: skillsLine,
+    });
   }
 
   // --- Session 34 Part B — derive the form_submission row shape
@@ -250,9 +275,15 @@ export async function POST(req: NextRequest) {
           ""
         : (p as Partial<VolunteerPayload>).motivation?.trim() ?? "";
 
-  // --- run email + DB write in parallel; treat as independent --
-  // Either succeeding is enough for the user to see success.
-  const [emailResult, dbResult] = await Promise.all([
+  // --- run admin-alert email + DB write + submitter ack in parallel ---
+  // Three independent channels:
+  //   1. emailResult     — admin alert to support@ via OperationalNoticeEmail
+  //   2. dbResult        — form_submission row write to Directus
+  //   3. ackResult       — submitter acknowledgement (form-acks lot, per-kind)
+  // The first two gate the user-facing success response (either is
+  // enough). The third is best-effort — failure logs but never fails
+  // the request because the user already SAW the success state.
+  const [emailResult, dbResult, ackResult] = await Promise.all([
     sendEmail({
       to: SUPPORT_EMAIL,
       subject,
@@ -274,6 +305,11 @@ export async function POST(req: NextRequest) {
       message: messageField,
       payload_json: body,
     }),
+    sendEmail({
+      to: senderEmail,
+      subject: ackSubject,
+      template: ackTemplate,
+    }),
   ]);
 
   if (!emailResult.success) {
@@ -286,6 +322,15 @@ export async function POST(req: NextRequest) {
   }
   if (!dbResult.success) {
     console.error("[/api/contact] form_submission write failed:", dbResult.error);
+  }
+  if (!ackResult.success) {
+    // Best-effort — log only. Admin and DB already have the
+    // submission; the submitter just won't see an ack.
+    console.warn("[/api/contact] submitter ack send failed:", {
+      kind,
+      to: senderEmail,
+      error: ackResult.error,
+    });
   }
 
   // Success if EITHER channel succeeded — Mahmud always has at
