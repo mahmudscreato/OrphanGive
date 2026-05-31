@@ -54,6 +54,58 @@ type Props = {
   children: ReactNode;
 };
 
+// Email-padding-v2 lot — bulletproof padding implementation.
+//
+// Why this layout looks the way it does:
+//
+//   * Padding is applied to the <td> of the card table, NOT to the
+//     <table>. CSS padding on a <table> element is honoured by
+//     desktop Gmail and Apple Mail but stripped by Gmail iOS,
+//     Outlook desktop, and most Outlook-on-Windows variants. Padding
+//     on the inner <td> works universally. (Founder review of the
+//     refund email screenshot: "Hello Mahmud" was flush against the
+//     card's left edge on his client — that's the padding-on-table
+//     bug, not insufficient padding.)
+//
+//   * MetadataCard (the cream "REFUND AMOUNT" style box) also moved
+//     its padding to its inner <td> for the same reason; see
+//     EmailMetadata.tsx.
+//
+//   * A <style> block in <head> carries the mobile media queries.
+//     Apple Mail (Mac + iOS), Gmail web, and modern Gmail iOS honour
+//     these. Outlook ignores them, which is fine — Outlook readers
+//     just see the desktop padding values, which are themselves
+//     reasonable.
+//
+//   * The card is rendered as a hand-written <table>/<tbody>/<tr>/
+//     <td> tree instead of <Section>. We do this only for the card
+//     and the MetadataCard, where padding-on-td is load-bearing.
+//     Layout-only Sections elsewhere (centering buttons, footer
+//     blocks) are fine as-is — they don't carry visible padding.
+//
+// Mobile media query scales down the card padding from 44/40 to
+// 32/24 so a 375px viewport (iPhone) doesn't end up with a 263px
+// content area. Also scales the outer Container padding from 32/16
+// to 20/12 to give the card a bit more breathing room from the
+// viewport edge.
+const MOBILE_STYLES = `
+  @media only screen and (max-width: 480px) {
+    .og-email-container {
+      padding: 20px 12px !important;
+    }
+    .og-email-card-cell {
+      padding: 32px 24px !important;
+    }
+    .og-email-metadata-cell {
+      padding: 18px 18px !important;
+    }
+    .og-email-heading {
+      font-size: 24px !important;
+      line-height: 1.2 !important;
+    }
+  }
+`;
+
 export function EmailLayout({ preview, children }: Props) {
   const logoUrl = process.env.EMAIL_LOGO_URL?.trim();
   return (
@@ -61,6 +113,10 @@ export function EmailLayout({ preview, children }: Props) {
       <Head>
         <meta name="color-scheme" content="light only" />
         <meta name="supported-color-schemes" content="light" />
+        {/* Mobile media query — applies via @react-email/render
+            inlining. Email clients that honour <style> in <head>
+            will scale down padding on narrow viewports. */}
+        <style dangerouslySetInnerHTML={{ __html: MOBILE_STYLES }} />
       </Head>
       <Preview>{preview}</Preview>
       <Body
@@ -73,6 +129,7 @@ export function EmailLayout({ preview, children }: Props) {
         }}
       >
         <Container
+          className="og-email-container"
           style={{
             maxWidth: "600px",
             margin: "0 auto",
@@ -103,23 +160,36 @@ export function EmailLayout({ preview, children }: Props) {
             )}
           </Section>
 
-          <Section
+          {/* The card — hand-rolled <table> so the padding lands
+              on the <td>, where every email client honours it. */}
+          <table
+            align="center"
+            width="100%"
+            border={0}
+            cellPadding={0}
+            cellSpacing={0}
+            role="presentation"
             style={{
               backgroundColor: tokens.card,
-              // Session 22 — 24px radius matches the web app's
-              // `rounded-3xl` cards.
-              // Email-refinement lot — padding bumped from 36px 32px
-              // to 40px 40px so body text doesn't hug the card edge
-              // on Gmail/Apple Mail/Outlook (founder review,
-              // 11-email-walkthrough follow-up).
               borderRadius: "24px",
-              padding: "40px 40px",
               boxShadow: "0 1px 2px rgba(42,42,44,0.04)",
               border: `1px solid ${tokens.border}`,
+              borderCollapse: "separate",
             }}
           >
-            {children}
-          </Section>
+            <tbody>
+              <tr>
+                <td
+                  className="og-email-card-cell"
+                  style={{
+                    padding: "44px 40px",
+                  }}
+                >
+                  {children}
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           <Section
             style={{
@@ -127,9 +197,9 @@ export function EmailLayout({ preview, children }: Props) {
               textAlign: "center",
             }}
           >
-            {/* Founder rule: name Goodverse + CHT together, or neither.
-                Never CHT alone. This is the canonical attribution
-                line used across all emails. */}
+            {/* Founder rule: name Goodverse + CHT together, or
+                neither. Never CHT alone. This is the canonical
+                attribution line used across all emails. */}
             <Text
               style={{
                 fontSize: "12px",
