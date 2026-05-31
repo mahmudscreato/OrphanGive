@@ -22,7 +22,18 @@ import { z } from "zod";
 import {
   createPartnershipInquiry,
   INQUIRY_TYPES,
+  INQUIRY_TYPE_LABELS,
 } from "@/lib/partnership-inquiries";
+import { sendEmail } from "@/lib/email";
+import { OperationalNoticeEmail } from "@/emails/OperationalNoticeEmail";
+import { PartnershipInquiryAckEmail } from "@/emails/PartnershipInquiryAckEmail";
+
+// Form-acks lot — admin alert recipient mirrors the contact-form
+// pattern. Hardcoded so partner-inquiry submissions land in the
+// same support inbox as everything else admin-visible. Founder
+// must confirm support@orphangive.org is monitored (gotcha §2 in
+// 12-notification-topology.md).
+const SUPPORT_EMAIL = "support@orphangive.org";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -153,6 +164,54 @@ export async function POST(req: NextRequest) {
       message: parsed.data.message,
       source: parsed.data.source ?? "for-charities",
     });
+
+    // Form-acks lot — fire two emails in parallel (admin alert +
+    // submitter ack). Both are best-effort: the DB row already
+    // landed, so a Resend hiccup shouldn't unwind the request.
+    // We do NOT await individual results; we await Promise.allSettled
+    // so both have a chance to dispatch.
+    const typeLabel = INQUIRY_TYPE_LABELS[parsed.data.inquiry_type];
+    await Promise.allSettled([
+      sendEmail({
+        to: SUPPORT_EMAIL,
+        subject: `New partnership inquiry from ${parsed.data.contact_name}`,
+        template: OperationalNoticeEmail({
+          heading: "New partnership inquiry",
+          eyebrow: "Partnership",
+          intro: `${parsed.data.contact_name} (${parsed.data.email}) from ${parsed.data.organisation_name} has submitted a partnership inquiry.`,
+          sections: [
+            {
+              label: "Submitted by",
+              body: `${parsed.data.contact_name}\n${parsed.data.email}${
+                parsed.data.phone ? `\n${parsed.data.phone}` : ""
+              }`,
+            },
+            { label: "Organisation", body: parsed.data.organisation_name },
+            { label: "Role", body: parsed.data.role },
+            { label: "Inquiry type", body: typeLabel },
+            { label: "Message", body: parsed.data.message },
+          ],
+          replyToNudge: parsed.data.email,
+        }),
+        replyTo: parsed.data.email,
+      }),
+      sendEmail({
+        to: parsed.data.email,
+        subject: `Thanks for reaching out — we received your inquiry`,
+        template: PartnershipInquiryAckEmail({
+          contactName: parsed.data.contact_name,
+          organisationName: parsed.data.organisation_name,
+          inquiryType: parsed.data.inquiry_type,
+        }),
+      }),
+    ]).catch((err) => {
+      // Promise.allSettled never rejects but be defensive.
+      console.warn(
+        "[/api/partnership-inquiry] email dispatch failed:",
+        err instanceof Error ? err.message : err,
+      );
+    });
+
     return NextResponse.json({ ok: true, id });
   } catch (err) {
     // Do NOT echo the message body or any field value. Log only the
