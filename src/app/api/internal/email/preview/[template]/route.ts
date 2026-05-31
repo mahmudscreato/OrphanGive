@@ -62,7 +62,9 @@ const TEMPLATES = [
   "partnership-inquiry-admin-alert",
   "contact-form-ack",
   "volunteer-ack",
+  "volunteer-admin-alert",
   "orphan-referral-ack",
+  "orphan-referral-admin-alert",
 ] as const;
 type TemplateId = (typeof TEMPLATES)[number];
 
@@ -441,6 +443,65 @@ function buildSample(template: TemplateId, firstName: string) {
         element: OrphanReferralAckEmail({
           senderName: firstName,
           childFirstName: "Rifat",
+        }),
+      };
+
+    case "volunteer-admin-alert":
+      return {
+        subject: `[VOLUNTEER APPLICATION] ${firstName}`,
+        element: OperationalNoticeEmail({
+          heading: "New volunteer application",
+          eyebrow: "Volunteer application",
+          intro: `${firstName} (${firstName.toLowerCase()}@example.com) wants to volunteer with OrphanGive.`,
+          sections: [
+            {
+              label: "Submitted by",
+              body: `${firstName}\n${firstName.toLowerCase()}@example.com`,
+            },
+            { label: "Phone", body: "+44 20 7946 0123" },
+            { label: "Location", body: "London, UK" },
+            {
+              label: "Skills & interests",
+              body: "Translation, social media, photography",
+            },
+            { label: "Availability", body: "Evenings + weekends" },
+            {
+              label: "Motivation",
+              body:
+                "I grew up in a family that hosted students from Bangladesh and the experience stayed with me. I'd love to help where I can — happy to do anything that's useful.",
+            },
+          ],
+          replyToNudge: `${firstName.toLowerCase()}@example.com`,
+        }),
+      };
+
+    case "orphan-referral-admin-alert":
+      return {
+        subject: `[ORPHAN REFERRAL] ${firstName} - Rifat`,
+        element: OperationalNoticeEmail({
+          heading: "New orphan profile referral",
+          eyebrow: "Orphan referral",
+          intro: `${firstName} (${firstName.toLowerCase()}@example.com) has referred a child for OrphanGive verification.`,
+          sections: [
+            {
+              label: "Submitted by",
+              body: `${firstName}\n${firstName.toLowerCase()}@example.com`,
+            },
+            { label: "Relationship to child", body: "Neighbour" },
+            { label: "Child's first name", body: "Rifat" },
+            { label: "Child's approximate age", body: "9" },
+            { label: "Child's location", body: "Sylhet division, Bangladesh" },
+            {
+              label: "Situation description",
+              body:
+                "Rifat lost both parents last year. He lives with an elderly aunt who is struggling to keep him in school. The local imam suggested OrphanGive might be able to help — I said I'd reach out on the family's behalf.",
+            },
+            {
+              label: "Additional message",
+              body: "Please let me know what other information would be useful.",
+            },
+          ],
+          replyToNudge: `${firstName.toLowerCase()}@example.com`,
         }),
       };
   }
