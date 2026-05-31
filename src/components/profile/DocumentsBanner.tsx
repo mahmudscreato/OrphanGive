@@ -29,7 +29,7 @@ export function DocumentsBanner({ docs }: { docs: ChildDocSummary[] }) {
   if (verified.length === 0) return null;
 
   return (
-    <section className="px-6 pb-28 bg-cream max-md:pb-20">
+    <section className="px-6 pb-16 bg-cream max-md:pb-12">
       <div className="max-w-[1100px] mx-auto rounded-[28px] bg-linen border border-ink/[0.05] px-8 py-7 max-md:px-6 max-md:py-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-moss-soft text-moss-deep flex items-center justify-center">

@@ -17,14 +17,16 @@ export function SponsorCTA({
   tier: ViewerTier;
 }) {
   const firstName = child.display_name.split(" ")[0];
+  // OG-orange band (was near-black). A DEEP tangerine gradient
+  // (#C2680D→#9A5207) so cream text stays AA-readable on it.
   return (
-    <section className="relative overflow-hidden px-6 py-32 max-md:py-24 bg-gradient-to-br from-ink to-[#1a1a1c] text-cream text-center">
+    <section className="relative overflow-hidden px-6 py-20 max-md:py-16 bg-gradient-to-br from-[#C2680D] to-[#9A5207] text-cream text-center">
       <div
         aria-hidden="true"
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] pointer-events-none"
         style={{
           background:
-            "radial-gradient(circle, rgba(243,147,34,0.18) 0%, transparent 60%)",
+            "radial-gradient(circle, rgba(255,224,184,0.16) 0%, transparent 60%)",
         }}
       />
       <div
@@ -43,13 +45,13 @@ export function SponsorCTA({
       <div className="relative max-w-[720px] mx-auto">
         <div
           className="eyebrow-tag justify-center"
-          style={{ color: "var(--tangerine-light)" }}
+          style={{ color: "var(--tangerine-soft)" }}
         >
           Become {firstName}&apos;s sponsor
         </div>
         <h2 className="font-display font-normal mt-6 text-cream leading-[0.98] tracking-[-0.03em] text-[clamp(2.75rem,5.5vw,5rem)]">
           Walk with{" "}
-          <em className="italic text-tangerine">{firstName}</em>
+          <em className="italic text-white">{firstName}</em>
           <br />
           for the next year.
         </h2>
@@ -59,19 +61,21 @@ export function SponsorCTA({
           as ongoing sadaqah. Cancel any time.
         </p>
 
-        <div className="mt-12 flex flex-col gap-4 items-center">
+        <div className="mt-10 flex flex-col gap-4 items-center">
+          {/* White pill on the orange band (a tangerine button would
+              blend into the background). */}
           {tier === "public" ? (
             <>
               <Button
                 href={`/signin?from=/children/${child.id}`}
-                variant="tangerine"
+                variant="white"
                 size="lg"
               >
                 Sign in to begin sponsorship →
               </Button>
               <Link
                 href={`/signup?from=/children/${child.id}`}
-                className="text-[14px] text-cream/60 hover:text-cream/90 underline-offset-4 hover:underline"
+                className="text-[14px] text-cream/80 hover:text-white underline-offset-4 hover:underline"
               >
                 Or create a donor account
               </Link>
@@ -79,7 +83,7 @@ export function SponsorCTA({
           ) : (
             <Button
               href={`/sponsor/${child.id}`}
-              variant="tangerine"
+              variant="white"
               size="lg"
             >
               Begin a sponsorship →
@@ -87,7 +91,7 @@ export function SponsorCTA({
           )}
         </div>
 
-        <div className="mt-9 flex justify-center gap-6 flex-wrap font-mono text-[11px] tracking-[0.1em] text-cream/50">
+        <div className="mt-9 flex justify-center gap-6 flex-wrap font-mono text-[11px] tracking-[0.1em] text-cream/75">
           {TRUST_PILLS.map((p) => (
             <span key={p} className="inline-flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-moss" />

@@ -16,7 +16,7 @@ export function StorySection({
     .filter(Boolean);
 
   return (
-    <section id="story" className="px-6 py-32 bg-linen max-md:py-20">
+    <section id="story" className="px-6 py-16 bg-linen max-md:py-12">
       <div className="max-w-[760px] mx-auto">
         <div className="eyebrow-tag">About {child.display_name.split(" ")[0]}</div>
         <h2 className="font-display font-normal mt-6 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(2rem,3.75vw,3rem)]">

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/Button";
-import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
+import { PhotoBlob } from "@/components/profile/PhotoBlob";
+import { Reveal } from "@/components/profile/Reveal";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import type { ChildProfile, ViewerTier } from "@/lib/child-profile-data";
 // Session 50 — use the shared form-constants label helper instead of
@@ -40,6 +41,34 @@ function pickFirstSentence(s: string | null): string | null {
   return m ? m[0] : trimmed.slice(0, 140);
 }
 
+// Fact chip — label/value card adapted from the redesign prototype,
+// rendered in OG tokens. Mono uppercase label over a Fraunces value,
+// with the small tangerine meta icon. Purely presentational; the
+// CALLER decides which (public-tier-safe) fields to pass.
+function FactChip({
+  icon,
+  label,
+  value,
+}: {
+  icon: "location" | "age" | "school";
+  label: string;
+  value: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2.5 bg-white border border-ink/[0.08] rounded-2xl px-4 py-2.5 shadow-[0_1px_2px_rgba(42,42,44,0.05)]">
+      <MetaPillIcon kind={icon} />
+      <span className="flex flex-col leading-tight">
+        <span className="font-mono text-[9.5px] tracking-[0.12em] uppercase text-slate-soft font-medium">
+          {label}
+        </span>
+        <span className="font-display text-[16px] text-ink font-medium leading-tight">
+          {value}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 export function ProfileHero({
   child,
   tier,
@@ -49,6 +78,10 @@ export function ProfileHero({
 }) {
   const photoSrc = directusAssetUrl(child.photo);
   const subhead = pickFirstSentence(child.story);
+  // First name for the hero headline + CTAs. For public viewers
+  // `display_name` is already first_name only (P1.3); split() is a
+  // backstop for non-public tiers where display_name may be fuller.
+  const firstName = child.display_name.split(" ")[0]!;
   // Session 52b — single source of truth for the schooling line.
   // Empty string when both education_level and class_grade are
   // missing; we coerce to null below so the existing render-when-
@@ -60,7 +93,7 @@ export function ProfileHero({
   const educationLine = composed.length > 0 ? composed : null;
 
   return (
-    <section className="relative overflow-hidden bg-cream pt-12 pb-24 px-6 max-md:pt-8 max-md:pb-16">
+    <section className="relative overflow-hidden bg-cream pt-4 pb-16 px-6 max-md:pt-2 max-md:pb-10">
       <div
         className="logo-motif"
         aria-hidden="true"
@@ -73,30 +106,19 @@ export function ProfileHero({
           transform: "rotate(-15deg)",
         }}
       />
-      <div className="relative max-w-[1320px] mx-auto grid grid-cols-[1fr_1.1fr] gap-20 items-center max-lg:grid-cols-1 max-lg:gap-12">
-        {/* Photo */}
-        <div className="relative aspect-[4/5]">
-          <div className="absolute inset-0 rounded-[28px] overflow-hidden shadow-lift">
-            {photoSrc ? (
-              <ProtectedChildImage
-                src={photoSrc}
-                alt={child.display_name}
-                width={800}
-                height={1000}
-                quality={85}
-                className="w-full h-full object-cover"
-                priority
-              />
-            ) : (
-              <div className="child-photo-placeholder" aria-hidden="true" />
-            )}
-            <div className="absolute top-6 left-6 inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-cream/95 backdrop-blur-md font-mono text-[11px] tracking-[0.12em] uppercase text-ink font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-tangerine animate-pulse-dot" />
-              Awaiting sponsorship
-            </div>
-          </div>
-          {/* Verified badge */}
-          <div className="absolute -bottom-6 -right-6 max-w-[280px] flex items-center gap-3.5 bg-white rounded-[20px] px-5 py-4 shadow-lift max-md:right-3 max-md:-bottom-3">
+      <div className="relative max-w-[1320px] mx-auto grid grid-cols-[1fr_1.15fr] gap-16 items-center max-lg:grid-cols-1 max-lg:gap-10">
+        {/* Photo — organic PhotoBlob treatment (same already-public
+            photo source + same ProtectedChildImage pipeline; only the
+            shape changes). aspect-[4/5] keeps portrait framing; the
+            blob stretches into it the way the reference does. */}
+        {/* Square region so the organic blob reads ROUND (not the
+            stretched egg an aspect-[4/5] box produced). object-cover
+            keeps the face framed. */}
+        <div className="relative aspect-square w-full max-w-[480px] mx-auto lg:max-w-[580px] lg:mx-0">
+          <PhotoBlob photoSrc={photoSrc} alt={child.display_name} />
+          {/* Verified badge — floats off the lower-right of the blob,
+              like the reference's polaroid. */}
+          <div className="absolute bottom-2 -right-2 max-w-[280px] flex items-center gap-3.5 bg-white rounded-[20px] px-5 py-4 shadow-lift max-md:right-1 max-md:bottom-1">
             <div className="w-10 h-10 rounded-full bg-moss-soft text-moss-deep flex items-center justify-center shrink-0">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path
@@ -123,10 +145,25 @@ export function ProfileHero({
         </div>
 
         {/* Content */}
-        <div>
+        <Reveal>
           <div className="eyebrow-tag">Awaiting sponsorship</div>
-          <h1 className="font-display font-normal mt-6 text-ink leading-[0.95] tracking-[-0.04em] text-[clamp(3.5rem,7vw,6.5rem)]">
-            {child.display_name}
+          {/* Hero name + script accent. The name renders ONLY the
+              public-tier `display_name` (= first_name for public
+              viewers, per P1.3). The script accent is a universal,
+              non-identifying, hopeful line — it invents no fact about
+              the child. Caveat (`font-script`) over `tangerine-deep`
+              for AA contrast on cream. */}
+          {/* Name uses the SAME serif treatment as the sponsor-CTA
+              title ("Walk with {name}…"): Fraunces, weight 400,
+              tracking -0.03em. */}
+          <h1 className="font-display font-normal mt-5 text-ink leading-[0.95] tracking-[-0.03em] text-[clamp(3rem,6vw,5.5rem)]">
+            {firstName}
+            {/* Larger script accent — the hand-drawn line is the
+                dominant note here (Caveat has a small x-height, so it
+                needs more px to read as big as the serif name). */}
+            <span className="block font-script text-tangerine-deep leading-[0.85] tracking-normal mt-2 text-[clamp(3.5rem,7.5vw,7rem)]">
+              ready to grow.
+            </span>
           </h1>
           {subhead ? (
             <p className="mt-8 font-display italic text-[22px] leading-[1.5] text-ink max-w-[480px] pl-6 relative">
@@ -135,6 +172,9 @@ export function ProfileHero({
             </p>
           ) : null}
 
+          {/* Fact chips — label/value treatment adapted from the
+              prototype, in OG tokens. Shows ONLY public-tier fields;
+              gating is unchanged from the prior pills. */}
           <div className="mt-9 flex gap-3 flex-wrap">
             {/* Hotfix R1 — Tier 1 (public) viewers see DIVISION only;
                 the district + division composite is Tier 2+. Defense-
@@ -142,28 +182,19 @@ export function ProfileHero({
                 district=null for public tier, so this render gate is
                 a backstop against a future data-layer regression. */}
             {tier !== "public" && child.district ? (
-              <span className="inline-flex items-center gap-2 bg-white border border-ink/[0.08] rounded-full px-4 py-2.5 text-[13px] text-ink font-medium">
-                <MetaPillIcon kind="location" />
-                {child.district}
-                {child.region ? `, ${child.region}` : ""}
-              </span>
+              <FactChip
+                icon="location"
+                label="Location"
+                value={`${child.district}${child.region ? `, ${child.region}` : ""}`}
+              />
             ) : child.region ? (
-              <span className="inline-flex items-center gap-2 bg-white border border-ink/[0.08] rounded-full px-4 py-2.5 text-[13px] text-ink font-medium">
-                <MetaPillIcon kind="location" />
-                {child.region}
-              </span>
+              <FactChip icon="location" label="Region" value={child.region} />
             ) : null}
             {child.age !== null ? (
-              <span className="inline-flex items-center gap-2 bg-white border border-ink/[0.08] rounded-full px-4 py-2.5 text-[13px] text-ink font-medium">
-                <MetaPillIcon kind="age" />
-                {child.age} years old
-              </span>
+              <FactChip icon="age" label="Age" value={`${child.age} years`} />
             ) : null}
             {educationLine ? (
-              <span className="inline-flex items-center gap-2 bg-white border border-ink/[0.08] rounded-full px-4 py-2.5 text-[13px] text-ink font-medium">
-                <MetaPillIcon kind="school" />
-                {educationLine}
-              </span>
+              <FactChip icon="school" label="Schooling" value={educationLine} />
             ) : null}
           </div>
 
@@ -182,14 +213,14 @@ export function ProfileHero({
                 variant="tangerine"
                 size="lg"
               >
-                Sponsor {child.display_name.split(" ")[0]} — from BDT 1,500/mo
+                Sponsor {firstName} — from BDT 1,500/mo
               </Button>
             )}
             <Button href="#story" variant="outline">
               Read the story
             </Button>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

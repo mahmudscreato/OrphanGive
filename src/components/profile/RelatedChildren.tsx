@@ -8,7 +8,7 @@ export function RelatedChildren({
 }) {
   if (items.length === 0) return null;
   return (
-    <section className="px-6 py-24 bg-moss-soft/40 max-md:py-16">
+    <section className="px-6 py-16 bg-moss-soft/40 max-md:py-12">
       <div className="max-w-[1320px] mx-auto">
         <div className="max-w-[640px]">
           <div className="eyebrow-tag">Browse more</div>

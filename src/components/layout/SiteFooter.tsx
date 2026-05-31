@@ -26,6 +26,11 @@ const COLUMNS: FooterColumn[] = [
   {
     heading: "Learn",
     links: [
+      // Browse Children added — the footer previously omitted the
+      // /children funnel entry, so mobile/footer users had no persistent
+      // path to the gallery. Placed first to mirror the nav's ordering
+      // (Children is the first header link).
+      { href: "/children", label: "Browse Children" },
       { href: "/about", label: "About" },
       { href: "/how-it-works", label: "How It Works" },
       // Session 38 — FAQ slot inserted between How It Works and

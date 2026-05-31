@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   animate,
   motion,
@@ -49,24 +49,40 @@ const FAVICON_URL =
 
 function CountUp({ value }: { value: number }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-80px" });
+  // amount-based threshold (fires when 20% of the element is visible)
+  // instead of the prior negative `margin: "-80px"` rootMargin, which
+  // was unreliable on the tall single-column MOBILE stats layout and
+  // left the number stuck at its motion-value baseline (0). Desktop's
+  // 4-in-a-row fired fine; mobile never did → "0" bug.
+  const inView = useInView(ref, { once: true, amount: 0.2 });
   const reduced = useReducedMotion();
   const mv = useMotionValue(0);
   const display = useTransform(mv, (v) =>
     new Intl.NumberFormat("en-US").format(Math.round(v)),
   );
+  const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
-    if (!inView) return;
-    if (reduced) {
-      mv.set(value);
-      return;
-    }
-    const controls = animate(mv, value, { duration: 1.2, ease: "easeOut" });
+    if (reduced || !inView) return;
+    setAnimating(true);
+    const controls = animate(mv, value, {
+      duration: 1.2,
+      ease: "easeOut",
+      onComplete: () => setAnimating(false),
+    });
     return () => controls.stop();
   }, [inView, value, reduced, mv]);
 
-  return <motion.span ref={ref}>{display}</motion.span>;
+  // BASELINE = the real value (never 0). The count-up only replaces the
+  // rendered text while it is ACTIVELY running, so if the observer
+  // never fires (the mobile bug) or motion is reduced, the real number
+  // is always what shows — count-up is a pure enhancement.
+  const formatted = new Intl.NumberFormat("en-US").format(value);
+  return (
+    <span ref={ref}>
+      {animating ? <motion.span aria-hidden>{display}</motion.span> : formatted}
+    </span>
+  );
 }
 
 const containerVariants = {

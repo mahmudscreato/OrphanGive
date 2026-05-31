@@ -4,11 +4,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
-import {
-  HandDrawnPhotoFrame,
-  type FramePathKey,
-} from "@/components/decorations/HandDrawnPhotoFrame";
+import { type FramePathKey } from "@/components/decorations/HandDrawnPhotoFrame";
+import { PhotoBlob } from "@/components/decorations/PhotoBlob";
 import { directusAssetUrl } from "@/lib/homepage-data";
+
+// Founder direction: EVERY child photo uses the exact same brush ring
+// as the profile hero (the gold standard) — same blob path (`story1`),
+// same ringColor (#ED8B3F), same default stroke widths (14/8). The
+// per-card silhouette rotation was dropped so the ring reads
+// identically across the site. `pathKey` prop is kept (the page still
+// passes it) but no longer changes the silhouette.
 import type { ChildSummary } from "@/lib/children-data";
 
 /**
@@ -209,13 +214,17 @@ export function BrowseChildCard({
       >
         <div className="relative aspect-square">
           <div className="absolute inset-0">
-            <HandDrawnPhotoFrame className="w-full h-full" pathKey={pathKey}>
+            <PhotoBlob
+              pathKey="story1"
+              ringColor="#ED8B3F"
+              className="w-full h-full"
+            >
               <ChildPhoto
                 photo={child.photo}
                 name={safeName}
                 preload={preload}
               />
-            </HandDrawnPhotoFrame>
+            </PhotoBlob>
           </div>
 
           {/* Status overlay top-right. Suppressed when neither

@@ -28,7 +28,7 @@ export function EducationSection({ child }: { child: ChildProfile }) {
   if (!hasContent) return null;
 
   return (
-    <section className="px-6 py-24 bg-linen max-md:py-16">
+    <section className="px-6 py-16 bg-linen max-md:py-12">
       <div className="max-w-[1100px] mx-auto">
         <div className="eyebrow-tag">Education &amp; interests</div>
         <h2 className="font-display font-normal mt-5 text-ink leading-[1.05] tracking-[-0.025em] text-[clamp(1.75rem,3vw,2.5rem)]">

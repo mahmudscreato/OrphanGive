@@ -132,9 +132,14 @@ export function AboutSection() {
         </div>
 
         {/* Right column — decorative photo composition. */}
+        {/* Mobile fix: the photo box was 227×480 (a tall oval) because a
+            fixed 540px height + asymmetric insets produced a non-square
+            box, and PhotoBlob stretches (preserveAspectRatio="none"). On
+            mobile we make the container square (aspect-square) so the blob
+            stays round like every other surface; desktop keeps its 540px
+            height (→ ~500×480 box, unchanged). */}
         <div
-          className="relative w-full max-lg:max-w-[560px] max-lg:mx-auto"
-          style={{ height: 540 }}
+          className="relative w-full max-lg:max-w-[440px] max-lg:mx-auto max-lg:aspect-square lg:h-[540px]"
         >
           {/* Floating OG favicon — subtle x/y drift in the
               top-right corner (replaces the green leaf). */}
@@ -192,8 +197,7 @@ export function AboutSection() {
           {/* Center PhotoBlob — Part 5.6 D.2 render fix preserved.
               Part 5.7 Fix E — ring reverts to OG orange. */}
           <motion.div
-            className="absolute"
-            style={{ top: 30, right: 60, bottom: 30, left: 40, zIndex: 2 }}
+            className="absolute z-[2] max-lg:inset-6 lg:top-[30px] lg:right-[60px] lg:bottom-[30px] lg:left-[40px]"
             animate={reduced ? undefined : { rotate: [-1, 1, -1] }}
             transition={{
               duration: 8,
@@ -201,13 +205,16 @@ export function AboutSection() {
               ease: "easeInOut",
             }}
           >
+            {/* Fix 4 — was the `tilted` oval; now the same near-circle
+                child-profile blob (`story1`) so the silhouette is
+                consistent with the rest of the child photos. */}
+            {/* Same brush ring as the profile hero: story1, #ED8B3F,
+                default stroke widths (14/8). */}
             <PhotoBlob
-              pathKey="tilted"
+              pathKey="story1"
               src={ABOUT_PHOTO}
               alt="A glimpse of OrphanGive's work in Bangladesh"
               ringColor="#ED8B3F"
-              outerStrokeWidth={12}
-              innerStrokeWidth={7}
               objectPosition="center 15%"
               sizes="(max-width: 1024px) 100vw, 600px"
               className="w-full h-full"

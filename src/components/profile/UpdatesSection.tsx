@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ProtectedMediaFrame } from "@/components/ui/ProtectedMediaFrame";
 import { directusAssetUrl } from "@/lib/homepage-data";
 import type { ChildUpdate } from "@/lib/child-profile-data";
 
@@ -73,15 +74,16 @@ function UpdateCard({
         </p>
       ) : null}
       {photoSrc && variant === "wide" ? (
-        <div className="mt-6 aspect-[16/7] relative rounded-2xl overflow-hidden border border-ink/[0.06]">
+        <ProtectedMediaFrame className="mt-6 aspect-[16/7] rounded-2xl overflow-hidden border border-ink/[0.06]">
           <Image
             src={photoSrc}
             alt=""
             fill
+            draggable={false}
             sizes="(max-width: 1024px) 100vw, 1100px"
-            className="object-cover"
+            className="child-photo-protect object-cover"
           />
-        </div>
+        </ProtectedMediaFrame>
       ) : null}
     </article>
   );
@@ -98,7 +100,7 @@ export function UpdatesSection({
 
   if (updates.length === 0) {
     return (
-      <section className="px-6 py-28 bg-cream max-md:py-20">
+      <section className="px-6 py-16 bg-cream max-md:py-12">
         <div className="max-w-[1320px] mx-auto">
           <div className="flex justify-between items-end mb-12 gap-8 flex-wrap">
             <div>
@@ -125,7 +127,7 @@ export function UpdatesSection({
   // Bento layout: first card large, second medium, the rest wide
   const [first, second, ...rest] = updates;
   return (
-    <section className="px-6 py-28 bg-cream max-md:py-20">
+    <section className="px-6 py-16 bg-cream max-md:py-12">
       <div className="max-w-[1320px] mx-auto">
         <div className="flex justify-between items-end mb-12 gap-8 flex-wrap">
           <div>

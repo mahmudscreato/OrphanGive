@@ -31,6 +31,7 @@
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { BlurredPhotoModalTrigger } from "./BlurredPhotoModalTrigger";
+import { ProtectedMediaFrame } from "@/components/ui/ProtectedMediaFrame";
 import type { DonorIntakePhoto } from "@/lib/donor-intake-photos";
 
 export interface IntakePhotoGalleryProps {
@@ -66,15 +67,24 @@ export function IntakePhotoGallery({
           starts here.
         </p>
 
-        {/* Main photo */}
-        <div className="rounded-[24px] overflow-hidden bg-linen border border-ink/[0.05] mb-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={main.photoUrl}
-            alt={main.caption ?? `First-meeting photo of ${firstName}`}
-            className="w-full h-auto block"
-            style={{ aspectRatio: "3 / 2", objectFit: "cover" }}
-          />
+        {/* Main photo — capped so it isn't an oversized full-bleed
+            block (founder feedback). Centered, max ~760px wide. */}
+        <div className="rounded-[24px] overflow-hidden bg-linen border border-ink/[0.05] mb-4 max-w-[760px] mx-auto">
+          {/* ProtectedMediaFrame = real onContextMenu→preventDefault
+              (the mechanism that makes the hero photo work) + a
+              transparent overlay on top, so a REAL right-click here
+              gets no "Save Image As". CSS pointer-events:none alone
+              did NOT suppress Chrome's image menu — this does. */}
+          <ProtectedMediaFrame>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={main.photoUrl}
+              alt={main.caption ?? `First-meeting photo of ${firstName}`}
+              draggable={false}
+              className="child-photo-protect w-full h-auto block"
+              style={{ aspectRatio: "16 / 10", objectFit: "cover", maxHeight: "440px" }}
+            />
+          </ProtectedMediaFrame>
           {main.caption ? (
             <div className="px-5 py-3 bg-white border-t border-ink/[0.05]">
               <p className="text-[13.5px] text-ink-soft italic leading-relaxed">
@@ -169,13 +179,16 @@ function ThumbnailTile({
   if (isSponsor) {
     return (
       <div className="rounded-2xl overflow-hidden bg-linen border border-ink/[0.05]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={photo.photoUrl}
-          alt={photo.caption ?? `Photo of ${childFirstName}`}
-          className="w-full h-auto block"
-          style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-        />
+        <ProtectedMediaFrame>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photo.photoUrl}
+            alt={photo.caption ?? `Photo of ${childFirstName}`}
+            draggable={false}
+            className="child-photo-protect w-full h-auto block"
+            style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
+          />
+        </ProtectedMediaFrame>
       </div>
     );
   }

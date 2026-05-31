@@ -75,7 +75,7 @@ export function MomentsGallery({
   if (moments.length === 0) return null;
   const firstName = childName.split(" ")[0];
   return (
-    <section className="px-6 py-20 bg-cream max-md:py-14">
+    <section className="px-6 py-14 bg-cream max-md:py-10">
       <div className="max-w-[1320px] mx-auto">
         <div className="max-w-[640px]">
           <div className="eyebrow-tag">Moments</div>

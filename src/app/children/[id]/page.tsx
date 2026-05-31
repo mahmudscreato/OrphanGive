@@ -8,6 +8,7 @@ import { LockedFieldsBand } from "@/components/profile/LockedFieldsBand";
 import { DocumentsBanner } from "@/components/profile/DocumentsBanner";
 import { UpdatesSection } from "@/components/profile/UpdatesSection";
 import { EducationSection } from "@/components/profile/EducationSection";
+import { StoryTeaser } from "@/components/profile/StoryTeaser";
 import { SponsorCTA } from "@/components/profile/SponsorCTA";
 import { RelatedChildren } from "@/components/profile/RelatedChildren";
 import { ChildSponsorBanner } from "@/components/children/ChildSponsorBanner";
@@ -215,7 +216,7 @@ export default async function ChildProfilePage({
 
   return (
     <>
-      <div className="px-6 pt-32 bg-cream max-md:pt-28">
+      <div className="px-6 pt-10 bg-cream max-md:pt-6">
         <div className="max-w-[1320px] mx-auto">
           <Breadcrumb
             crumbs={[
@@ -261,6 +262,16 @@ export default async function ChildProfilePage({
       <DocumentsBanner docs={docs} />
       <UpdatesSection childName={child.display_name} updates={updates} />
       <EducationSection child={child} />
+      {/* Story teaser — "follow along" invitation. Wired to the
+          existing tier signal + isSponsor check. Carries NO real
+          gated data: public viewers see only the generic invitation
+          + the first name. See StoryTeaser.tsx privacy posture. */}
+      <StoryTeaser
+        childId={child.id}
+        childFirstName={child.display_name.split(" ")[0]!}
+        tier={tier}
+        isSponsor={isSponsor}
+      />
       <SponsorCTA child={child} tier={tier} />
       <RelatedChildren items={related} />
     </>

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useId, type CSSProperties } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 
 /**
  * Session 16 Part 3 Item 2 — PhotoBlob.
@@ -73,6 +73,11 @@ type PhotoBlobProps = {
   pathKey: BlobPathKey;
   /** Photo source. If omitted, renders the fallback gradient. */
   src?: string;
+  /** Children mode — when provided, these render inside the blob mask
+   *  instead of the built-in <Image> (e.g. a ProtectedChildImage for
+   *  real child photos, which carries its own right-click guard +
+   *  error→placeholder). The brush ring is drawn the same way. */
+  children?: ReactNode;
   alt?: string;
   /** Brush ring color. */
   ringColor?: string;
@@ -105,6 +110,7 @@ function buildMaskUrl(path: string): string {
 export function PhotoBlob({
   pathKey,
   src,
+  children,
   alt = "",
   ringColor = "#ED8B3F",
   fallbackGrad,
@@ -133,17 +139,32 @@ export function PhotoBlob({
   };
 
   return (
-    <div className={`relative ${className}`} style={style}>
-      {/* Photo (or gradient fallback), clipped to the blob shape
-          via CSS mask-image. */}
+    <div
+      className={`relative ${className}`}
+      style={style}
+      // Casual right-click/drag guard for the photo. The contextmenu
+      // event bubbles from the inner <Image>/children up to here and
+      // preventDefault() suppresses the browser's "Save Image As" menu
+      // entirely. (Same proven mechanism ProtectedChildImage uses.)
+      // Children-mode photos (ProtectedChildImage) also carry their own
+      // guard; this is belt-and-suspenders and protects src-mode too.
+      onContextMenu={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+    >
+      {/* Photo (children, image, or gradient fallback), clipped to the
+          blob shape via CSS mask-image. */}
       <div className="absolute inset-0" style={maskStyles}>
-        {src ? (
+        {children ? (
+          children
+        ) : src ? (
           <Image
             src={src}
             alt={alt}
             fill
+            draggable={false}
             priority={priority}
             sizes={sizes ?? "(max-width: 768px) 100vw, 400px"}
+            className="child-photo-protect"
             style={{
               objectFit: "cover",
               ...(objectPosition ? { objectPosition } : null),

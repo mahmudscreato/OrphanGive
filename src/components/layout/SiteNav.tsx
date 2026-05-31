@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { CartIconButton } from "@/components/cart/CartIconButton";
 
@@ -34,6 +35,55 @@ export function SiteNav({ signedIn, firstName }: Props) {
   const pathname = usePathname();
   const reduced = useReducedMotion();
 
+  // Mobile drawer state. Hooks run before the early return below so the
+  // Rules of Hooks hold on the routes where the nav renders null.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Close the drawer on route change (covers link taps that navigate).
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  // While open: lock body scroll, close on Esc, trap Tab focus inside the
+  // panel, move focus into it; on close restore scroll + focus the toggle.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        return;
+      }
+      if (e.key === "Tab" && panelRef.current) {
+        const focusables = panelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    closeButtonRef.current?.focus();
+    const toggle = menuButtonRef.current;
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+      toggle?.focus();
+    };
+  }, [menuOpen]);
+
   // The dashboard renders its own permanent left sidebar, so the
   // floating top nav would just compete for attention. Hide it there.
   // Session 25 — also hide on /maintenance and /offline, which both
@@ -62,6 +112,7 @@ export function SiteNav({ signedIn, firstName }: Props) {
   // canvas above/around it. Sticky + full width gives a solid
   // anchor that always sits above the content and never overlaps.
   return (
+    <>
     <motion.nav
       className="sticky top-0 z-50 w-full border-b border-ink/[0.06]"
       style={{
@@ -147,9 +198,146 @@ export function SiteNav({ signedIn, firstName }: Props) {
           <Button href="/children" variant="primary">
             Sponsor a Child
           </Button>
+
+          {/* Mobile menu toggle — shown only below md, exactly where the
+              desktop nav pills + Sign in are hidden (max-md:hidden), so
+              there is always one nav affordance and never two. */}
+          <button
+            ref={menuButtonRef}
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-menu"
+            className="md:hidden inline-flex items-center justify-center w-11 h-11 -mr-1 rounded-full text-ink hover:bg-tangerine-mist transition-colors duration-200"
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <line x1="3.5" y1="7" x2="20.5" y2="7" />
+              <line x1="3.5" y1="12" x2="20.5" y2="12" />
+              <line x1="3.5" y1="17" x2="20.5" y2="17" />
+            </svg>
+          </button>
         </div>
       </div>
     </motion.nav>
+
+    {/* Mobile drawer. Rendered as a SIBLING of <nav> (not a child): the
+        nav's backdrop-filter would otherwise become the containing block
+        for position:fixed descendants and pin the drawer to the header.
+        md:hidden so it never exists on desktop. Always mounted + toggled
+        via framer `animate` (not AnimatePresence): an interrupted exit
+        unmount could freeze a half-faded overlay over the page; here the
+        layer is simply inert + off-screen + click-through when closed
+        (overflow-hidden clips the off-screen panel so it adds no scroll). */}
+    <div
+      id="mobile-menu"
+      className="md:hidden fixed inset-0 z-[60] overflow-hidden"
+      style={{ pointerEvents: menuOpen ? "auto" : "none" }}
+      aria-hidden={!menuOpen}
+      {...(menuOpen ? {} : { inert: true })}
+    >
+      {/* Dimmed overlay — tap to close. */}
+      <motion.div
+        className="absolute inset-0 bg-ink/40"
+        aria-hidden="true"
+        onClick={() => setMenuOpen(false)}
+        initial={false}
+        animate={{ opacity: menuOpen ? 1 : 0 }}
+        transition={{ duration: reduced ? 0 : 0.2 }}
+        style={{ pointerEvents: menuOpen ? "auto" : "none" }}
+      />
+
+      {/* Slide-in panel. */}
+      <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Site menu"
+        className="absolute top-0 right-0 h-full w-[82%] max-w-[340px] bg-cream shadow-2xl flex flex-col"
+        initial={false}
+        animate={{ x: menuOpen ? 0 : "100%" }}
+        transition={{ duration: reduced ? 0 : 0.28, ease: "easeOut" }}
+      >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-ink/[0.08]">
+              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-tangerine-deep">
+                Menu
+              </span>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close menu"
+                className="inline-flex items-center justify-center w-10 h-10 -mr-1 rounded-full text-ink hover:bg-tangerine-mist transition-colors duration-200"
+              >
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.25"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            <nav className="flex flex-col px-3 py-3" aria-label="Mobile">
+              {NAV_LINKS.map((link) => {
+                const active = isActive(pathname, link.href);
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    className={`px-4 py-3.5 text-base font-medium rounded-2xl transition-colors duration-200 ${
+                      active
+                        ? "bg-tangerine-mist text-ink"
+                        : "text-slate hover:bg-tangerine-mist hover:text-ink"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+              <Link
+                href={signedIn ? "/dashboard" : "/signin"}
+                onClick={() => setMenuOpen(false)}
+                className="px-4 py-3.5 text-base font-medium rounded-2xl text-slate hover:bg-tangerine-mist hover:text-ink transition-colors duration-200"
+              >
+                {signedIn ? (firstName ? `Hi, ${firstName}` : "Dashboard") : "Sign in"}
+              </Link>
+            </nav>
+
+            {/* Primary CTA — kept prominent (full-width) in the menu too.
+                Styled to match the Button `primary` variant; a plain Link
+                is used so it can be full-width (the Button wrapper is an
+                inline-block span). */}
+            <div className="mt-auto px-4 py-5 border-t border-ink/[0.08]">
+              <Link
+                href="/children"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center justify-center gap-2 w-full rounded-full bg-ink text-cream font-body font-semibold py-3.5 text-base hover:bg-tangerine hover:text-ink transition-colors duration-200"
+              >
+                Sponsor a Child
+              </Link>
+            </div>
+      </motion.div>
+    </div>
+    </>
   );
 }
 

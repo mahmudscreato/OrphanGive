@@ -5,10 +5,7 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { ProtectedChildImage } from "@/components/ui/ProtectedChildImage";
-import {
-  HandDrawnPhotoFrame,
-  type FramePathKey,
-} from "@/components/decorations/HandDrawnPhotoFrame";
+import { PhotoBlob } from "@/components/decorations/PhotoBlob";
 
 const FAVICON_URL =
   "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778506582/Fevicon_2_ky8rxa.png";
@@ -17,15 +14,12 @@ import {
   directusAssetUrl,
 } from "@/lib/homepage-data";
 
-// Part 5.7 Fix D.2 — each card gets a distinct near-circle
-// pathKey so the row reads as four hand-cut shapes, not four
-// identical ones. Cycle through if more than 4 cards.
-const CARD_PATH_KEYS: FramePathKey[] = [
-  "circleA",
-  "circleB",
-  "circleC",
-  "circleD",
-];
+// Founder direction: EVERY child photo uses the exact same brush ring
+// as the profile hero (the gold standard) — the wobbly hand-painted
+// `decorations/PhotoBlob` brush (story1 blob, #ED8B3F, default 14/8
+// strokes). The earlier per-card silhouette rotation (circleA–D on the
+// clean HandDrawnPhotoFrame) is dropped so the ring reads identically
+// across the homepage, /children cards, and the profile hero.
 
 /**
  * FeaturedChildren — conversion-focused cards.
@@ -142,20 +136,14 @@ function ChildPhoto({
       />
     );
   }
-  // Part 5 Fix 3 — placeholder rebuilt. HandDrawnPhotoFrame
-  // (parent) provides the organic blob shape + OG-orange brush
-  // ring (matching the photo cards). Inside, we render a cream
-  // background + the OG favicon mark at ~40% of the visible area
-  // + a "Photo coming soon" caption. Replaces the previous
-  // `.child-photo-placeholder` CSS-only div which used a flat
-  // tangerine circle as the brand mark — the favicon is more
-  // recognisable + scales with the blob.
-  //
-  // We use HandDrawnPhotoFrame (not PhotoBlob) here because it
-  // accepts children, which lets us keep ProtectedChildImage's
-  // watermarking on real photo cards in the sibling branch above.
-  // The ring stroke color is already #ED8B3F (Part 5 Fix 3 earlier),
-  // so visual consistency with hero photos is preserved.
+  // Placeholder branch. The parent PhotoBlob (brush ring) provides the
+  // organic story1 blob shape + OG-orange brush ring; inside, we render
+  // a cream background + the OG favicon mark at ~40% of the visible area
+  // + a "Photo coming soon" caption. PhotoBlob accepts children, so the
+  // real-photo branch above keeps ProtectedChildImage's right-click
+  // guard + watermarking while the placeholder uses this plain div —
+  // both clipped to the same brush blob, so the ring is identical to the
+  // profile hero and every other child photo.
   return (
     <div
       className="absolute inset-0 flex flex-col items-center justify-center bg-cream transition-transform duration-[800ms] ease-soft group-hover:scale-[1.06]"
@@ -179,11 +167,9 @@ function ChildPhoto({
 function ChildCard({
   child,
   preload,
-  pathKey,
 }: {
   child: FeaturedChild;
   preload: boolean;
-  pathKey: FramePathKey;
 }) {
   const safeName = safeDisplayName(child.display_name);
   const first = firstNameOnly(child.display_name);
@@ -205,13 +191,17 @@ function ChildCard({
       >
         <div className="relative aspect-square">
           <div className="absolute inset-0">
-            <HandDrawnPhotoFrame className="w-full h-full" pathKey={pathKey}>
+            <PhotoBlob
+              pathKey="story1"
+              ringColor="#ED8B3F"
+              className="w-full h-full"
+            >
               <ChildPhoto
                 photo={child.photo}
                 name={safeName}
                 preload={preload}
               />
-            </HandDrawnPhotoFrame>
+            </PhotoBlob>
           </div>
         </div>
       </Link>
@@ -366,11 +356,7 @@ export function FeaturedChildren({
                 }
                 transition={{ duration: 0.25 }}
               >
-                <ChildCard
-                  child={c}
-                  preload={i < 4}
-                  pathKey={CARD_PATH_KEYS[i % CARD_PATH_KEYS.length]!}
-                />
+                <ChildCard child={c} preload={i < 4} />
               </motion.div>
             ))}
           </motion.div>

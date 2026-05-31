@@ -184,24 +184,26 @@ export function Hero(_props: HeroProps) {
         {/* Right column — photo collage. Part 5.9 Fix A.1 —
             column min-height drops to 700 (main photo height
             shrunk, viewport-fit goal). */}
-        <div
-          className="relative w-full max-lg:max-w-[560px] max-lg:mx-auto"
-          style={{ minHeight: 700 }}
-        >
-          {/* DottedArc top-left, rotated -30deg. */}
+        {/* Fix 3 + Fix 5 (mobile): below lg the right column becomes a
+            clean single photo box (aspect-[5/6], a touch bigger than
+            before) — the bleeding secondary photos + decorations that
+            collided on small screens are hidden, leaving the main
+            photo intentional and uncramped. Desktop collage unchanged. */}
+        <div className="relative w-full max-lg:max-w-[440px] max-lg:mx-auto max-lg:aspect-[5/6] lg:min-h-[700px]">
+          {/* DottedArc top-left, rotated -30deg. (desktop only) */}
           <DottedArc
             size={110}
             color="#ED8B3F"
             dots={11}
-            className="absolute -top-4 -left-4 pointer-events-none z-0"
+            className="absolute -top-4 -left-4 pointer-events-none z-0 max-lg:hidden"
             style={{ transform: "rotate(-30deg)" }}
           />
 
-          {/* ConfettiDots bottom-left of cluster. */}
+          {/* ConfettiDots bottom-left of cluster. (desktop only) */}
           <ConfettiDots
             count={10}
             area={[200, 100]}
-            className="absolute -bottom-2 -left-2 pointer-events-none z-0"
+            className="absolute -bottom-2 -left-2 pointer-events-none z-0 max-lg:hidden"
           />
 
           {/* Main center photo — Rana, using the `broken`
@@ -213,10 +215,16 @@ export function Hero(_props: HeroProps) {
               behind it. Thinner ring (10/6). 4s float + 6s
               breathing. */}
           <motion.div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 lg:-translate-x-[calc(50%+32px)] z-10"
-            style={{ width: 570, height: 620 }}
+            className="z-10 max-lg:absolute max-lg:inset-0 lg:absolute lg:top-1/2 lg:left-1/2 lg:-translate-y-1/2 lg:-translate-x-[calc(50%+32px)] lg:w-[570px] lg:h-[620px]"
             {...(floatBreathe(4) ?? {})}
           >
+            {/* Founder direction: the MAIN hero photo keeps its
+                ORIGINAL frame — the `broken` rect-derived hand-drawn
+                shape with the thinner ring (10/6) it carried before
+                fb4bf36. Only the main photo reverts; the two secondary
+                collage photos + the rest of the site stay on the
+                story1 brush. (Reverses the fb4bf36 broken→story1 swap
+                for this one element.) */}
             <PhotoBlob
               pathKey="broken"
               src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490185/_OrphanGive_CG_V1__32_suehjj.png"
@@ -234,12 +242,12 @@ export function Hero(_props: HeroProps) {
               — pushed ~40px further right (-20 → -60) so it
               half-bleeds toward the viewport edge. */}
           <motion.div
-            className="absolute z-30"
+            className="absolute z-30 max-lg:hidden"
             style={{ top: 10, right: -60, width: 320, height: 320 }}
             {...(floatBreathe(5) ?? {})}
           >
             <PhotoBlob
-              pathKey="hero2"
+              pathKey="story1"
               src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490174/_OrphanGive_CG_V1__22_in48ah.png"
               alt="A child with their mother"
               ringColor="#ED8B3F"
@@ -253,12 +261,12 @@ export function Hero(_props: HeroProps) {
               blob curve is visibly bleeding past the section's
               right edge. Sits at z-0 behind the main photo. */}
           <motion.div
-            className="absolute z-0"
+            className="absolute z-0 max-lg:hidden"
             style={{ bottom: 20, right: -100, width: 360, height: 360 }}
             {...(floatBreathe(6) ?? {})}
           >
             <PhotoBlob
-              pathKey="hero3"
+              pathKey="story1"
               src="https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490182/_OrphanGive_CG_V1__11_pp331u.png"
               alt="A child supported by OrphanGive"
               ringColor="#ED8B3F"
