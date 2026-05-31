@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
         const childName = child?.display_name ?? "your sponsored child";
         await sendEmail({
           to: formatTo(donor.email, firstName),
-          subject: `Your sponsorship of ${childName} is set to begin on the new start date`,
+          subject: `Your sponsorship of ${childName} is set to begin on the new date`,
           template: SponsorshipQueueShiftEmail({
             firstName,
             childName,

@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: "Your sponsorship amount has been updated",
+    subject: `Your monthly amount for ${childName} is updated`,
     template: SponsorshipModifiedEmail({
       firstName,
       childName,

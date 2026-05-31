@@ -64,9 +64,9 @@ export async function POST(req: NextRequest) {
   const subject =
     reason === "refunded"
       ? refundedAmountUsd !== null
-        ? `Refund of $${refundedAmountUsd.toFixed(0)} processed for your sponsorship of ${childName}`
-        : `Refund processed for your sponsorship of ${childName}`
-      : `Your sponsorship of ${childName} has ended`;
+        ? `A refund of $${refundedAmountUsd.toFixed(0)} is on its way for your sponsorship of ${childName}`
+        : `A refund is on its way for your sponsorship of ${childName}`
+      : `Your sponsorship of ${childName} has ended — thank you`;
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),

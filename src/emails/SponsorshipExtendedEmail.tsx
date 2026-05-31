@@ -90,21 +90,22 @@ export function SponsorshipExtendedEmail({
             margin: "0 0 16px 0",
           }}
         >
-          Your sponsorship of{" "}
-          <strong style={{ color: tokens.ink }}>{childName}</strong> is now
-          extended by{" "}
+          Thank you for staying with{" "}
+          <strong style={{ color: tokens.ink }}>{childName}</strong> for
+          another{" "}
           <strong style={{ color: tokens.ink }}>
             {additionalMonths} {additionalMonths === 1 ? "month" : "months"}
           </strong>
-          . Your prepaid period continues as-is until{" "}
+          . Your prepaid period runs as-is until{" "}
           <strong style={{ color: tokens.ink }}>{prepaidEndStr ?? "your prepaid end date"}</strong>
           . After that,{" "}
           <strong style={{ color: tokens.ink }}>
             {monthlyAmountUsd != null ? fmtUsd(monthlyAmountUsd) : "your monthly amount"}
             /month
           </strong>{" "}
-          will be charged automatically for {additionalMonths}{" "}
-          {additionalMonths === 1 ? "month" : "months"}. Total commitment now:{" "}
+          takes over automatically for {additionalMonths}{" "}
+          {additionalMonths === 1 ? "month" : "months"}. Total commitment is
+          now{" "}
           <strong style={{ color: tokens.ink }}>
             {newDurationMonths} {newDurationMonths === 1 ? "month" : "months"}
           </strong>
@@ -119,8 +120,9 @@ export function SponsorshipExtendedEmail({
             margin: "0 0 16px 0",
           }}
         >
-          You&rsquo;ve extended your sponsorship of{" "}
-          <strong style={{ color: tokens.ink }}>{childName}</strong> by{" "}
+          Thank you for staying with{" "}
+          <strong style={{ color: tokens.ink }}>{childName}</strong> for
+          another{" "}
           <strong style={{ color: tokens.ink }}>
             {additionalMonths} {additionalMonths === 1 ? "month" : "months"}
           </strong>
@@ -129,7 +131,8 @@ export function SponsorshipExtendedEmail({
             {newDurationMonths} {newDurationMonths === 1 ? "month" : "months"}
           </strong>
           {" "}({monthsRemaining}{" "}
-          {monthsRemaining === 1 ? "month" : "months"} remaining).
+          {monthsRemaining === 1 ? "month" : "months"} remaining). That
+          kind of steadiness is what makes the work possible.
         </Text>
       )}
 
@@ -207,7 +210,7 @@ export function SponsorshipExtendedEmail({
       )}
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={sponsorshipUrl}>View sponsorship</EmailButton>
+        <EmailButton href={sponsorshipUrl}>Open sponsorship</EmailButton>
       </Section>
     </EmailLayout>
   );

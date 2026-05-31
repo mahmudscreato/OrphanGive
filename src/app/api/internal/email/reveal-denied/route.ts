@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: "Your reveal request — update from our team",
+    subject: `Your reveal request for ${childName} — a quick note from our team`,
     template: RevealDeniedEmail({
       firstName,
       childName,

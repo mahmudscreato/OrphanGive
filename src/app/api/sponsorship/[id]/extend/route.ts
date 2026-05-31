@@ -688,7 +688,7 @@ async function fireExtendEmail(args: {
     );
     await sendEmail({
       to: formatTo(args.donorEmail, args.donorFirstName),
-      subject: `Your sponsorship of ${child?.display_name ?? "your sponsored child"} has been extended`,
+      subject: `Thank you for extending — ${child?.display_name ?? "your sponsored child"} is held a little longer`,
       template: SponsorshipExtendedEmail({
         firstName: args.donorFirstName,
         childName: child?.display_name ?? "your sponsored child",

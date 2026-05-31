@@ -125,8 +125,8 @@ export async function POST(req: NextRequest) {
 function subjectFor(paidAtIso: string, childName: string): string {
   const d = new Date(paidAtIso);
   if (Number.isNaN(d.getTime())) {
-    return `Receipt — sponsorship of ${childName}`;
+    return `Receipt for your sponsorship of ${childName}`;
   }
   const month = d.toLocaleString("en-US", { month: "long" });
-  return `Receipt — ${month} ${d.getFullYear()} sponsorship of ${childName}`;
+  return `${childName}'s sponsorship for ${month} — your receipt`;
 }

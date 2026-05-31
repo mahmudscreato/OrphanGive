@@ -105,8 +105,8 @@ export async function POST(req: NextRequest) {
   const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
   const subject =
     items.length === 1
-      ? `Thank you, ${firstName} — your sponsorship begins today`
-      : `Thank you, ${firstName} — your sponsorships begin today`;
+      ? `Thank you, ${firstName} — ${items[0]!.childName} now has you in their corner`
+      : `Thank you, ${firstName} — ${items.length} new children to walk alongside`;
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),

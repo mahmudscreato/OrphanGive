@@ -28,11 +28,10 @@ export function SponsorshipPausedEmail({
 }: SponsorshipPausedEmailProps) {
   const lead = byAdmin
     ? // Admin-initiated pause: explicit attribution + reassurance the
-      // slot is still reserved. Mirror's "has been paused" passive
-      // voice but adds "by the OrphanGive team" so the donor knows it
-      // wasn't them.
-      `Your sponsorship of ${childName} has been paused by the OrphanGive team. No charges will happen until it's resumed. ${childName}'s sponsorship slot remains reserved for you.`
-    : `Your sponsorship of ${childName} has been paused. No charges will happen until you resume it. ${childName}'s sponsorship slot remains reserved for you.`;
+      // slot is still reserved. Adds "by our team" so the donor knows
+      // it wasn't them.
+      `Your sponsorship of ${childName} has been paused by our team. No charges will go through until it's resumed, and ${childName}'s spot is still held for you.`
+    : `Your sponsorship of ${childName} is paused. No charges will go through until you resume it, and ${childName}'s spot is held for you.`;
   const trimmedReason = adminReason?.trim();
 
   return (
@@ -84,7 +83,7 @@ export function SponsorshipPausedEmail({
             margin: "0 0 16px 0",
           }}
         >
-          Note from our team: {trimmedReason}
+          A note from our team: {trimmedReason}
         </Text>
       ) : null}
 
@@ -97,8 +96,8 @@ export function SponsorshipPausedEmail({
         }}
       >
         {byAdmin
-          ? "You can resume anytime — or reply to this email if you have any questions."
-          : "You can resume anytime — your billing will pick up on the next regular monthly date."}
+          ? "Resume whenever you're ready — or hit reply if you'd like to talk it through first."
+          : "Resume whenever you're ready. Billing will pick up on the next regular monthly date."}
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>

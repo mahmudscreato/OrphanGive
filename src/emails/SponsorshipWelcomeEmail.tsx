@@ -117,11 +117,15 @@ export function SponsorshipWelcomeEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Thank you. As of today, you&rsquo;re sponsoring{" "}
-        <strong style={{ color: tokens.ink }}>{childList}</strong>.{" "}
-        {pronounSubject} now {isMulti ? "have" : "has"} someone in{" "}
-        {pronounPossessive} corner who chose to be there — and that matters
-        more than you might realise.
+        Thank you. From today,{" "}
+        <strong style={{ color: tokens.ink }}>{childList}</strong>{" "}
+        {isMulti ? "have" : "has"} someone in{" "}
+        {pronounPossessive} corner who chose to be there.{" "}
+        {pronounSubject} won&rsquo;t hear it that way — what{" "}
+        {pronounSubject.toLowerCase()} {isMulti ? "feel" : "feels"} is
+        the steadiness of it: school fees that arrive on time, a
+        warmer winter, the quiet certainty that someone is paying
+        attention.
       </Text>
 
       {sponsorships.map((s, i) => {
@@ -187,15 +191,15 @@ export function SponsorshipWelcomeEmail({
           margin: "20px 0 24px 0",
         }}
       >
-        Over the coming weeks, you&rsquo;ll start receiving updates from{" "}
+        Over the coming weeks you&rsquo;ll start receiving updates from{" "}
         {isMulti ? "their" : `${first?.childName ?? "the child"}'s`} life —
-        small moments, school progress, occasional photos. Your sponsorship
-        card on your dashboard will always be there if you want to manage your
-        support.
+        small moments, school progress, the occasional photo. Your
+        dashboard keeps everything in one place if you ever want to
+        revisit or adjust your support.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={dashboardUrl}>View your dashboard</EmailButton>
+        <EmailButton href={dashboardUrl}>Open your dashboard</EmailButton>
       </Section>
     </EmailLayout>
   );

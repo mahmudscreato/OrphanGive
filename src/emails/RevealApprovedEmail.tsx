@@ -43,11 +43,11 @@ export function RevealApprovedEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Good news. Your request to view{" "}
-        <strong style={{ color: tokens.ink }}>{fieldLabel}</strong> for{" "}
-        <strong style={{ color: tokens.ink }}>{childName}</strong> has been
-        approved by our team. You can see this information now when you visit{" "}
-        {childName}&rsquo;s profile.
+        Good news — you can now see{" "}
+        <strong style={{ color: tokens.ink }}>{fieldLabel}</strong> on{" "}
+        <strong style={{ color: tokens.ink }}>{childName}</strong>
+        &rsquo;s profile. Our team reviewed your request and you&rsquo;re
+        cleared.
       </Text>
 
       <Text
@@ -58,14 +58,15 @@ export function RevealApprovedEmail({
           margin: "0 0 24px 0",
         }}
       >
-        This access lasts 90 days, after which you can request again if needed.
-        You&rsquo;re trusted with this information — please keep it
-        confidential.
+        This access lasts 90 days, then you can request again if you
+        still need it. We trust you with this — please keep it to
+        yourself. {childName}&rsquo;s safety is the reason we hold it
+        closely.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
         <EmailButton href={profileUrl}>
-          View {childName}&rsquo;s profile
+          Open {childName}&rsquo;s profile
         </EmailButton>
       </Section>
     </EmailLayout>

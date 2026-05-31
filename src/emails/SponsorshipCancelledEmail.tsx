@@ -24,8 +24,8 @@ export function SponsorshipCancelledEmail({
 }: SponsorshipCancelledEmailProps) {
   const trimmedReason = adminReason?.trim();
   const lead = byAdmin
-    ? "has been cancelled by the OrphanGive team. No more charges will occur."
-    : "has been cancelled. No more charges will occur.";
+    ? "has been cancelled by our team. No more charges will go through."
+    : "has ended. No more charges will go through.";
 
   return (
     <EmailLayout
@@ -68,7 +68,7 @@ export function SponsorshipCancelledEmail({
             margin: "0 0 16px 0",
           }}
         >
-          Note from our team: {trimmedReason}
+          A note from our team: {trimmedReason}
         </Text>
       ) : null}
 
@@ -80,13 +80,14 @@ export function SponsorshipCancelledEmail({
           margin: "0 0 24px 0",
         }}
       >
-        We&rsquo;re grateful for your support — every month you contributed
-        made a real difference. If you&rsquo;d like to resume in the future,
-        you can browse children anytime.
+        Thank you for the months you stood beside {childName}. Each
+        one mattered, even when it felt routine on your end. If you
+        ever feel like coming back, the door&rsquo;s open — you can
+        meet the children whenever you&rsquo;re ready.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={browseUrl}>Browse children</EmailButton>
+        <EmailButton href={browseUrl}>Meet the children</EmailButton>
       </Section>
 
       <Text
@@ -98,8 +99,8 @@ export function SponsorshipCancelledEmail({
         }}
       >
         {byAdmin
-          ? "If you have questions about this decision, simply reply to this email."
-          : "If you cancelled by mistake or want to discuss this with us, simply reply to this email."}
+          ? "If you have questions about this, just hit reply — we'll write back."
+          : "If you cancelled by accident or want to talk it through, just hit reply."}
       </Text>
     </EmailLayout>
   );

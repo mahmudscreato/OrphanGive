@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: `Your sponsorship of ${childName} has been extended`,
+    subject: `Thank you for extending — ${childName} is held a little longer`,
     template: SponsorshipExtendedEmail({
       firstName,
       childName,

@@ -99,16 +99,17 @@ export function SponsorshipQueueShiftEmail({
           <>
             Your upcoming sponsorship of{" "}
             <strong style={{ color: tokens.ink }}>{childName}</strong>{" "}
-            has been confirmed to begin on its new start date
-            {newStr ? ` (${newStr})` : ""}. The 14-day window for
-            choosing an alternative passed without a response, so we
-            kept your support on track automatically.
+            is set to begin on its new start date
+            {newStr ? ` (${newStr})` : ""}. The 14-day window to
+            choose another path closed quietly, so we kept your
+            support on track automatically.
           </>
         ) : (
           <>
             {sponsorRef} extended their support of{" "}
-            <strong style={{ color: tokens.ink }}>{childName}</strong>.
-            Your upcoming sponsorship start date has shifted
+            <strong style={{ color: tokens.ink }}>{childName}</strong>{" "}
+            — kind news for {childName}, and a small shift for you.
+            Your start date now moves
             {oldStr ? ` from ${oldStr}` : ""}
             {newStr ? ` to ${newStr}` : ""}.
           </>
@@ -124,9 +125,9 @@ export function SponsorshipQueueShiftEmail({
             margin: "16px 0 0 0",
           }}
         >
-          If circumstances have changed and you&rsquo;d like to cancel
-          and receive a refund, you can do so from your dashboard
-          before the start date.
+          If things have changed for you and you&rsquo;d rather not
+          wait, you can cancel for a refund from your dashboard
+          anytime before the start date.
         </Text>
       ) : (
         <>
@@ -139,7 +140,7 @@ export function SponsorshipQueueShiftEmail({
               fontWeight: 600,
             }}
           >
-            How would you like to proceed?
+            What would you like to do?
           </Text>
 
           <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
@@ -184,9 +185,9 @@ export function SponsorshipQueueShiftEmail({
               fontStyle: "italic",
             }}
           >
-            If you don&rsquo;t respond within 14 days, your sponsorship
-            will automatically begin on the new start date — no action
-            needed.
+            No rush — if 14 days pass without a reply, your
+            sponsorship just begins on the new date. No further
+            action needed from you.
           </Text>
         </>
       )}

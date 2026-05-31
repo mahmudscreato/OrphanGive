@@ -93,10 +93,11 @@ export function SponsorshipActivatedEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Your support of{" "}
-        <strong style={{ color: tokens.ink }}>{childName}</strong> starts
-        today. The previous sponsor&rsquo;s term has ended, and your
-        slot is now active.
+        Your sponsorship of{" "}
+        <strong style={{ color: tokens.ink }}>{childName}</strong>{" "}
+        starts today. The previous sponsor&rsquo;s term wrapped up,
+        and your spot is now live. Thank you for waiting — it&rsquo;s
+        good to have you in {childName}&rsquo;s corner.
       </Text>
 
       <MetadataCard>
@@ -157,13 +158,13 @@ export function SponsorshipActivatedEmail({
           margin: "20px 0 24px 0",
         }}
       >
-        Over the coming weeks, you&rsquo;ll start receiving updates from{" "}
-        {childName}&rsquo;s life — small moments, school progress,
-        occasional photos. Thank you for being there.
+        Over the coming weeks you&rsquo;ll start receiving updates
+        from {childName}&rsquo;s life — small moments, school progress,
+        the occasional photo. Thank you for being there.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={sponsorshipUrl}>View your sponsorship</EmailButton>
+        <EmailButton href={sponsorshipUrl}>Open your sponsorship</EmailButton>
       </Section>
     </EmailLayout>
   );

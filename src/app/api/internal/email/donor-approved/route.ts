@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: `Welcome to OrphanGive, ${firstName}`,
+    subject: `Welcome to OrphanGive, ${firstName} — you're in`,
     template: DonorApprovedEmail({
       firstName,
       browseUrl: siteUrl("/children"),

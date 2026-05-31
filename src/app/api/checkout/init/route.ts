@@ -688,7 +688,7 @@ async function sendQueueJoinedEmail(opts: {
   const childName = child?.display_name ?? "your sponsored child";
   await sendEmail({
     to: formatTo(opts.donorEmail, firstName),
-    subject: `You're in line to sponsor ${childName}`,
+    subject: `You're in line to sponsor ${childName} — thank you for waiting`,
     template: SponsorshipQueueJoinedEmail({
       firstName,
       childName,

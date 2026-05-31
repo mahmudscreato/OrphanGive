@@ -216,7 +216,7 @@ export async function POST(
         donor.first_name?.trim() || donor.email.split("@")[0]!;
       await sendEmail({
         to: formatTo(donor.email, firstName),
-        subject: `A refund has been issued for your sponsorship of ${child?.display_name ?? "your sponsored child"}`,
+        subject: `A refund is on its way for your sponsorship of ${child?.display_name ?? "your sponsored child"}`,
         template: SponsorshipRefundEmail({
           firstName,
           childName: child?.display_name ?? "your sponsored child",

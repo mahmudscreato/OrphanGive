@@ -106,10 +106,14 @@ export function EmailLayout({ preview, children }: Props) {
           <Section
             style={{
               backgroundColor: tokens.card,
-              // Session 22 — bumped from 16px to 24px to match the
-              // web app's card radii (`rounded-3xl` ≈ 24px).
+              // Session 22 — 24px radius matches the web app's
+              // `rounded-3xl` cards.
+              // Email-refinement lot — padding bumped from 36px 32px
+              // to 40px 40px so body text doesn't hug the card edge
+              // on Gmail/Apple Mail/Outlook (founder review,
+              // 11-email-walkthrough follow-up).
               borderRadius: "24px",
-              padding: "36px 32px",
+              padding: "40px 40px",
               boxShadow: "0 1px 2px rgba(42,42,44,0.04)",
               border: `1px solid ${tokens.border}`,
             }}
@@ -123,14 +127,19 @@ export function EmailLayout({ preview, children }: Props) {
               textAlign: "center",
             }}
           >
+            {/* Founder rule: name Goodverse + CHT together, or neither.
+                Never CHT alone. This is the canonical attribution
+                line used across all emails. */}
             <Text
               style={{
                 fontSize: "12px",
                 color: tokens.inkSubtle,
                 margin: "0 0 8px 0",
+                lineHeight: 1.5,
               }}
             >
-              OrphanGive · Children&rsquo;s Heaven Trust · Bangladesh
+              Operated by Goodverse Foundation in partnership with
+              Children&rsquo;s Heaven Trust · Bangladesh
             </Text>
             <Text
               style={{
@@ -176,7 +185,10 @@ export function EmailLayout({ preview, children }: Props) {
             OrphanGive.
           </Text>
           {/* Session 22 — printAgraphy credit footer per the
-              brand pass spec. Matches the homepage SiteFooter. */}
+              brand pass spec. Matches the homepage SiteFooter.
+              Email-refinement lot — drop "in Bangladesh" (it's
+              already in the attribution line above) and switch to the
+              canonical https://printagraphy.com/ URL. */}
           <Text
             style={{
               fontSize: "11px",
@@ -185,9 +197,9 @@ export function EmailLayout({ preview, children }: Props) {
               margin: 0,
             }}
           >
-            Built with care in Bangladesh by{" "}
+            Built with care by{" "}
             <Link
-              href="https://www.printagraphy.com"
+              href="https://printagraphy.com/"
               style={{
                 color: tokens.inkSubtle,
                 textDecoration: "underline",

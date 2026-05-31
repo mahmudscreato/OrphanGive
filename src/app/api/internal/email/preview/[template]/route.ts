@@ -13,6 +13,18 @@ import { SponsorshipModifiedEmail } from "@/emails/SponsorshipModifiedEmail";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
 import { SponsorshipExtendedEmail } from "@/emails/SponsorshipExtendedEmail";
 import { ReportPublishedEmail } from "@/emails/ReportPublishedEmail";
+// Email-refinement lot — extend the preview surface to cover every
+// template, so the founder walkthrough can hit ALL paths via this
+// single endpoint without manufacturing heavy production data.
+import { SponsorshipQueueJoinedEmail } from "@/emails/SponsorshipQueueJoinedEmail";
+import { SponsorshipActivatedEmail } from "@/emails/SponsorshipActivatedEmail";
+import { SponsorshipQueueShiftEmail } from "@/emails/SponsorshipQueueShiftEmail";
+import { SponsorshipRefundEmail } from "@/emails/SponsorshipRefundEmail";
+import { SponsorshipResumedEmail } from "@/emails/SponsorshipResumedEmail";
+import { CampaignDonationThankYouEmail } from "@/emails/CampaignDonationThankYouEmail";
+import { OperationalNoticeEmail } from "@/emails/OperationalNoticeEmail";
+import { AdminPendingSubmissionEmail } from "@/emails/AdminPendingSubmissionEmail";
+import { OtpVerificationEmail } from "@/emails/OtpVerificationEmail";
 
 export const runtime = "nodejs";
 
@@ -28,6 +40,16 @@ const TEMPLATES = [
   "sponsorship-extended",
   "report-published-progress",
   "report-published-deployment",
+  // Email-refinement lot additions:
+  "sponsorship-queue-joined",
+  "sponsorship-activated",
+  "sponsorship-queue-shift",
+  "sponsorship-refund",
+  "sponsorship-resumed",
+  "campaign-thank-you",
+  "operational-notice",
+  "admin-pending-submission",
+  "otp-verification",
 ] as const;
 type TemplateId = (typeof TEMPLATES)[number];
 
@@ -39,7 +61,7 @@ function buildSample(template: TemplateId, firstName: string) {
   switch (template) {
     case "donor-approved":
       return {
-        subject: `Welcome to OrphanGive, ${firstName}`,
+        subject: `Welcome to OrphanGive, ${firstName} — you're in`,
         element: DonorApprovedEmail({
           firstName,
           browseUrl: siteUrl("/children"),
@@ -49,7 +71,7 @@ function buildSample(template: TemplateId, firstName: string) {
     case "sponsorship-welcome": {
       const items: SponsorshipWelcomeItem[] = [
         {
-          childName: "Mim Khatun",
+          childName: "Mim",
           childDistrict: "Sylhet",
           childAge: 9,
           childGenderPronoun: "she",
@@ -61,7 +83,7 @@ function buildSample(template: TemplateId, firstName: string) {
         },
       ];
       return {
-        subject: `Thank you, ${firstName} — your sponsorship begins today`,
+        subject: `Thank you, ${firstName} — Mim now has you in her corner`,
         element: SponsorshipWelcomeEmail({
           firstName,
           sponsorships: items,
@@ -72,10 +94,10 @@ function buildSample(template: TemplateId, firstName: string) {
 
     case "reveal-approved":
       return {
-        subject: "Your reveal request was approved",
+        subject: `Mim's guardian's name is now visible to you`,
         element: RevealApprovedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           childId: "00000000-0000-0000-0000-000000000000",
           fieldLabel: "Guardian's name",
           profileUrl: siteUrl(
@@ -86,10 +108,10 @@ function buildSample(template: TemplateId, firstName: string) {
 
     case "reveal-denied":
       return {
-        subject: "Your reveal request — update from our team",
+        subject: `Your reveal request for Mim — a quick note from our team`,
         element: RevealDeniedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           fieldLabel: "Full address",
           adminNote:
             "We share home addresses only after a longer relationship has been established. Please ask again after a few months of monthly sponsorship.",
@@ -98,10 +120,10 @@ function buildSample(template: TemplateId, firstName: string) {
 
     case "monthly-receipt":
       return {
-        subject: subjectForReceipt("Mim Khatun"),
+        subject: subjectForReceipt("Mim"),
         element: MonthlyReceiptEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           amountUsd: 25,
           paidAt: new Date().toISOString(),
           paymentMethodLast4: "4242",
@@ -117,10 +139,10 @@ function buildSample(template: TemplateId, firstName: string) {
 
     case "sponsorship-paused":
       return {
-        subject: "Your sponsorship of Mim Khatun is paused",
+        subject: "Your sponsorship of Mim is paused for now",
         element: SponsorshipPausedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           resumeUrl: siteUrl(
             "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
           ),
@@ -129,10 +151,10 @@ function buildSample(template: TemplateId, firstName: string) {
 
     case "sponsorship-modified":
       return {
-        subject: "Your sponsorship amount has been updated",
+        subject: "Your monthly amount for Mim is updated",
         element: SponsorshipModifiedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           oldAmountUsd: 25,
           newAmountUsd: 50,
           nextBillingDate: new Date(
@@ -145,20 +167,20 @@ function buildSample(template: TemplateId, firstName: string) {
 
     case "sponsorship-cancelled":
       return {
-        subject: "Your sponsorship of Mim Khatun has ended",
+        subject: "Your sponsorship of Mim has ended — thank you",
         element: SponsorshipCancelledEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           browseUrl: siteUrl("/children"),
         }),
       };
 
     case "sponsorship-extended":
       return {
-        subject: "Your sponsorship of Mim Khatun has been extended",
+        subject: "Thank you for extending — Mim is held a little longer",
         element: SponsorshipExtendedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           additionalMonths: 3,
           newDurationMonths: 9,
           monthsRemaining: 8,
@@ -177,10 +199,10 @@ function buildSample(template: TemplateId, firstName: string) {
     // Two preview variants matching the two report_type values.
     case "report-published-progress":
       return {
-        subject: `A new update on Mim Khatun`,
+        subject: `Mim has a new update for you`,
         element: ReportPublishedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           reportType: "progress",
           sponsorshipUrl: siteUrl(
             "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
@@ -189,14 +211,160 @@ function buildSample(template: TemplateId, firstName: string) {
       };
     case "report-published-deployment":
       return {
-        subject: `Your gift to Mim Khatun has been delivered`,
+        subject: `Your gift reached Mim — see the moment`,
         element: ReportPublishedEmail({
           firstName,
-          childName: "Mim Khatun",
+          childName: "Mim",
           reportType: "deployment",
           sponsorshipUrl: siteUrl(
             "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
           ),
+        }),
+      };
+
+    // ─── Email-refinement lot — new preview cases ───────────────────
+    case "sponsorship-queue-joined":
+      return {
+        subject: `You're in line to sponsor Mim — thank you for waiting`,
+        element: SponsorshipQueueJoinedEmail({
+          firstName,
+          childName: "Mim",
+          childDistrict: "Sylhet",
+          childAge: 9,
+          queuePosition: 2,
+          estimatedStartDate: new Date(
+            Date.now() + 45 * 86_400_000,
+          ).toISOString(),
+          amountUsd: 25,
+          durationMonths: 12,
+          paymentScheduleLabel: "monthly_trial",
+          sponsorshipUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+        }),
+      };
+
+    case "sponsorship-activated":
+      return {
+        subject: `Your sponsorship of Mim starts today`,
+        element: SponsorshipActivatedEmail({
+          firstName,
+          childName: "Mim",
+          childDistrict: "Sylhet",
+          childAge: 9,
+          amountUsd: 25,
+          durationMonths: 12,
+          scheduledEndDate: new Date(
+            Date.now() + 365 * 86_400_000,
+          ).toISOString(),
+          paymentScheduleLabel: "monthly",
+          sponsorshipUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+        }),
+      };
+
+    case "sponsorship-queue-shift":
+      return {
+        subject: `Your sponsorship of Mim has a new start date — small choice for you`,
+        element: SponsorshipQueueShiftEmail({
+          firstName,
+          childName: "Mim",
+          activeSponsorFirstName: "Sarah",
+          oldStartDate: new Date(
+            Date.now() + 30 * 86_400_000,
+          ).toISOString(),
+          newStartDate: new Date(
+            Date.now() + 120 * 86_400_000,
+          ).toISOString(),
+          decisionUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000/queue-shift-decision",
+          ),
+        }),
+      };
+
+    case "sponsorship-refund":
+      return {
+        subject: `A refund is on its way for your sponsorship of Mim`,
+        element: SponsorshipRefundEmail({
+          firstName,
+          childName: "Mim",
+          amount: 25,
+          currency: "USD",
+          adminReason:
+            "We weren't able to process the photo permission for this month. You'll get a full refund automatically.",
+          dashboardUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+        }),
+      };
+
+    case "sponsorship-resumed":
+      return {
+        subject: `Mim's sponsorship is active again`,
+        element: SponsorshipResumedEmail({
+          firstName,
+          childName: "Mim",
+          dashboardUrl: siteUrl(
+            "/dashboard/sponsorship/00000000-0000-0000-0000-000000000000",
+          ),
+          byAdmin: true,
+        }),
+      };
+
+    case "campaign-thank-you":
+      return {
+        subject: `Thank you, ${firstName} — your gift is on its way`,
+        element: CampaignDonationThankYouEmail({
+          donorFirstName: firstName,
+          amount: "$25 USD",
+          causeName: "Feed a child for a week",
+          causeTag: "feed-a-child",
+          paidAt: new Date(),
+          dashboardUrl: siteUrl("/dashboard"),
+        }),
+      };
+
+    case "operational-notice":
+      return {
+        subject: `Contact form: Sponsorship question`,
+        element: OperationalNoticeEmail({
+          heading: "New contact form message",
+          eyebrow: "Sponsorship question",
+          intro: `From ${firstName} (${firstName.toLowerCase()}@example.com).`,
+          sections: [
+            { label: "Submitted by", body: `${firstName}\n${firstName.toLowerCase()}@example.com` },
+            { label: "Subject", body: "Sponsorship question" },
+            {
+              label: "Message",
+              body:
+                "Hi — I'd like to know how often I'll receive updates about the child I'm sponsoring, and whether photos are included. Thank you.",
+            },
+          ],
+          replyToNudge: `${firstName.toLowerCase()}@example.com`,
+        }),
+      };
+
+    case "admin-pending-submission":
+      return {
+        subject: `New report from ${firstName} for Mim`,
+        element: AdminPendingSubmissionEmail({
+          collectionLabel: "report",
+          submitterFirstName: firstName,
+          childDisplayName: "Mim",
+          summary:
+            "Q1 progress report covering school attendance, health check-ups, and the new winter clothing distribution. Three photos attached.",
+          reviewUrl:
+            "https://admin.orphangive.org/admin/content/report/00000000-0000-0000-0000-000000000000",
+        }),
+      };
+
+    case "otp-verification":
+      return {
+        subject: `Your OrphanGive verification code`,
+        element: OtpVerificationEmail({
+          fullName: firstName,
+          code: "482917",
         }),
       };
   }
@@ -205,7 +373,7 @@ function buildSample(template: TemplateId, firstName: string) {
 function subjectForReceipt(childName: string): string {
   const d = new Date();
   const month = d.toLocaleString("en-US", { month: "long" });
-  return `Receipt — ${month} ${d.getFullYear()} sponsorship of ${childName}`;
+  return `${childName}'s sponsorship for ${month} ${d.getFullYear()} — your receipt`;
 }
 
 export async function GET(
