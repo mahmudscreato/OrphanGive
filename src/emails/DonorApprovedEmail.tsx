@@ -36,9 +36,8 @@ export function DonorApprovedEmail({
           margin: "0 0 16px 0",
         }}
       >
-        We&rsquo;re delighted to welcome you to OrphanGive. Your account has
-        been approved, and you can now sponsor children through Children&rsquo;s
-        Heaven Trust.
+        We&rsquo;re really glad you&rsquo;re here. Your account is
+        approved, and you can now choose a child to sponsor.
       </Text>
 
       <Text
@@ -49,14 +48,14 @@ export function DonorApprovedEmail({
           margin: "0 0 24px 0",
         }}
       >
-        Each child you sponsor is a relationship you&rsquo;ll build over months
-        and years. You&rsquo;ll see updates from their lives, receive their
-        school progress, and know your support is making a difference. Take
-        your time finding the right child for you.
+        Sponsorship at OrphanGive is a quiet relationship that builds
+        over months and years — updates from each child&rsquo;s life,
+        school progress, the occasional photo. There&rsquo;s no rush.
+        Take your time and find the child who feels right.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 16px 0" }}>
-        <EmailButton href={browseUrl}>Browse children</EmailButton>
+        <EmailButton href={browseUrl}>Meet the children</EmailButton>
       </Section>
 
       <Text
@@ -67,8 +66,8 @@ export function DonorApprovedEmail({
           margin: "24px 0 0 0",
         }}
       >
-        If you have any questions, simply reply to this email — our team reads
-        every message.
+        If anything&rsquo;s on your mind, just reply to this email — a
+        real person from our team reads every message.
       </Text>
     </EmailLayout>
   );

@@ -165,10 +165,25 @@ export async function countRecentRequests(opts: {
 
 // ─── Email send ─────────────────────────────────────────────────────────────
 //
-// Resend integration. If RESEND_API_KEY is missing the helper logs the OTP
-// to the server console and returns true so dev/CI flows still work — this
-// is intentional fallback so a missing key doesn't break the signup flow.
-// In production the key MUST be set; the absence is logged loudly.
+// Email-refinement lot — migrated from a direct Resend SDK call + inline
+// raw HTML string to the shared sendEmail() helper + OtpVerificationEmail
+// React component. Two reasons for the migration:
+//   1) The raw HTML didn't carry the standard EmailLayout chrome (logo,
+//      cream background, standardized footer with Goodverse/CHT
+//      attribution + printAgraphy credit). Every other transactional email
+//      uses that frame; the OTP was the odd one out.
+//   2) Two send paths (sendEmail() helper vs. direct Resend SDK) is a
+//      maintenance trap — config bugs that affect one but not the other
+//      are exactly what session 10 diagnostic surfaced. One path is easier
+//      to reason about and easier to test.
+//
+// If RESEND_API_KEY is missing the helper logs the OTP to the server
+// console and returns ok=true so dev/CI flows still work — same fallback
+// behaviour as before, just routed through sendEmail() instead of
+// instantiating Resend directly.
+
+import { sendEmail } from "./email";
+import { OtpVerificationEmail } from "@/emails/OtpVerificationEmail";
 
 export async function sendOtpEmail({
   to,
@@ -179,10 +194,10 @@ export async function sendOtpEmail({
   code: string;
   fullName: string;
 }): Promise<{ ok: boolean; provider: "resend" | "console" }> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL || "OrphanGive <onboarding@resend.dev>";
-
-  if (!apiKey) {
+  // sendEmail() returns { success: false, error: "RESEND_API_KEY not configured" }
+  // when the key is unset, so the dev-fallback log lives here at the
+  // signup-flow layer where we know what was supposed to ship.
+  if (!process.env.RESEND_API_KEY) {
     console.warn(
       `[donor-signup] RESEND_API_KEY not set — OTP for ${to}: ${code} (logged to server console only).`,
     );
@@ -190,69 +205,21 @@ export async function sendOtpEmail({
   }
 
   try {
-    const { Resend } = await import("resend");
-    const resend = new Resend(apiKey);
-    const { html, text } = renderOtpEmail({ code, fullName });
-    const { error } = await resend.emails.send({
-      from,
+    const result = await sendEmail({
       to,
       subject: "Your OrphanGive verification code",
-      html,
-      text,
+      template: OtpVerificationEmail({ code, fullName }),
     });
-    if (error) {
-      console.error("[donor-signup] resend send error", error);
+    if (!result.success) {
+      console.error("[donor-signup] sendEmail returned !success", {
+        to,
+        error: result.error,
+      });
       return { ok: false, provider: "resend" };
     }
     return { ok: true, provider: "resend" };
   } catch (err) {
-    console.error("[donor-signup] resend send threw", err);
+    console.error("[donor-signup] sendEmail threw", err);
     return { ok: false, provider: "resend" };
   }
-}
-
-function renderOtpEmail({ code, fullName }: { code: string; fullName: string }) {
-  const safeName = (fullName || "there").replace(/[<>"]/g, "").slice(0, 80);
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Your OrphanGive verification code</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background:#FFFAF2; color:#2A2A2C; margin:0; padding:32px 16px; }
-  .card { max-width: 520px; margin: 0 auto; background:#FFFFFF; border-radius:24px; padding:40px 32px; border:1px solid rgba(42,42,44,0.06); }
-  h1 { font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 400; line-height: 1.1; color:#2A2A2C; margin: 0 0 12px; letter-spacing: -0.02em; }
-  p  { font-size: 15px; line-height: 1.6; color:#5C5C5E; margin: 0 0 16px; }
-  .code { font-family: 'JetBrains Mono', SFMono-Regular, ui-monospace, monospace; font-size: 38px; letter-spacing: 0.32em; color:#2A2A2C; background:#FFF4E6; border:1.5px dashed rgba(243,147,34,0.4); border-radius:14px; padding: 18px 12px; text-align:center; margin: 22px 0; }
-  .meta { font-size: 12px; color:#8B8B8E; margin-top: 22px; }
-  .brand { font-family:'Fraunces', serif; font-size:18px; color:#F39322; }
-</style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand">OrphanGive</div>
-    <h1>Verify your email</h1>
-    <p>Hi ${safeName},</p>
-    <p>Use this 6-digit code to finish creating your donor account:</p>
-    <div class="code">${code}</div>
-    <p>This code expires in 10 minutes.</p>
-    <p class="meta">If you didn't request this, ignore this email. The code won't work for anyone else.</p>
-  </div>
-</body>
-</html>`;
-
-  const text = `OrphanGive — Verify your email
-
-Hi ${safeName},
-
-Use this 6-digit code to finish creating your donor account:
-
-  ${code}
-
-This code expires in 10 minutes.
-
-If you didn't request this, ignore this email. The code won't work for anyone else.
-`;
-
-  return { html, text };
 }

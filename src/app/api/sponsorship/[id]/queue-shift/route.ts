@@ -247,7 +247,7 @@ export async function POST(
         to: formatTo(donor.email, firstName),
         subject:
           refundedAmountUsd !== null
-            ? `Refund processed for your sponsorship of ${child?.display_name ?? "your sponsored child"}`
+            ? `A refund is on its way for your sponsorship of ${child?.display_name ?? "your sponsored child"}`
             : `Your queued sponsorship of ${child?.display_name ?? "your sponsored child"} has been cancelled`,
         template: SponsorshipCancelledEmail({
           firstName,

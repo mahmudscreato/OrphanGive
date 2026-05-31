@@ -71,10 +71,11 @@ export function CampaignDonationThankYouEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Your gift of <strong style={{ color: tokens.ink }}>{amount}</strong> to{" "}
-        <strong style={{ color: tokens.ink }}>{causeName}</strong> will reach
-        the children and families we serve in Bangladesh through Children's
-        Heaven Trust. We'll send you updates on how your gift is used.
+        Your gift of <strong style={{ color: tokens.ink }}>{amount}</strong>{" "}
+        to <strong style={{ color: tokens.ink }}>{causeName}</strong> is
+        on its way to the children and families we serve in Bangladesh.
+        We&rsquo;ll write back with how it&rsquo;s being used, once
+        it&rsquo;s landed.
       </Text>
 
       <MetadataCard>
@@ -104,13 +105,13 @@ export function CampaignDonationThankYouEmail({
           margin: "20px 0 24px 0",
         }}
       >
-        A receipt from Stripe is on its way to your inbox separately. If you
-        ever want to give again — to a specific child or another cause —
-        your dashboard has you covered.
+        A separate receipt from Stripe is heading to your inbox too.
+        Whenever you want to give again — to a specific child or
+        another cause — your dashboard has the options laid out.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={dashboardUrl}>View your giving</EmailButton>
+        <EmailButton href={dashboardUrl}>Open your giving</EmailButton>
       </Section>
     </EmailLayout>
   );

@@ -224,7 +224,7 @@ export async function POST(
       donor.first_name?.trim() || donor.email.split("@")[0]!;
     await sendEmail({
       to: formatTo(donor.email, firstName),
-      subject: "Your sponsorship amount has been updated",
+      subject: `Your monthly amount for ${child?.display_name ?? "your sponsored child"} is updated`,
       template: SponsorshipModifiedEmail({
         firstName,
         childName: child?.display_name ?? "your sponsored child",

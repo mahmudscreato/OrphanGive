@@ -84,9 +84,9 @@ export function SponsorshipModifiedEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Your sponsorship of{" "}
-        <strong style={{ color: tokens.ink }}>{childName}</strong> has been
-        updated from{" "}
+        Your monthly support for{" "}
+        <strong style={{ color: tokens.ink }}>{childName}</strong> moves
+        from{" "}
         <strong style={{ color: tokens.ink }}>
           {fmtUsd(oldAmountUsd)}/month
         </strong>{" "}
@@ -94,10 +94,10 @@ export function SponsorshipModifiedEmail({
         <strong style={{ color: tokens.ink }}>
           {fmtUsd(newAmountUsd)}/month
         </strong>
-        .
+        .{" "}
         {nextStr
-          ? ` The change takes effect on your next billing cycle (${nextStr}).`
-          : " The change takes effect on your next billing cycle."}
+          ? `The new amount kicks in on your next billing cycle (${nextStr}).`
+          : "The new amount kicks in on your next billing cycle."}
       </Text>
 
       <MetadataCard>
@@ -124,7 +124,7 @@ export function SponsorshipModifiedEmail({
       ) : null}
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={dashboardUrl}>View dashboard</EmailButton>
+        <EmailButton href={dashboardUrl}>Open dashboard</EmailButton>
       </Section>
     </EmailLayout>
   );

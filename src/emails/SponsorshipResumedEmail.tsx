@@ -39,8 +39,8 @@ export function SponsorshipResumedEmail({
 }: SponsorshipResumedEmailProps) {
   const trimmedReason = adminReason?.trim();
   const lead = byAdmin
-    ? "has been resumed by the OrphanGive team. Your monthly billing will pick up on the next regular date."
-    : "has been resumed. Your monthly billing will pick up on the next regular date.";
+    ? "is active again — our team turned it back on. Monthly billing picks up on the next regular date."
+    : "is active again. Monthly billing picks up on the next regular date.";
 
   return (
     <EmailLayout
@@ -83,7 +83,7 @@ export function SponsorshipResumedEmail({
             margin: "0 0 16px 0",
           }}
         >
-          Note from our team: {trimmedReason}
+          A note from our team: {trimmedReason}
         </Text>
       ) : null}
 
@@ -95,12 +95,12 @@ export function SponsorshipResumedEmail({
           margin: "0 0 24px 0",
         }}
       >
-        Thank you for staying with {childName}. You can review the
-        sponsorship anytime in your dashboard.
+        Thank you for staying with {childName}. The details are in
+        your dashboard whenever you want to look.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={dashboardUrl}>View sponsorship</EmailButton>
+        <EmailButton href={dashboardUrl}>Open sponsorship</EmailButton>
       </Section>
     </EmailLayout>
   );

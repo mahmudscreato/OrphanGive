@@ -102,10 +102,10 @@ export function SponsorshipQueueJoinedEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Thank you. You&rsquo;ve reserved the {ordinal(queuePosition)}{" "}
-        sponsorship slot for{" "}
-        <strong style={{ color: tokens.ink }}>{childName}</strong>. Your
-        support will begin {startStr ? `around ${startStr}` : "when the current sponsor's term ends"}.
+        Thank you for choosing to wait. You&rsquo;ve held the{" "}
+        {ordinal(queuePosition)} sponsorship spot for{" "}
+        <strong style={{ color: tokens.ink }}>{childName}</strong> —
+        your support starts {startStr ? `around ${startStr}` : "as soon as the current sponsor's term ends"}.
       </Text>
 
       <MetadataCard>
@@ -182,13 +182,13 @@ export function SponsorshipQueueJoinedEmail({
           fontStyle: "italic",
         }}
       >
-        You can cancel this queued sponsorship any time before it
-        activates and receive a full refund.
+        You can cancel any time before your support kicks in — a
+        full refund follows automatically.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
         <EmailButton href={sponsorshipUrl}>
-          Manage your upcoming sponsorship
+          Open your upcoming sponsorship
         </EmailButton>
       </Section>
     </EmailLayout>

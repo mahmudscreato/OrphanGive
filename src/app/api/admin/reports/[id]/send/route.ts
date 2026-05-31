@@ -174,8 +174,8 @@ export async function POST(
       if (ctx) {
         const subject =
           result.reportType === "deployment"
-            ? `Your gift to ${ctx.childName} has been delivered`
-            : `A new update on ${ctx.childName}`;
+            ? `Your gift reached ${ctx.childName} — see the moment`
+            : `${ctx.childName} has a new update for you`;
         const send = await sendEmail({
           to: formatTo(ctx.donorEmail, ctx.donorFirstName),
           subject,

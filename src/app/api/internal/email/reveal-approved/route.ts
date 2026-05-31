@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: "Your reveal request was approved",
+    subject: `${childName}'s ${fieldLabel} is now visible to you`,
     template: RevealApprovedEmail({
       firstName,
       childName,

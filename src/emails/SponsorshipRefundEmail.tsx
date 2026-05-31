@@ -90,9 +90,9 @@ export function SponsorshipRefundEmail({
           margin: "0 0 16px 0",
         }}
       >
-        We&rsquo;ve issued a refund of{" "}
-        <strong style={{ color: tokens.ink }}>{formattedAmount}</strong> to
-        your card for your sponsorship of{" "}
+        We&rsquo;ve sent a refund of{" "}
+        <strong style={{ color: tokens.ink }}>{formattedAmount}</strong>{" "}
+        back to your card for your sponsorship of{" "}
         <strong style={{ color: tokens.ink }}>{childName}</strong>.
       </Text>
 
@@ -100,7 +100,7 @@ export function SponsorshipRefundEmail({
         <MetadataRow label="Refund amount" value={formattedAmount} />
         <MetadataRow label="For" value={`Sponsorship of ${childName}`} />
         {trimmedReason ? (
-          <MetadataRow label="Note from our team" value={trimmedReason} />
+          <MetadataRow label="A note from our team" value={trimmedReason} />
         ) : null}
       </MetadataCard>
 
@@ -112,12 +112,12 @@ export function SponsorshipRefundEmail({
           margin: "16px 0 24px 0",
         }}
       >
-        Refunds typically appear on your statement within 5–10 business
-        days. The exact timing depends on your card issuer.
+        Refunds usually show up on your statement within 5–10 business
+        days — your card issuer sets the exact pace.
       </Text>
 
       <Section style={{ textAlign: "center", padding: "8px 0 8px 0" }}>
-        <EmailButton href={dashboardUrl}>View sponsorship history</EmailButton>
+        <EmailButton href={dashboardUrl}>Open sponsorship history</EmailButton>
       </Section>
 
       <Text
@@ -128,8 +128,8 @@ export function SponsorshipRefundEmail({
           margin: "24px 0 0 0",
         }}
       >
-        If you have any questions about this refund, simply reply to this
-        email and we&rsquo;ll get back to you quickly.
+        Any questions about this refund? Just hit reply — we&rsquo;ll
+        write back quickly.
       </Text>
     </EmailLayout>
   );

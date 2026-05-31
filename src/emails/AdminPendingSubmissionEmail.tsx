@@ -44,7 +44,7 @@ export function AdminPendingSubmissionEmail({
           lineHeight: 1.2,
         }}
       >
-        New {collectionLabel} pending review
+        New {collectionLabel} waiting for review
       </Heading>
 
       <Section
@@ -69,7 +69,7 @@ export function AdminPendingSubmissionEmail({
               <strong>{childDisplayName}</strong>
             </>
           ) : null}
-          .
+          . Have a look when you get a moment.
         </Text>
         <Text
           style={{
@@ -85,7 +85,7 @@ export function AdminPendingSubmissionEmail({
       </Section>
 
       <Section style={{ margin: "0 0 24px 0" }}>
-        <EmailButton href={reviewUrl}>Review in Directus</EmailButton>
+        <EmailButton href={reviewUrl}>Open in Directus</EmailButton>
       </Section>
 
       <Text
@@ -97,9 +97,8 @@ export function AdminPendingSubmissionEmail({
           margin: "16px 0 0 0",
         }}
       >
-        This is an internal admin notification from the OrphanGive Data
-        Inputter dashboard. Submissions stay in <em>pending</em> until you
-        approve or reject them.
+        Internal note from the DI dashboard. The submission sits in{" "}
+        <em>pending</em> until you approve or reject it.
       </Text>
     </EmailLayout>
   );

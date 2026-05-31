@@ -43,10 +43,11 @@ export function RevealDeniedEmail({
           margin: "0 0 16px 0",
         }}
       >
-        Thank you for your request to view{" "}
+        Thank you for asking to see{" "}
         <strong style={{ color: tokens.ink }}>{fieldLabel}</strong> for{" "}
-        <strong style={{ color: tokens.ink }}>{childName}</strong>. After
-        review, our team has decided not to grant this access at this time.
+        <strong style={{ color: tokens.ink }}>{childName}</strong>.
+        After looking at it carefully, our team decided not to share
+        this with you for now.
       </Text>
 
       {note ? (
@@ -87,10 +88,10 @@ export function RevealDeniedEmail({
           margin: "16px 0 16px 0",
         }}
       >
-        This isn&rsquo;t a reflection on you. We hold this information closely
-        because the children we work with are vulnerable, and our duty of care
-        comes first. You may request again in the future if circumstances
-        change.
+        This isn&rsquo;t a reflection on you. The children we work
+        with are vulnerable, and we have a duty of care that comes
+        first — that&rsquo;s why we hold some details closely. You
+        can ask again later if things change.
       </Text>
 
       <Text
@@ -101,8 +102,8 @@ export function RevealDeniedEmail({
           margin: "0",
         }}
       >
-        If you&rsquo;d like to discuss this further, please reply to this email
-        — our team will respond personally.
+        If you&rsquo;d like to talk it through, just reply — someone
+        from our team will write back to you personally.
       </Text>
     </EmailLayout>
   );

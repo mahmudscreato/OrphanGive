@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
-    subject: `Your sponsorship of ${childName} is paused`,
+    subject: `Your sponsorship of ${childName} is paused for now`,
     template: SponsorshipPausedEmail({
       firstName,
       childName,

@@ -42,15 +42,16 @@ export function ReportPublishedEmail({
   sponsorshipUrl,
 }: ReportPublishedEmailProps) {
   const isDeployment = reportType === "deployment";
+  const previewCopy = isDeployment
+    ? `Your gift reached ${childName}.`
+    : `${childName} has a new update for you.`;
   const headlineCopy = isDeployment
-    ? `${childName}'s gift was delivered`
-    : `A new update from ${childName}`;
-  const bodyCopy = isDeployment
-    ? `${firstName}, the field team has delivered your one-time gift. Open your dashboard to read about how it landed.`
-    : `${firstName}, your sponsored child has a new update from the field. Open your dashboard to read it.`;
+    ? `Your gift reached ${childName}`
+    : `A moment from ${childName}`;
+  const ctaCopy = isDeployment ? "See the moment" : "Read the update";
 
   return (
-    <EmailLayout preview={headlineCopy}>
+    <EmailLayout preview={previewCopy}>
       <Heading
         as="h1"
         style={{
@@ -71,14 +72,45 @@ export function ReportPublishedEmail({
           fontSize: "15.5px",
           color: tokens.ink,
           lineHeight: 1.7,
-          margin: "0 0 24px 0",
+          margin: "0 0 16px 0",
         }}
       >
-        {bodyCopy}
+        Hi {firstName},
       </Text>
 
+      {isDeployment ? (
+        <Text
+          style={{
+            fontSize: "15.5px",
+            color: tokens.ink,
+            lineHeight: 1.7,
+            margin: "0 0 24px 0",
+          }}
+        >
+          Your gift to{" "}
+          <strong style={{ color: tokens.ink }}>{childName}</strong>{" "}
+          arrived. Our team has written a short note about how it
+          landed, with a photo or two. Open your dashboard whenever
+          you have a minute — it&rsquo;s waiting for you.
+        </Text>
+      ) : (
+        <Text
+          style={{
+            fontSize: "15.5px",
+            color: tokens.ink,
+            lineHeight: 1.7,
+            margin: "0 0 24px 0",
+          }}
+        >
+          There&rsquo;s a fresh update from{" "}
+          <strong style={{ color: tokens.ink }}>{childName}</strong> on
+          your dashboard — a small moment from this month that we
+          thought you&rsquo;d want to see.
+        </Text>
+      )}
+
       <Section style={{ margin: "0 0 24px 0" }}>
-        <EmailButton href={sponsorshipUrl}>Read the update</EmailButton>
+        <EmailButton href={sponsorshipUrl}>{ctaCopy}</EmailButton>
       </Section>
 
       <Text
