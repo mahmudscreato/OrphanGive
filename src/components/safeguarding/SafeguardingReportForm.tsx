@@ -79,12 +79,12 @@ export function SafeguardingReportForm() {
         setError(body.message || "Please check the form and try again.");
       } else {
         setError(
-          "Sorry, we couldn't submit your report right now. If a child is in immediate danger, contact local authorities. Otherwise please email safeguarding@orphangive.org.",
+          "Sorry, we couldn't submit your report right now. If a child is in immediate danger, contact local authorities. Otherwise please email support@orphangive.org.",
         );
       }
     } catch {
       setError(
-        "Sorry, something went wrong. If a child is in immediate danger, contact local authorities. Otherwise please email safeguarding@orphangive.org.",
+        "Sorry, something went wrong. If a child is in immediate danger, contact local authorities. Otherwise please email support@orphangive.org.",
       );
     } finally {
       setSubmitting(false);
