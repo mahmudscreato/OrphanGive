@@ -55,7 +55,7 @@ const STEPS: Step[] = [
     paragraphs: [
       "Once a child is verified, we work with the guardian on the public profile together. The display name appears on the page; everything else — exact address, school name, household details, family circumstances — stays on the protected side of the schema.",
       "Photos are only published with explicit guardian consent, and that consent is documented per-photo. If a guardian withdraws consent, the photo comes down within 24 hours. The \"Privacy protected\" badge on every card is not decorative — it's a contract.",
-      "The information you can see is tiered. Public visitors see name, division, age, and support need. Authenticated donors see the richer profile. Sponsoring donors, with reveal approval, can see identifying details for direct contact. Each tier exists because the next one would compromise the child if it were public.",
+      "The information you can see is tiered. Public visitors see a first name, division, age, and support need. Authenticated donors see the richer profile. Sponsoring donors, with reveal approval, can see limited additional progress information through OrphanGive — never contact details, and we don't broker direct contact with the child or family. Each tier exists because the next one would compromise the child if it were public.",
     ],
     photo:
       "https://res.cloudinary.com/dh9w1apsk/image/upload/q_auto/f_auto/v1778490174/_OrphanGive_CG_V2_14_glfz6v.png",
@@ -154,7 +154,7 @@ const FAQS: Faq[] = [
   },
   {
     q: "Can I meet the child I sponsor?",
-    a: "In-person meetings happen only with explicit guardian consent and are arranged by Children's Heaven Trust's field team. Most sponsorships develop through written quarterly updates and the donor dashboard rather than in-person visits, but the path exists if both sides want it.",
+    a: "In-person meetings are not part of OrphanGive's service. Children's Heaven Trust handles all on-ground field interactions; we don't facilitate or broker donor–child or donor–guardian meetings, to protect the child's safety, privacy, and routine. Sponsorship relationships develop through written quarterly updates and the donor dashboard, all delivered through OrphanGive.",
   },
   {
     q: "Why is the network Bangladesh-only?",
@@ -378,8 +378,9 @@ export default function HowItWorksPage() {
                 <strong className="font-semibold text-ink">
                   Sponsoring donor with reveal approval:
                 </strong>{" "}
-                identifying details for direct contact with the
-                guardian.
+                limited additional progress information, viewed through
+                OrphanGive — never contact details or direct contact
+                with the guardian.
               </span>
             </div>
           </div>

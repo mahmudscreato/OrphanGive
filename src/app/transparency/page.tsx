@@ -295,7 +295,8 @@ export default function TransparencyPage() {
                 Operating entity
               </dt>
               <dd className="mt-1 text-base text-ink-soft leading-[1.55]">
-                Goodverse Foundation, registered in Bangladesh.
+                Goodverse Foundation (Reg. S-14837/2026), registered in
+                Bangladesh.
               </dd>
             </div>
             {/* Session 32 — NGOAB + BB-FXCLEAR rows removed per

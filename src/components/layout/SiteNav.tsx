@@ -13,10 +13,14 @@ import { CartIconButton } from "@/components/cart/CartIconButton";
 // `mailto:hello@orphangive.org` (no longer the canonical inbox);
 // now routes to the in-app /contact page (built in Session 19,
 // wired to support@orphangive.org via Resend in this session).
+// Launch-audit #10 — "Stories" hidden from the main nav until there is
+// real content (the page currently shows "Coming soon"). The /stories
+// route still exists; it's simply not linked from the header. Restore
+// this entry when stories ship. (Footer still lists it — founder to
+// decide whether to drop it there too.)
 const NAV_LINKS = [
   { href: "/children", label: "Children" },
   { href: "/how-it-works", label: "How It Works" },
-  { href: "/stories", label: "Stories" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];

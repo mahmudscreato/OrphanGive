@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "OrphanGive — Sponsor a verified orphan in Bangladesh",
     description:
-      "Monthly child sponsorship with verified profiles, guardian consent, and transparent field reports. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021).",
+      "Monthly child sponsorship with verified profiles, guardian consent, and transparent field reports. Operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021).",
     url: "/",
     type: "website",
   },
@@ -60,11 +60,12 @@ export default async function Home() {
     url: "https://orphangive.org",
     logo: "https://res.cloudinary.com/dh9w1apsk/image/upload/v1778388529/OG_Logo_F_SVG_x0frxm.svg",
     description:
-      "Verified child sponsorship in Bangladesh — operated by Goodverse Foundation in partnership with Children's Heaven Trust.",
+      "Verified child sponsorship in Bangladesh — operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021).",
     parentOrganization: {
       "@type": "NGO",
       name: "Goodverse Foundation",
       url: "https://www.goodverse.org",
+      identifier: "Reg. S-14837/2026",
     },
     memberOf: {
       "@type": "NGO",

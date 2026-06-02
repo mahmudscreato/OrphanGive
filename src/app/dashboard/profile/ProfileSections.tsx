@@ -215,7 +215,7 @@ function PersonalSection({ donor }: { donor: ProfileSectionsDonor }) {
           <ReadOnlyField label="Email">
             <span>{donor.email}</span>
             <a
-              href="mailto:hello@orphangive.org?subject=Email%20change%20request"
+              href="mailto:support@orphangive.org?subject=Email%20change%20request"
               className="ml-3 text-[12px] text-tangerine-deeper underline-offset-4 hover:underline"
             >
               To change your email, contact support →
@@ -615,10 +615,10 @@ function AccountSection() {
       <p className="mt-6 text-[13.5px] text-slate-soft leading-[1.6]">
         Need to delete your account?{" "}
         <a
-          href="mailto:hello@orphangive.org?subject=Account%20deletion%20request"
+          href="mailto:support@orphangive.org?subject=Account%20deletion%20request"
           className="text-tangerine-deeper underline-offset-4 hover:underline"
         >
-          Contact us at hello@orphangive.org →
+          Contact us at support@orphangive.org →
         </a>
       </p>
     </section>

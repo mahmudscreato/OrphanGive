@@ -97,7 +97,7 @@ const OG_IMAGE_HEIGHT = 630;
 const OG_IMAGE_TYPE = "image/jpeg";
 
 const DEFAULT_DESCRIPTION =
-  "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Goodverse Foundation in partnership with Children's Heaven Trust (Reg. iv-98/2021).";
+  "Sponsor a vulnerable or orphaned child in Bangladesh through verified profiles. Operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021).";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
