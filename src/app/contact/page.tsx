@@ -22,11 +22,10 @@ export const metadata = buildPageMetadata({
 });
 
 const SUPPORT_EMAIL = "support@orphangive.org";
-// TODO: confirm with Mahmud before publish.
-// Session 32 — collapsed to support@ per Mahmud's review.
-// `partnerships@` mailbox doesn't exist; routing all enquiries
-// through the single support inbox.
-const PARTNERSHIPS_EMAIL = "support@orphangive.org";
+// Launch-audit #5 — partnership enquiries route to the dedicated
+// partners@ inbox (reverses the Session 32 collapse to support@).
+// NOTE: partners@orphangive.org must exist + route (founder to confirm).
+const PARTNERSHIPS_EMAIL = "partners@orphangive.org";
 
 function MailIcon({ className = "" }: { className?: string }) {
   return (

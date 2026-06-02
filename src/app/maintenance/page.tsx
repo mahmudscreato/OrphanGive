@@ -104,8 +104,9 @@ export default function MaintenancePage() {
       {/* Inline footer — no SiteFooter dependency. */}
       <footer className="px-6 py-6 text-center">
         <p className="text-xs text-ink-soft font-mono tracking-wide">
-          © {new Date().getFullYear()} OrphanGive · Operated by
-          Children&apos;s Heaven Trust
+          © {new Date().getFullYear()} OrphanGive · Operated by Goodverse
+          Foundation (Reg. S-14837/2026) in partnership with
+          Children&apos;s Heaven Trust (Reg. iv-98/2021)
         </p>
       </footer>
     </div>

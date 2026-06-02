@@ -26,7 +26,7 @@ export const metadata = buildPageMetadata({
   path: "/about",
   title: "About OrphanGive — Bangladesh's verified child sponsorship network",
   description:
-    "OrphanGive is a project of Goodverse Foundation in collaboration with Children's Heaven Trust — a verified child sponsorship network for orphaned and vulnerable children in Bangladesh.",
+    "OrphanGive is a project of Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021) — a verified child sponsorship network for orphaned and vulnerable children in Bangladesh.",
 });
 
 // --- Asset constants. URLs match the homepage AboutSection so
@@ -81,7 +81,7 @@ const PILLARS: Pillar[] = [
     statement:
       "OrphanGive is the donor-facing service for verified partner charities — never a competitor.",
     detail:
-      "We work with Goodverse Foundation as the operating entity and Children's Heaven Trust as the field partner. Other Bangladesh charities can apply to list children under the same verification model.",
+      "We work with Goodverse Foundation (Reg. S-14837/2026) as the operating entity and Children's Heaven Trust (Reg. iv-98/2021) as the field partner. Other Bangladesh charities can apply to list children under the same verification model.",
   },
 ];
 
@@ -160,7 +160,7 @@ export default function AboutPage() {
             <p className="mt-6 text-lg text-ink-soft leading-[1.65] max-w-[520px]">
               OrphanGive is a verified child sponsorship network for
               orphaned and vulnerable children in Bangladesh. A
-              project of Goodverse Foundation in collaboration with
+              project of Goodverse Foundation in partnership with
               Children&apos;s Heaven Trust, we connect donors
               directly to individual children — verified on the
               ground, protected by a tiered privacy model, and
@@ -374,7 +374,8 @@ export default function AboutPage() {
                 Goodverse Foundation
               </h3>
               <p className="mt-3 text-base text-ink-soft leading-[1.65]">
-                The operating entity behind OrphanGive. Goodverse
+                The operating entity behind OrphanGive — a registered
+                Bangladesh organisation (Reg. S-14837/2026). Goodverse
                 Foundation oversees governance, financial
                 accountability, and the donor-facing service.
                 Goodverse holds the technology, the donor data, and

@@ -78,13 +78,13 @@ const FAQ_GROUPS: FaqGroup[] = [
         id: "what-is-orphangive",
         question: "What is OrphanGive?",
         answer:
-          "OrphanGive is a child-sponsorship service operated by Goodverse Foundation in partnership with Children's Heaven Trust. We connect donors with verified orphan children in Bangladesh through transparent, dignified sponsorship — monthly or prepaid, with regular updates.",
+          "OrphanGive is a child-sponsorship service operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021). We connect donors with verified orphan children in Bangladesh through transparent, dignified sponsorship — monthly or prepaid, with regular updates.",
       },
       {
         id: "who-runs-orphangive",
         question: "Who runs OrphanGive?",
         answer:
-          "OrphanGive is operated by Goodverse Foundation, a Bangladesh-registered organisation, in partnership with Children's Heaven Trust (NGO Affairs Bureau registration: Reg. iv-98/2021). Children's Heaven Trust handles on-ground verification, family visits, and the delivery of sponsorship support. Our registered address is Ta 135/B, Gulshan Badda Link Road, Dhaka 1212, Bangladesh.",
+          "OrphanGive is operated by Goodverse Foundation (Reg. S-14837/2026), a Bangladesh-registered organisation, in partnership with Children's Heaven Trust (Reg. iv-98/2021). Children's Heaven Trust handles on-ground verification, family visits, and the delivery of sponsorship support. Our registered address is Ta 135/B, Gulshan Badda Link Road, Dhaka 1212, Bangladesh.",
       },
       {
         id: "where-do-you-operate",
@@ -96,14 +96,14 @@ const FAQ_GROUPS: FaqGroup[] = [
         id: "registered-charity",
         question: "Are you a registered charity?",
         answer:
-          "OrphanGive is operated by Goodverse Foundation, registered in Bangladesh. Children's Heaven Trust, our partner organisation handling field verification, is registered with the NGO Affairs Bureau of Bangladesh (Reg. iv-98/2021). We are subject to Bangladesh charity and tax law.",
+          "OrphanGive is operated by Goodverse Foundation (Reg. S-14837/2026), registered in Bangladesh, in partnership with Children's Heaven Trust (Reg. iv-98/2021), our partner organisation handling field verification, registered with the NGO Affairs Bureau of Bangladesh. We are subject to Bangladesh charity and tax law.",
       },
       {
         id: "how-different",
         question:
           "How are you different from other child sponsorship organisations?",
         answer:
-          "Three differences: we are Bangladesh-specific (not a global network with thin local presence), we use a three-tier privacy model that protects each child's identity (full names are public, but addresses, schools, and guardian information stay private), and every donation is tracked with transparent reporting. We also publish field updates only with explicit guardian consent.",
+          "Three differences: we are Bangladesh-specific (not a global network with thin local presence), we use a three-tier privacy model that protects each child's identity (public listings show only a first name — which may be shortened or changed for protection — never a full legal name; addresses, schools, and guardian information stay private), and every donation is tracked with transparent reporting. We also publish field updates only with explicit guardian consent.",
       },
     ],
   },
@@ -177,7 +177,7 @@ const FAQ_GROUPS: FaqGroup[] = [
         id: "last-names",
         question: "Why are last names hidden?",
         answer:
-          "We use a three-tier privacy model. Tier 1 (public, on this site): the child's full display name, age in years, and Bangladesh division are visible. Tier 2 (authenticated donors): slightly more context. Tier 3 (sponsoring donors with approved reveal): direct progress updates and additional context. Identifying details — school name, exact address, full date of birth, guardian contact, precise location — are never shown to donors at any tier. This protects each child's safety and dignity.",
+          "We use a three-tier privacy model. Tier 1 (public, on this site): a first name (which may be shortened or changed to protect the child), age in years, Bangladesh division, and a guardian-consented photo are visible — never a full legal name. Tier 2 (authenticated donors): slightly more context. Tier 3 (sponsoring donors with approved reveal): limited additional progress information, viewed through OrphanGive only. Identifying details — school name, exact address, full date of birth, guardian contact, precise location — are never shown to donors at any tier, and we never share contact details or broker direct contact with the child or family. This protects each child's safety and dignity.",
       },
       {
         id: "see-photos",
@@ -201,7 +201,7 @@ const FAQ_GROUPS: FaqGroup[] = [
         id: "protect-privacy",
         question: "How do you protect children's privacy?",
         answer:
-          "Children's identifying information is encrypted at rest and accessible only to authorised OrphanGive and Children's Heaven Trust personnel. We never publish school names, addresses, guardian contact details, or precise locations. Photographs are published only with explicit guardian consent. Our designated safeguarding lead is Sarmin Sultana at Children's Heaven Trust (childrens.hvn@gmail.com), and we operate under Bangladesh law including the Children Act 2013 and applicable child protection laws.",
+          "Children's identifying information is encrypted at rest and accessible only to authorised OrphanGive and Children's Heaven Trust personnel. We never publish school names, addresses, guardian contact details, or precise locations. Photographs are published only with explicit guardian consent. Our designated safeguarding lead is Sarmin Sultana at Children's Heaven Trust, reachable at safeguarding@orphangive.org, and we operate under Bangladesh law including the Children Act 2013 and applicable child protection laws.",
       },
     ],
   },
@@ -214,7 +214,7 @@ const FAQ_GROUPS: FaqGroup[] = [
         id: "payment-methods",
         question: "What payment methods do you accept?",
         answer:
-          "We currently accept Visa, Mastercard, and American Express via Stripe. Local payment methods — bKash and Nagad — are on our roadmap and will be available within approximately one month. International cards are supported.",
+          "We currently accept Visa, Mastercard, and American Express via Stripe. bKash and Nagad support is planned; card payments via Stripe are available now.",
       },
       {
         id: "payment-secure",

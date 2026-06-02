@@ -196,7 +196,7 @@ export function SiteFooter() {
               >
                 Goodverse Foundation
               </a>{" "}
-              in partnership with{" "}
+              (Reg. S-14837/2026) in partnership with{" "}
               <a
                 href={CHILDRENS_HEAVEN_URL}
                 target="_blank"

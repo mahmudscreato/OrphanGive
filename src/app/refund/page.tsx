@@ -134,10 +134,10 @@ export default async function RefundPage() {
               <p>
                 Write to{" "}
                 <a
-                  href="mailto:support@orphangive.org"
+                  href="mailto:refunds@orphangive.org"
                   className="text-tangerine-deep underline-offset-4 hover:underline font-medium"
                 >
-                  support@orphangive.org
+                  refunds@orphangive.org
                 </a>{" "}
                 from the email address associated with your donor account.
                 Include:

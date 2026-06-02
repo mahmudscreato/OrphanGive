@@ -73,7 +73,7 @@ export default async function SafeguardingPage() {
                   "No child is listed without documented guardian consent.",
                   "No photo is published without per-photo consent recorded against the guardian.",
                   "No identifying detail — exact address, school name, guardian name and contact, full date of birth — appears at the public tier.",
-                  "Donors cannot contact children or guardians outside the formal reveal-approval flow.",
+                  "Donors cannot contact children or guardians directly. Reveal approval only unlocks limited additional progress information through OrphanGive — never contact details, and we never broker direct contact.",
                   "Any safeguarding concern raised is investigated promptly and transparently.",
                 ]}
               />
@@ -191,10 +191,10 @@ export default async function SafeguardingPage() {
               <p>
                 <strong>Email:</strong>{" "}
                 <a
-                  href="mailto:support@orphangive.org?subject=Safeguarding%20concern"
+                  href="mailto:safeguarding@orphangive.org?subject=Safeguarding%20concern"
                   className="text-tangerine-deep underline-offset-4 hover:underline font-medium"
                 >
-                  support@orphangive.org
+                  safeguarding@orphangive.org
                 </a>{" "}
                 (with &quot;Safeguarding concern&quot; in the subject
                 line). Provide as much detail as you can. You may
