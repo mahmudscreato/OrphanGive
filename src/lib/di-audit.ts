@@ -288,7 +288,14 @@ export type AuditAction =
   // Cron-driven expiry (90 days after admin approval). Distinct from
   // system_revoked_reveal so the timeline reader shows the closure
   // reason — "expired (90 days)" vs "revoked (sponsorship ended)".
-  | "system_expired_reveal";
+  | "system_expired_reveal"
+  // P5 — safeguarding report intake/triage. Founder/safeguarding-lead only.
+  // metadata carries ids + enums + lengths ONLY — never report body text.
+  | "admin_logged_safeguarding_email"
+  | "admin_set_safeguarding_risk"
+  | "admin_changed_safeguarding_status"
+  | "admin_recorded_safeguarding_action"
+  | "admin_assigned_safeguarding_report";
 
 // Phase 0 — "donor" added so /api/sponsorship/[id]/* lifecycle
 // endpoints can attribute the audit to the donor who initiated the
@@ -605,6 +612,13 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   donor_withdrew_reveal: () => `Donor withdrew a reveal request`,
   system_revoked_reveal: () => `Reveal revoked (sponsorship ended)`,
   system_expired_reveal: () => `Reveal expired (90 days elapsed)`,
+  // P5 — safeguarding report triage (lead-only). Phrased for an admin-side
+  // audit view; these never surface on DI/donor feeds.
+  admin_logged_safeguarding_email: (a) => `${a} logged a safeguarding report received by email`,
+  admin_set_safeguarding_risk: (a) => `${a} set a safeguarding report's risk level`,
+  admin_changed_safeguarding_status: (a) => `${a} changed a safeguarding report's status`,
+  admin_recorded_safeguarding_action: (a) => `${a} recorded action on a safeguarding report`,
+  admin_assigned_safeguarding_report: (a) => `${a} assigned a safeguarding report`,
 };
 
 const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_DESCRIPTIONS));

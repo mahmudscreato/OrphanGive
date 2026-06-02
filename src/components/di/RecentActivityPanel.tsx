@@ -148,6 +148,12 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   donor_withdrew_reveal: EyeOff,
   system_revoked_reveal: Lock,
   system_expired_reveal: Lock,
+  // P5 — safeguarding triage (admin-only; never on DI feeds).
+  admin_logged_safeguarding_email: FileText,
+  admin_set_safeguarding_risk: AlertTriangle,
+  admin_changed_safeguarding_status: ListChecks,
+  admin_recorded_safeguarding_action: Edit3,
+  admin_assigned_safeguarding_report: HeartHandshake,
 };
 
 function relativeTime(iso: string | null): string {
