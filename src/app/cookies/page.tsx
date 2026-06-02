@@ -1,8 +1,22 @@
-// Counsel-reviewed: Bangladesh legal counsel reviewed and updated 2026-05-13.
-// Any further changes should be reviewed before publication.
+// DRAFT 2026-06-03 — analytics section REWRITTEN, PENDING re-review by
+// Bangladesh legal counsel before publish. Previous version was
+// counsel-reviewed 2026-05-13.
+//
+// Why this is a draft: the prior (counsel-reviewed) copy stated the site uses
+// NO analytics / NO Google Analytics. That became false when GA4 was added
+// (branch feature/ga4-consent) as a consent-gated, child-data-redacted,
+// opt-in analytics tool. The sub-copy, the cookie list (§2), the new §3, and
+// the "what we don't use" list (§4) below have been rewritten to describe GA4
+// accurately. Walk this through counsel before publishing.
+//
+// NOTE: this page is CMS-overridable via getSitePage("cookies") — if a
+// published `site_page` row with slug "cookies" exists, THAT renders instead
+// of this hardcoded copy. Confirm the CMS copy is updated to match before
+// relying on this file in production.
 
 import { getSitePage } from "@/lib/site-page";
 import { SitePageRenderer } from "@/components/site-page/SitePageRenderer";
+import { ConsentControls } from "@/components/analytics/ConsentControls";
 import {
   LegalPageLayout,
   LegalList,
@@ -40,7 +54,7 @@ export default async function CookiesPage() {
       eyebrowText="Cookie policy"
       headlinePart1="Strictly necessary."
       headlinePart2="Nothing else."
-      subCopy="OrphanGive uses a small number of cookies — only those required to keep you signed in, to process your donation safely, and to defend against common web attacks. No advertising trackers, no analytics scripts, no third-party data brokers."
+      subCopy="OrphanGive uses a small number of cookies. Most are strictly necessary — to keep you signed in, to process your donation safely, and to defend against common web attacks. We also use Google Analytics for anonymous usage statistics, but only if you choose to accept it: analytics is off by default and never runs without your consent. No advertising trackers, no remarketing pixels, no third-party data brokers."
       lastUpdated="13 May 2026"
       closingTopic="cookies"
       sections={[
@@ -100,6 +114,17 @@ export default async function CookiesPage() {
                     dismiss an announcement banner, a small cookie remembers
                     that choice so we don't keep showing it to you.
                   </>,
+                  <>
+                    <strong>Analytics preference.</strong> When you accept or
+                    decline analytics in the cookie banner, we store that single
+                    choice in a first-party cookie
+                    (<code>og_analytics_consent</code>) so we don&apos;t ask
+                    again on every page. It holds only the word
+                    &quot;granted&quot; or &quot;denied&quot; — nothing that
+                    identifies you. This cookie is set whichever way you choose;
+                    the Google Analytics cookies themselves are set only if you
+                    accept (see section 3).
+                  </>,
                 ]}
               />
               <p>
@@ -119,15 +144,61 @@ export default async function CookiesPage() {
           ),
         },
         {
+          id: "analytics",
+          title: "3. Analytics & your choice",
+          content: (
+            <>
+              <p>
+                With your consent, OrphanGive uses{" "}
+                <strong>Google Analytics 4 (GA4)</strong> to understand how
+                visitors find and move through the site — which pages are read,
+                on what kind of device, from which country. It is{" "}
+                <strong>off by default</strong> and loads only after you choose
+                &quot;Accept analytics&quot; in the cookie banner. If you
+                decline, or simply ignore the banner, GA4 never loads, sets no
+                cookies, and sends nothing.
+              </p>
+              <p>
+                Because this is a child-protection service, we redact analytics
+                data before it ever reaches Google. We never send:
+              </p>
+              <LegalList
+                items={[
+                  "A child's name. Pages that show a child or a sponsorship are reported to analytics under a generic title (“Child profile — OrphanGive”), never the child's first name.",
+                  "Any identifier. Child, donor, and sponsorship ids in the page address are replaced with “[id]” before the page view is recorded.",
+                  "Query-string values. Anything after “?” or “#” in the address (which can carry tokens or references) is stripped — only the cleaned path is sent.",
+                ]}
+              />
+              <p>
+                Google Analytics 4 also anonymises visitor IP addresses
+                automatically and irreversibly. We do not use GA4&apos;s
+                advertising, remarketing, or cross-site tracking features. When
+                GA4 is active it sets its own cookies (for example
+                <code> _ga</code>) to count returning visits. Analytics is never
+                loaded on sign-in, donor-dashboard, or staff pages — only on the
+                public pages.
+              </p>
+              <p className="font-medium text-ink">
+                You can change your mind at any time:
+              </p>
+              <ConsentControls />
+              <p>
+                Withdrawing clears your consent and reloads the page; GA4 will
+                not load again unless you accept once more.
+              </p>
+            </>
+          ),
+        },
+        {
           id: "what-we-dont",
-          title: "3. What we don't use",
+          title: "4. What we don't use",
           content: (
             <>
               <p>OrphanGive does NOT use:</p>
               <LegalList
                 items={[
                   "Third-party advertising cookies or remarketing pixels.",
-                  "Web-analytics scripts such as Google Analytics, Mixpanel, Hotjar, or similar.",
+                  "Analytics that identify you, follow you across other websites, or build a profile of your interests. Our one analytics tool (Google Analytics 4) is consent-gated and receives only anonymous, redacted usage data — see section 3.",
                   "Social-network tracking pixels (Facebook Pixel, Twitter/X tracking, LinkedIn Insight Tag, etc.).",
                   "Cross-site identifiers shared with data brokers.",
                   "Behavioural-profiling cookies that build a model of your interests.",
@@ -144,7 +215,7 @@ export default async function CookiesPage() {
         },
         {
           id: "third-party",
-          title: "4. Third-party cookies set during payment",
+          title: "5. Third-party cookies set during payment",
           content: (
             <>
               <p>
@@ -172,7 +243,7 @@ export default async function CookiesPage() {
         },
         {
           id: "manage",
-          title: "5. Managing cookies",
+          title: "6. Managing cookies",
           content: (
             <>
               <p>
@@ -192,7 +263,7 @@ export default async function CookiesPage() {
         },
         {
           id: "updates",
-          title: "6. Updates to this policy",
+          title: "7. Updates to this policy",
           content: (
             <>
               <p>
