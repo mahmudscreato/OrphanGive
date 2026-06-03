@@ -84,8 +84,13 @@ export function Analytics() {
     const w = window as unknown as Win;
     w.dataLayer = w.dataLayer || [];
     if (!w.gtag) {
-      w.gtag = (...args: unknown[]) => {
-        (w.dataLayer as unknown[]).push(args);
+      // gtag.js only treats a dataLayer entry as a COMMAND when it is the
+      // `arguments` object; a real array is read as generic data-layer data and
+      // silently ignored (no command runs → no /collect). So push `arguments`,
+      // which requires a normal function, not an arrow with rest params.
+      w.gtag = function () {
+        // eslint-disable-next-line prefer-rest-params
+        (w.dataLayer as unknown[]).push(arguments);
       };
       w.gtag("js", new Date());
     }
