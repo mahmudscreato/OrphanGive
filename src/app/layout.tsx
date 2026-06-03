@@ -9,6 +9,8 @@ import {
 import "./globals.css";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { Analytics } from "@/components/analytics/Analytics";
+import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 import { getCurrentDonor } from "@/lib/donor-data";
 
 const fraunces = Fraunces({
@@ -218,6 +220,13 @@ export default async function RootLayout({
           {children}
         </main>
         <SiteFooter />
+        {/* GA4 — loads ONLY after explicit opt-in consent, child-route
+            redacted, and never on /admin·/di·/dashboard. No-op without
+            NEXT_PUBLIC_GA_ID. See components/analytics/Analytics.tsx. */}
+        <Analytics />
+        {/* Deny-by-default consent banner. Self-hides on staff/auth surfaces
+            and once a choice is recorded. */}
+        <ConsentBanner />
       </body>
     </html>
   );
