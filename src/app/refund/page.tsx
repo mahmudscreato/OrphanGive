@@ -390,7 +390,7 @@ export default async function RefundPage() {
                   correct the word if desired. */}
               <p>
                 We may update this refund policy from time to time. The
-                &quot;Last updated&quot; date at the bottom of this page will
+                &quot;Last updated&quot; date at the top of this page will
                 reflect any changes. For material changes, we will email active
                 sponsors at least thirty days before the change takes effect.
               </p>
