@@ -622,7 +622,7 @@ export default async function SafeguardingPage() {
                   founder to confirm correct casing. */}
               <p>
                 <strong>Children&apos;s Heaven Trust</strong> &amp;{" "}
-                <strong>GoodVerse Foundation</strong>
+                <strong>Goodverse Foundation</strong>
                 <br />
                 Operating OrphanGive
                 <br />
