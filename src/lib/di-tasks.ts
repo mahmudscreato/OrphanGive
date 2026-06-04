@@ -390,6 +390,39 @@ export async function getTaskForUser(
   return rowToSummary(row);
 }
 
+/**
+ * Best-effort read of a task's `type` for display on the detail page.
+ * Isolated from getTaskForUser's field set so the DI task LIST never
+ * depends on the piece-#2 `type` column existing — if the column is
+ * absent (migration pending) this returns null and the badge is hidden.
+ * The caller must have already scope-checked the task (getTaskForUser).
+ */
+export async function getTaskTypeById(
+  taskId: string,
+): Promise<TaskType | null> {
+  const VALID = new Set<string>([
+    "need_report",
+    "delivery_photos",
+    "need_moments",
+    "health_check",
+    "general",
+    "custom",
+  ]);
+  try {
+    const result = (await directusServer().request(
+      readItems("task" as never, {
+        filter: { id: { _eq: taskId } },
+        fields: ["type"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{ type: string | null }> | undefined;
+    const t = Array.isArray(result) ? result[0]?.type ?? null : null;
+    return t && VALID.has(t) ? (t as TaskType) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Transition logic ──────────────────────────────────────────────
 
 // Legal di_status moves:

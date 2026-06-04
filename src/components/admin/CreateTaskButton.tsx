@@ -35,6 +35,7 @@ export function CreateTaskButton(props: ButtonProps) {
         childDivisionCode={props.childDivisionCode}
         childDivisionName={props.childDivisionName}
         availableDIs={props.availableDIs}
+        pickableChildren={props.pickableChildren}
       />
     </>
   );

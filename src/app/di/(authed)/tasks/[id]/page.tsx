@@ -31,14 +31,22 @@ import {
   User2,
 } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
-import { getTaskForUser, type TaskPriority } from "@/lib/di-tasks";
+import {
+  getTaskForUser,
+  getTaskTypeById,
+  type TaskPriority,
+} from "@/lib/di-tasks";
 import {
   getDiChildById,
   getDiChildSponsorships,
 } from "@/lib/di-children";
 import { listReportsForTask } from "@/lib/di-reports";
+import { listTaskComments } from "@/lib/task-comments";
+import { TASK_TYPE_LABELS } from "@/lib/task-templates";
 import { StatusPill, type StatusPillKind } from "@/components/di/StatusPill";
 import { TaskActionButton } from "@/components/di/TaskActionButton";
+import { TaskCommentThread } from "@/components/tasks/TaskCommentThread";
+import { TaskCommentComposer } from "@/components/tasks/TaskCommentComposer";
 
 export const dynamic = "force-dynamic";
 
@@ -117,13 +125,16 @@ export default async function DiTaskDetailPage({
   // Parallel: child (Tier-1 only via DiChildSummary), the DI's
   // reports already filed against this task, and the sponsorship
   // list (we'll filter to the linked one).
-  const [child, taskReports, allSponsorships] = await Promise.all([
-    task.childId ? getDiChildById(task.childId, session.userId) : null,
-    listReportsForTask(session.userId, task.id),
-    task.childId
-      ? getDiChildSponsorships(task.childId, session.userId)
-      : Promise.resolve(null),
-  ]);
+  const [child, taskReports, allSponsorships, comments, taskType] =
+    await Promise.all([
+      task.childId ? getDiChildById(task.childId, session.userId) : null,
+      listReportsForTask(session.userId, task.id),
+      task.childId
+        ? getDiChildSponsorships(task.childId, session.userId)
+        : Promise.resolve(null),
+      listTaskComments(task.id),
+      getTaskTypeById(task.id),
+    ]);
 
   // The sponsorship this task is bound to (if any). May be null when
   // the task is general (no sponsorship tie) or when admin assigned a
@@ -167,6 +178,11 @@ export default async function DiTaskDetailPage({
             ) : null}
             {priority.label}
           </span>
+          {taskType && taskType !== "general" ? (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11.5px] font-medium bg-tangerine-mist text-tangerine-deeper">
+              {TASK_TYPE_LABELS[taskType]}
+            </span>
+          ) : null}
           {due ? (
             <span
               className={`inline-flex items-center gap-1 text-[12.5px] ${
@@ -384,6 +400,20 @@ export default async function DiTaskDetailPage({
             from here.
           </p>
         )}
+      </section>
+
+      {/* INTERNAL COMMENT THREAD — admin ↔ DI. Available on every task
+          (including general / no-child tasks) so the page is never a
+          dead end. Never visible to donors. */}
+      <section
+        className="mb-6 rounded-2xl bg-white border border-stone-200 shadow-sm p-5 md:p-6"
+        aria-label="Internal notes"
+      >
+        <TaskCommentThread comments={comments} currentUserId={session.userId} />
+        <TaskCommentComposer
+          postUrl={`/api/di/tasks/${task.id}/comments`}
+          uploadUrl="/api/di/uploads/document"
+        />
       </section>
     </div>
   );

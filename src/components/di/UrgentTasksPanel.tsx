@@ -1,9 +1,10 @@
 // Session 47 — Urgent tasks home-page preview panel.
 //
 // Server component. Renders up to 5 high/urgent open tasks. Each row
-// links to the task's detail page (which doesn't exist yet — falls
-// back to the /di/tasks list with a query param so the right card
-// is at least visible at the top of the list).
+// links to that task's detail workspace (/di/tasks/[id]) where the
+// Start / Mark complete / Redo actions live — previously this linked
+// to the generic /di/tasks list, so tapping an urgent task from the
+// dashboard felt like a dead end (no action available).
 //
 // Empty state copy per spec: "No urgent tasks. Nice."
 
@@ -76,7 +77,7 @@ export function UrgentTasksPanel({ tasks }: { tasks: TaskSummary[] }) {
             return (
               <li key={t.id}>
                 <Link
-                  href="/di/tasks"
+                  href={`/di/tasks/${t.id}`}
                   className="block rounded-xl border border-stone-200 px-3 py-2.5 hover:border-tangerine-soft hover:bg-tangerine-mist/20 transition-colors"
                 >
                   <div className="flex items-start gap-2">

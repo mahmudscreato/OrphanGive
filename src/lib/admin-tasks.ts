@@ -550,6 +550,186 @@ export async function listAdminTasks(opts?: {
   return rows.map(rowToAdminTaskRow);
 }
 
+// ─── Public API: admin single-task detail (/admin/tasks/[id]) ───────
+
+/**
+ * Richer single-task view for the admin detail page. Extends
+ * AdminTaskRow with the lifecycle timestamps + actors + the auto-task
+ * idempotency key. `source_payment_id` is fetched in a SEPARATE
+ * best-effort read so a stack where the piece-#3 column hasn't been
+ * migrated yet still renders the detail page (the field just shows as
+ * null).
+ */
+export interface AdminTaskDetail extends AdminTaskRow {
+  completed_at: string | null;
+  verified_at: string | null;
+  verified_by_name: string | null;
+  created_by_name: string | null;
+  /** Set only on donation auto-created tasks (piece #3). */
+  source_payment_id: string | null;
+}
+
+const ADMIN_TASK_DETAIL_FIELDS = [
+  ...ADMIN_TASK_FIELDS,
+  "completed_at",
+  "verified_at",
+  "verified_by.id",
+  "verified_by.first_name",
+  "verified_by.last_name",
+  "verified_by.email",
+  "created_by.id",
+  "created_by.first_name",
+  "created_by.last_name",
+  "created_by.email",
+] as const;
+
+type UserRef =
+  | string
+  | {
+      id?: string;
+      first_name?: string | null;
+      last_name?: string | null;
+      email?: string;
+    }
+  | null;
+
+function userRefName(ref: UserRef): string | null {
+  if (!ref || typeof ref !== "object") return null;
+  const name = [ref.first_name?.trim(), ref.last_name?.trim()]
+    .filter(Boolean)
+    .join(" ");
+  if (name.length > 0) return name;
+  return ref.email?.trim() || null;
+}
+
+export async function getAdminTaskById(
+  taskId: string,
+): Promise<AdminTaskDetail | null> {
+  if (!UUID_RE.test(taskId)) return null;
+
+  let row:
+    | (AdminTaskQueryRow & {
+        completed_at: string | null;
+        verified_at: string | null;
+        verified_by: UserRef;
+        created_by: UserRef;
+      })
+    | undefined;
+  try {
+    const result = (await directusServer().request(
+      readItems("task" as never, {
+        filter: { id: { _eq: taskId } },
+        fields: [...ADMIN_TASK_DETAIL_FIELDS],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<
+      AdminTaskQueryRow & {
+        completed_at: string | null;
+        verified_at: string | null;
+        verified_by: UserRef;
+        created_by: UserRef;
+      }
+    >;
+    row = Array.isArray(result) ? result[0] : undefined;
+  } catch (err) {
+    console.warn(
+      "[admin-tasks] getAdminTaskById failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+  if (!row) return null;
+
+  // Best-effort read of the piece-#3 idempotency column — isolated so
+  // a missing column (migration pending) doesn't break the main read.
+  let sourcePaymentId: string | null = null;
+  try {
+    const r = (await directusServer().request(
+      readItems("task" as never, {
+        filter: { id: { _eq: taskId } },
+        fields: ["source_payment_id"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{ source_payment_id: string | null }>;
+    sourcePaymentId = r?.[0]?.source_payment_id ?? null;
+  } catch {
+    /* column pending migration — leave null */
+  }
+
+  const base = rowToAdminTaskRow(row);
+  return {
+    ...base,
+    completed_at: row.completed_at ?? null,
+    verified_at: row.verified_at ?? null,
+    verified_by_name: userRefName(row.verified_by),
+    created_by_name: userRefName(row.created_by),
+    source_payment_id: sourcePaymentId,
+  };
+}
+
+// ─── Public API: child picker (create-task form, SS1 fix) ───────────
+
+/**
+ * Tier-1 child list for the create-task child picker. Carries
+ * `assignedDiId` so the client can surface the chosen assignee DI's
+ * children first, while keeping ALL children searchable. Privacy: NO
+ * Tier-3 fields — first_name (public) is the label; display_name is
+ * only a fallback when first_name is empty (admin already sees it on
+ * the task list). Division name disambiguates.
+ */
+export interface PickableChild {
+  id: string;
+  firstName: string | null;
+  displayName: string | null;
+  divisionName: string | null;
+  assignedDiId: string | null;
+}
+
+const PICKABLE_CHILD_FIELDS = [
+  "id",
+  "first_name",
+  "display_name",
+  "bd_division.name",
+  "assigned_di",
+] as const;
+
+export async function listPickableChildren(): Promise<PickableChild[]> {
+  let rows: Array<{
+    id: string;
+    first_name: string | null;
+    display_name: string | null;
+    bd_division: { name?: string | null } | null;
+    assigned_di: string | { id?: string } | null;
+  }> = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("child" as never, {
+        filter: { status: { _neq: "withdrawn" } },
+        fields: [...PICKABLE_CHILD_FIELDS],
+        sort: ["first_name", "display_name"],
+        limit: 500,
+      } as never),
+    )) as unknown as typeof rows | undefined;
+    if (Array.isArray(result)) rows = result;
+  } catch (err) {
+    console.warn(
+      "[admin-tasks] listPickableChildren failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  return rows.map((r) => {
+    const di = r.assigned_di;
+    return {
+      id: r.id,
+      firstName: r.first_name?.trim() || null,
+      displayName: r.display_name?.trim() || null,
+      divisionName: r.bd_division?.name?.trim() || null,
+      assignedDiId: typeof di === "string" ? di : di?.id ?? null,
+    };
+  });
+}
+
 /**
  * Convenience reader: which sponsorships are eligible for task
  * creation from the standalone /admin/tasks/new form. Filter:

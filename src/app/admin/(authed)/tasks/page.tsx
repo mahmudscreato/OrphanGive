@@ -196,8 +196,13 @@ function TaskRow({ row }: { row: AdminTaskRow }) {
   return (
     <div className="rounded-2xl bg-white border border-stone-200 p-4 hover:shadow-sm transition-shadow">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
-        <h3 className="font-display text-[15.5px] text-ink leading-tight">
-          {row.title}
+        <h3 className="font-display text-[15.5px] leading-tight">
+          <Link
+            href={`/admin/tasks/${row.id}`}
+            className="text-ink hover:text-tangerine-deeper hover:underline"
+          >
+            {row.title}
+          </Link>
         </h3>
         <div className="flex gap-1.5">
           <TypePill type={row.type} />
