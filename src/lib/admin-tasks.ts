@@ -1031,3 +1031,59 @@ export function rejectTask(
 ): Promise<AdminTaskDecisionResult> {
   return setTaskAdminStatus(taskId, adminUserId, "rejected_redo");
 }
+
+// ─── Public API: quick-assign (assign an unassigned task to a DI) ────
+
+/**
+ * Set a task's assignee to a Data Inputter. Used by the quick-assign
+ * control on the admin task list + detail (piece #3 can leave
+ * donation auto-tasks unassigned). Validates that `assigneeId` is a
+ * REAL ACTIVE DI by checking it against the same source the create
+ * form uses (listAssignableDIs) — never trusts an arbitrary user id.
+ *
+ * Does NOT touch di_status / admin_status. Does NOT write the audit
+ * row — the route does that after this returns.
+ *
+ * Throws InvalidTaskInputError (bad task id / not an active DI) or a
+ * generic Error on a transport failure (→ route 500). The route checks
+ * task existence (getAdminTaskById) before calling this.
+ */
+export async function assignTask(
+  taskId: string,
+  assigneeId: string,
+): Promise<{ taskId: string; assigneeId: string }> {
+  if (!UUID_RE.test(taskId)) {
+    throw new InvalidTaskInputError("taskId", "must be a uuid");
+  }
+  if (!UUID_RE.test(assigneeId)) {
+    throw new InvalidTaskInputError("assigneeId", "must be a uuid");
+  }
+
+  // Reuse the create-form DI source. listAssignableDIs(null) returns
+  // every active Data Inputter (the role + status=active filter lives
+  // there) — membership is our server-side validation that the target
+  // is a real, active DI.
+  const activeDIs = await listAssignableDIs(null);
+  if (!activeDIs.some((d) => d.id === assigneeId)) {
+    throw new InvalidTaskInputError(
+      "assigneeId",
+      "must be an active Data Inputter",
+    );
+  }
+
+  try {
+    await directusServer().request(
+      updateItem("task" as never, taskId as never, {
+        assignee: assigneeId,
+      } as never),
+    );
+  } catch (err) {
+    console.error(
+      "[admin-tasks] assignTask update failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("task assignee update failed");
+  }
+
+  return { taskId, assigneeId };
+}

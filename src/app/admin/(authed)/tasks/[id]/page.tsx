@@ -12,7 +12,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-auth";
-import { getAdminTaskById } from "@/lib/admin-tasks";
+import { getAdminTaskById, listAssignableDIs } from "@/lib/admin-tasks";
 import { listTaskComments } from "@/lib/task-comments";
 import type {
   TaskAdminStatus,
@@ -21,6 +21,10 @@ import type {
 } from "@/lib/di-tasks";
 import { TASK_TYPE_LABELS } from "@/lib/task-templates";
 import { TaskVerifyActions } from "@/components/admin/TaskVerifyActions";
+import {
+  TaskQuickAssign,
+  type QuickAssignDi,
+} from "@/components/admin/TaskQuickAssign";
 import { TaskCommentThread } from "@/components/tasks/TaskCommentThread";
 import { TaskCommentComposer } from "@/components/tasks/TaskCommentComposer";
 
@@ -147,14 +151,24 @@ export default async function AdminTaskDetailPage({
   const task = await getAdminTaskById(id);
   if (!task) notFound();
 
-  const comments = await listTaskComments(task.id);
+  const [comments, assignableDIs] = await Promise.all([
+    listTaskComments(task.id),
+    // Same DI source the create form uses — for quick-assign when the
+    // task is unassigned (e.g. a donation auto-task with no DI found).
+    listAssignableDIs(null),
+  ]);
+  const dis: QuickAssignDi[] = assignableDIs.map((d) => ({
+    id: d.id,
+    label:
+      [d.firstName, d.lastName].filter(Boolean).join(" ").trim() || d.email,
+  }));
 
   const assigneeName =
     [task.assignee_first_name, task.assignee_last_name]
       .filter(Boolean)
       .join(" ")
       .trim() || task.assignee_email || "—";
-  const assigneeLabel = task.assignee_id ? assigneeName : "Unassigned";
+  const isUnassigned = !task.assignee_id;
 
   const showVerifyActions =
     task.di_status === "completed_pending_verification" &&
@@ -203,7 +217,16 @@ export default async function AdminTaskDetailPage({
       {/* DETAILS */}
       <section className="mb-6 rounded-2xl bg-white border border-stone-200 shadow-sm p-5 md:p-6">
         <dl>
-          <Field label="Assignee" value={assigneeLabel} />
+          <Field
+            label="Assignee"
+            value={
+              isUnassigned ? (
+                <TaskQuickAssign taskId={task.id} dis={dis} />
+              ) : (
+                assigneeName
+              )
+            }
+          />
           <Field
             label="Child"
             value={

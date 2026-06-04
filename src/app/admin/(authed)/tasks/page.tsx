@@ -20,6 +20,7 @@ import { requireAdminUser } from "@/lib/admin-auth";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   listAdminTasks,
+  listAssignableDIs,
   type AdminTaskRow,
 } from "@/lib/admin-tasks";
 import type {
@@ -27,6 +28,10 @@ import type {
   TaskAdminStatus,
   TaskType,
 } from "@/lib/di-tasks";
+import {
+  TaskQuickAssign,
+  type QuickAssignDi,
+} from "@/components/admin/TaskQuickAssign";
 import { TaskVerifyActions } from "@/components/admin/TaskVerifyActions";
 import { TASK_TYPE_LABELS } from "@/lib/task-templates";
 
@@ -102,7 +107,17 @@ export default async function AdminTasksPage({
     typeof sp.admin_status === "string" ? sp.admin_status : undefined,
   );
 
-  const rows = await listAdminTasks({ diStatus, adminStatus });
+  const [rows, assignableDIs] = await Promise.all([
+    listAdminTasks({ diStatus, adminStatus }),
+    // Same DI source the create form uses — for the quick-assign
+    // dropdown on unassigned (e.g. donation auto-created) tasks.
+    listAssignableDIs(null),
+  ]);
+  const dis: QuickAssignDi[] = assignableDIs.map((d) => ({
+    id: d.id,
+    label:
+      [d.firstName, d.lastName].filter(Boolean).join(" ").trim() || d.email,
+  }));
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
@@ -128,7 +143,7 @@ export default async function AdminTasksPage({
         <ul className="space-y-2">
           {rows.map((row) => (
             <li key={row.id}>
-              <TaskRow row={row} />
+              <TaskRow row={row} dis={dis} />
             </li>
           ))}
         </ul>
@@ -187,12 +202,13 @@ function FiltersBar({
   );
 }
 
-function TaskRow({ row }: { row: AdminTaskRow }) {
+function TaskRow({ row, dis }: { row: AdminTaskRow; dis: QuickAssignDi[] }) {
   const assigneeName = [row.assignee_first_name, row.assignee_last_name]
     .filter(Boolean)
     .join(" ");
   const assigneeLabel =
     assigneeName.trim().length > 0 ? assigneeName : row.assignee_email;
+  const isUnassigned = !row.assignee_id;
   return (
     <div className="rounded-2xl bg-white border border-stone-200 p-4 hover:shadow-sm transition-shadow">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
@@ -219,7 +235,11 @@ function TaskRow({ row }: { row: AdminTaskRow }) {
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-soft">
         <span>
           <span className="text-ink-soft">Assignee:</span>{" "}
-          <span className="text-ink">{assigneeLabel}</span>
+          {isUnassigned ? (
+            <TaskQuickAssign taskId={row.id} dis={dis} />
+          ) : (
+            <span className="text-ink">{assigneeLabel}</span>
+          )}
         </span>
         {row.child_display_name ? (
           <span>

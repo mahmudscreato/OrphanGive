@@ -151,6 +151,9 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Piece #3 — donation auto-task (system actor). Never surfaces on
   // the DI feed (system actor, no di_ prefix); type-safety placeholder.
   system_created_task: ListChecks,
+  // Task quick-assign (admin → DI). No childId metadata, so it never
+  // surfaces on the DI feed; type-safety placeholder.
+  admin_assigned_task: ListChecks,
   // P2 — reveal lifecycle. Donor + system actions; never surface on
   // the DI feed (no di_ prefix). Type-safety placeholders only.
   donor_requested_reveal: Eye,
