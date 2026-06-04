@@ -1,9 +1,11 @@
 // Spine 1.1 — Global admin task queue.
 //
-// Read-only list of every task across all DIs. Server component.
-// Per-task actions (verify / reject_redo) ship in Phase 1.2; this
-// page is the operational triage view + entry point for new-task
-// creation (via /admin/tasks/new).
+// List of every task across all DIs. Server component + an inline
+// client control (TaskVerifyActions) for the admin half of the task
+// state machine: a task the DI marked 'completed_pending_verification'
+// gets Verify / Send-back buttons that POST to
+// /api/admin/tasks/[id]/{verify,reject}. The page is also the entry
+// point for new-task creation (via /admin/tasks/new).
 //
 // Filters (URL-driven so links are shareable):
 //   ?di_status=open|in_progress|completed_pending_verification|all
@@ -24,6 +26,7 @@ import type {
   TaskDiStatus,
   TaskAdminStatus,
 } from "@/lib/di-tasks";
+import { TaskVerifyActions } from "@/components/admin/TaskVerifyActions";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +50,7 @@ const ADMIN_STATUS_FILTERS: ReadonlyArray<{
   { value: "all", label: "All admin states" },
   { value: "open", label: "Admin: open" },
   { value: "verified_complete", label: "Verified complete" },
-  { value: "rejected_redo", label: "Rejected — redo" },
+  { value: "rejected_redo", label: "Sent back — redo" },
 ];
 
 function parseDiStatus(s: string | undefined): TaskDiStatus | "all" {
@@ -241,6 +244,21 @@ function TaskRow({ row }: { row: AdminTaskRow }) {
           {formatDate(row.date_created)}
         </span>
       </div>
+
+      {/* Admin verify / send-back. Shown while the DI's submitted work
+          is awaiting (admin_status='open') OR already sent back but not
+          yet re-started by the DI (admin_status='rejected_redo') — both
+          require di_status='completed_pending_verification'. Keeping the
+          buttons on a sent-back task lets the admin flip to Verify
+          before the DI picks it up. Hidden once admin_status=
+          'verified_complete' (terminal — a verified task is done). When
+          the DI re-starts a rejected task, di_status moves off
+          completed_pending_verification and the buttons stop showing. */}
+      {row.di_status === "completed_pending_verification" &&
+      (row.admin_status === "open" ||
+        row.admin_status === "rejected_redo") ? (
+        <TaskVerifyActions taskId={row.id} />
+      ) : null}
     </div>
   );
 }
@@ -270,7 +288,7 @@ function DiStatusPill({ status }: { status: TaskDiStatus }) {
 function AdminStatusPill({ status }: { status: TaskAdminStatus }) {
   if (status === "open") return null; // suppress the default; only render exceptional states
   const label =
-    status === "verified_complete" ? "Verified" : "Rejected — redo";
+    status === "verified_complete" ? "Verified" : "Sent back";
   const tone =
     status === "verified_complete"
       ? "bg-moss-soft text-moss-deep"

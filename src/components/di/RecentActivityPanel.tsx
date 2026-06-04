@@ -142,6 +142,12 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // admin actions on scoped children, so admin_created_task rows
   // never surface here (no childId metadata key from this audit).
   admin_created_task: ListChecks,
+  // Admin half of the task state machine — verify (accepted) /
+  // send-back (redo). admin_verified_task / admin_rejected_task carry
+  // childId in metadata, so they CAN surface on the DI's Recent
+  // Activity feed when the task's child is in the DI's scope.
+  admin_verified_task: CheckCircle2,
+  admin_rejected_task: RotateCcw,
   // P2 — reveal lifecycle. Donor + system actions; never surface on
   // the DI feed (no di_ prefix). Type-safety placeholders only.
   donor_requested_reveal: Eye,
