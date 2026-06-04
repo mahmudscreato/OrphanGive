@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-auth";
 import {
   listAssignableDIs,
+  listPickableChildren,
   listSelectableSponsorships,
   type SelectableSponsorship,
 } from "@/lib/admin-tasks";
@@ -41,11 +42,13 @@ export default async function NewTaskPage() {
   const session = await requireAdminUser();
   if (!session) return null;
 
-  const [sponsorships, generalDIs] = await Promise.all([
+  const [sponsorships, generalDIs, pickableChildren] = await Promise.all([
     listSelectableSponsorships(),
     // Piece #2 — all active DIs, for the general-task path (no child
     // means no division scope, so every DI is eligible / manual pick).
     listAssignableDIs(null),
+    // SS1 — Tier-1 children for the general-task child picker.
+    listPickableChildren(),
   ]);
 
   return (
@@ -88,6 +91,7 @@ export default async function NewTaskPage() {
           childDivisionCode={null}
           childDivisionName={null}
           availableDIs={generalDIs}
+          pickableChildren={pickableChildren}
           label="Create general task"
         />
       </div>

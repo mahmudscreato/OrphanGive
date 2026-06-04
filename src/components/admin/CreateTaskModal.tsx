@@ -13,6 +13,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TaskType } from "@/lib/di-tasks";
+// Type-only import — erased at compile time, so the server-only
+// admin-tasks module is never pulled into this client bundle.
+import type { PickableChild } from "@/lib/admin-tasks";
 import {
   TASK_TEMPLATES,
   type TaskTemplate,
@@ -39,6 +42,12 @@ export interface CreateTaskModalProps {
   childDivisionName: string | null;
   // Sorted by listAssignableDIs (in-scope first, alpha within).
   availableDIs: DI[];
+  // SS1 — Tier-1 children for the optional child picker. Only used when
+  // creating a GENERAL task (no sponsorship): the picker surfaces the
+  // chosen assignee DI's assigned children first, but all are
+  // searchable. Omitted on the sponsorship-bound create path (the child
+  // is the sponsorship's child there).
+  pickableChildren?: PickableChild[];
 }
 
 type Priority = "low" | "normal" | "high" | "urgent";
@@ -52,6 +61,7 @@ export function CreateTaskModal({
   childDivisionCode,
   childDivisionName,
   availableDIs,
+  pickableChildren,
 }: CreateTaskModalProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -62,6 +72,12 @@ export function CreateTaskModal({
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState<Priority>("normal");
+  // SS1 — optional child for a general task. Starts from the bound
+  // childId (null on the general path).
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(
+    childId,
+  );
+  const [childSearch, setChildSearch] = useState("");
   const [assigneeMode, setAssigneeMode] = useState<"manual" | "auto">(
     childDivisionCode &&
       availableDIs.some((d) => d.coversChildDivision)
@@ -96,11 +112,46 @@ export function CreateTaskModal({
     childDivisionCode !== null &&
     availableDIs.some((d) => d.coversChildDivision);
 
+  // SS1 — show the optional child picker only on the general-task path
+  // (no sponsorship). On the sponsorship-bound path the child is fixed.
+  const showChildPicker =
+    sponsorshipId === null && (pickableChildren?.length ?? 0) > 0;
+
+  function childLabelFor(c: PickableChild): string {
+    return c.firstName || c.displayName || "Unnamed child";
+  }
+
+  // Reorder: the selected assignee DI's assigned children first, then
+  // the rest; filtered by the search box. Plain const (NOT useMemo) so
+  // it sits after the `if (!open)` early return without breaking the
+  // rules of hooks. The list is small (Tier-1, ≤500).
+  const childQuery = childSearch.trim().toLowerCase();
+  const visibleChildren = showChildPicker
+    ? [...(pickableChildren ?? [])]
+        .filter((c) =>
+          childQuery
+            ? [c.firstName, c.displayName, c.divisionName]
+                .filter(Boolean)
+                .some((s) => s!.toLowerCase().includes(childQuery))
+            : true,
+        )
+        .sort((a, b) => {
+          const aMine = a.assignedDiId === manualAssigneeId ? 0 : 1;
+          const bMine = b.assignedDiId === manualAssigneeId ? 0 : 1;
+          if (aMine !== bMine) return aMine - bMine;
+          return childLabelFor(a).toLowerCase() <
+            childLabelFor(b).toLowerCase()
+            ? -1
+            : 1;
+        })
+        .slice(0, 60)
+    : [];
+
   function submit() {
     setError(null);
     const body: Record<string, unknown> = {
       sponsorshipId,
-      childId,
+      childId: showChildPicker ? selectedChildId : childId,
       title: title.trim(),
       type,
       description: description.trim() || null,
@@ -362,6 +413,77 @@ export function CreateTaskModal({
               </p>
             ) : null}
           </fieldset>
+
+          {/* SS1 — optional child picker (general-task path only).
+              The chosen assignee DI's assigned children sort first; all
+              children are searchable. Child stays optional. */}
+          {showChildPicker ? (
+            <div>
+              <span className="block text-[12.5px] font-medium text-ink mb-1">
+                Child <span className="text-ink-soft font-normal">(optional)</span>
+              </span>
+              <p className="text-[12px] text-ink-soft mb-2 leading-snug">
+                The selected DI&apos;s assigned children show first. Leave on
+                &ldquo;No child&rdquo; for a general task.
+              </p>
+              <input
+                type="text"
+                value={childSearch}
+                onChange={(e) => setChildSearch(e.target.value)}
+                placeholder="Search children…"
+                className="w-full rounded-lg border border-stone-300 px-3 py-2 text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine focus:border-tangerine mb-2"
+              />
+              <div className="max-h-44 overflow-y-auto rounded-lg border border-stone-200 divide-y divide-stone-100">
+                <button
+                  type="button"
+                  onClick={() => setSelectedChildId(null)}
+                  className={`w-full text-left px-3 py-2 text-[13.5px] ${
+                    selectedChildId === null
+                      ? "bg-tangerine-mist text-tangerine-deeper font-medium"
+                      : "text-ink hover:bg-stone-50"
+                  }`}
+                >
+                  No child — general task
+                </button>
+                {visibleChildren.map((c) => {
+                  const active = selectedChildId === c.id;
+                  const mine = c.assignedDiId === manualAssigneeId;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSelectedChildId(c.id)}
+                      className={`w-full text-left px-3 py-2 text-[13.5px] flex items-center justify-between gap-2 ${
+                        active
+                          ? "bg-tangerine-mist text-tangerine-deeper font-medium"
+                          : "text-ink hover:bg-stone-50"
+                      }`}
+                    >
+                      <span className="truncate">
+                        {childLabelFor(c)}
+                        {c.divisionName ? (
+                          <span className="text-ink-soft">
+                            {" "}
+                            · {c.divisionName}
+                          </span>
+                        ) : null}
+                      </span>
+                      {mine ? (
+                        <span className="shrink-0 text-[10.5px] font-medium text-moss-deep">
+                          ✓ this DI
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+                {visibleChildren.length === 0 ? (
+                  <p className="px-3 py-2 text-[12.5px] text-ink-soft">
+                    No children match your search.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {error ? (
             <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-[13px] text-red-800">

@@ -291,6 +291,10 @@ export type AuditAction =
   // is IDs + enums only: { sponsorshipId, childId, paymentId, type,
   // assigned }. No child name / Tier-3 field. Actor is the SYSTEM user.
   | "system_created_task"
+  // ─── Task quick-assign — admin assigns an (often unassigned) task to
+  // a DI without a full edit flow. Metadata is IDs only:
+  // { taskId, assigneeId }. No PII. Actor is the admin.
+  | "admin_assigned_task"
   // ─── P2 — reveal lifecycle audit ───
   //
   // Donor / system actions on `reveal_request` (Tier-3 access grant
@@ -636,6 +640,8 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_rejected_task: () => `Admin sent your task back to redo`,
   // Piece #3 — donation auto-created a delivery task (system actor).
   system_created_task: () => `A paid donation auto-created a delivery task`,
+  // Task quick-assign — admin assigned a task to a DI.
+  admin_assigned_task: (a) => `${a} assigned a task to a Data Inputter`,
   // P2 — reveal lifecycle.
   donor_requested_reveal: () => `Donor requested a reveal`,
   donor_withdrew_reveal: () => `Donor withdrew a reveal request`,
