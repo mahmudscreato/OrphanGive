@@ -1220,6 +1220,31 @@ export function ChildForm({
 
     startTransition(async () => {
       try {
+        // FIX — when the form is bound to a draft, /[draftId]/submit
+        // re-validates the STORED draft, not the current form. Edits made
+        // since the last "Save as draft" (commonly the public first_name,
+        // added after an early draft-save) would be reported missing even
+        // though they're filled on screen. Persist the current form to the
+        // draft FIRST so strict validation runs against what the DI sees.
+        // This does NOT weaken validation — genuinely-empty required fields
+        // still fail server-side as before.
+        if (draftId) {
+          const draftBody = buildDraftBody();
+          const syncRes = await fetch(`/api/di/proposals/${draftId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fields: draftBody.fields,
+              photoUuid: draftBody.photoUuid,
+            }),
+          });
+          if (!syncRes.ok) {
+            setServerError(
+              "Couldn't sync your latest edits before submitting. Use \"Save as draft\", then submit.",
+            );
+            return;
+          }
+        }
         // Session 48b — submit-from-draft routes through the
         // /[draftId]/submit endpoint which re-runs strict validation
         // and discards the draft on success. Vanilla submit posts
@@ -1779,8 +1804,7 @@ export function ChildForm({
       <Section title="Intake photos">
         <p className="text-[13px] text-ink-soft mb-3 leading-relaxed">
           Add 3–5 photos from your initial visit so admin can verify
-          the profile. These are kept internal — donors never see
-          them.
+          the profile.
         </p>
         <IntakePhotoGrid
           childId={effectiveChildId}
