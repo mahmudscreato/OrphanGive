@@ -199,7 +199,8 @@ const creatableFieldsSchema = z
     support_type: z.enum(SUPPORT_TYPES),
     monthly_cost: z.number().int().min(0).max(1_000_000),
     story: z.string().min(50).max(2000),
-    guardian_summary_internal: z.string().min(1).max(2000),
+    // Guardian context (internal) is optional on create.
+    guardian_summary_internal: z.string().min(1).max(2000).optional(),
     guardian_relationship: z.enum(GUARDIAN_RELATIONSHIPS),
     parent_loss: z.enum(PARENT_LOSS),
     guardian_phone: z.string().min(7).max(32),

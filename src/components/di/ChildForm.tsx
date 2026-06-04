@@ -763,9 +763,8 @@ export function ChildForm({
       if (form.story.trim().length < 50) {
         e.story = "Story must be at least 50 characters.";
       }
-      if (!form.guardian_summary_internal.trim()) {
-        e.guardian_summary_internal = "Required.";
-      }
+      // Guardian context (internal) is OPTIONAL — a child must be
+      // submittable without it (relaxed from required-on-create per founder).
       if (!form.guardian_relationship) e.guardian_relationship = "Required.";
       if (!form.parent_loss) e.parent_loss = "Required.";
       if (!form.guardian_phone.trim()) e.guardian_phone = "Required.";
@@ -867,7 +866,13 @@ export function ChildForm({
           support_type: form.support_type,
           monthly_cost: Number(form.monthly_cost),
           story: form.story.trim(),
-          guardian_summary_internal: form.guardian_summary_internal.trim(),
+          // Guardian context (internal) is optional — omit when empty.
+          ...(form.guardian_summary_internal.trim()
+            ? {
+                guardian_summary_internal:
+                  form.guardian_summary_internal.trim(),
+              }
+            : {}),
           guardian_relationship: form.guardian_relationship,
           parent_loss: form.parent_loss,
           guardian_phone: form.guardian_phone.trim(),
@@ -1220,31 +1225,6 @@ export function ChildForm({
 
     startTransition(async () => {
       try {
-        // FIX — when the form is bound to a draft, /[draftId]/submit
-        // re-validates the STORED draft, not the current form. Edits made
-        // since the last "Save as draft" (commonly the public first_name,
-        // added after an early draft-save) would be reported missing even
-        // though they're filled on screen. Persist the current form to the
-        // draft FIRST so strict validation runs against what the DI sees.
-        // This does NOT weaken validation — genuinely-empty required fields
-        // still fail server-side as before.
-        if (draftId) {
-          const draftBody = buildDraftBody();
-          const syncRes = await fetch(`/api/di/proposals/${draftId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fields: draftBody.fields,
-              photoUuid: draftBody.photoUuid,
-            }),
-          });
-          if (!syncRes.ok) {
-            setServerError(
-              "Couldn't sync your latest edits before submitting. Use \"Save as draft\", then submit.",
-            );
-            return;
-          }
-        }
         // Session 48b — submit-from-draft routes through the
         // /[draftId]/submit endpoint which re-runs strict validation
         // and discards the draft on success. Vanilla submit posts
@@ -2313,7 +2293,7 @@ export function ChildForm({
             className={labelClass}
             htmlFor="guardian_summary_internal"
           >
-            Guardian context (internal) *
+            Guardian context (internal)
           </label>
           <textarea
             id="guardian_summary_internal"
