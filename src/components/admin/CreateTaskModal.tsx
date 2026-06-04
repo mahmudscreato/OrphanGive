@@ -12,6 +12,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import type { TaskType } from "@/lib/di-tasks";
+import {
+  TASK_TEMPLATES,
+  type TaskTemplate,
+} from "@/lib/task-templates";
 
 interface DI {
   id: string;
@@ -24,7 +29,8 @@ interface DI {
 export interface CreateTaskModalProps {
   open: boolean;
   onClose: () => void;
-  sponsorshipId: string;
+  // Piece #2 — null = a general task not tied to any sponsorship.
+  sponsorshipId: string | null;
   childId: string | null;
   // For display only — keeps the modal's "you're creating a task
   // for X" header informative without re-fetching.
@@ -49,6 +55,9 @@ export function CreateTaskModal({
 }: CreateTaskModalProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  // Piece #2 — task type, driven by the template picker. Defaults to
+  // 'general' so the form is valid from the start (blank + general).
+  const [type, setType] = useState<TaskType>("general");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -69,6 +78,20 @@ export function CreateTaskModal({
 
   if (!open) return null;
 
+  // Apply a quick-create template. Named templates (those carrying a
+  // pre-fill title) overwrite title/description/priority — picking one
+  // is an explicit "start from this". Blank templates (General/Custom)
+  // set ONLY the type so they don't wipe anything the admin already
+  // typed.
+  function applyTemplate(t: TaskTemplate) {
+    setType(t.type);
+    if (t.title) {
+      setTitle(t.title);
+      setDescription(t.description);
+      setPriority(t.priority);
+    }
+  }
+
   const autoAssignAvailable =
     childDivisionCode !== null &&
     availableDIs.some((d) => d.coversChildDivision);
@@ -79,6 +102,7 @@ export function CreateTaskModal({
       sponsorshipId,
       childId,
       title: title.trim(),
+      type,
       description: description.trim() || null,
       dueDate: dueDate.trim() || null,
       priority,
@@ -161,6 +185,8 @@ export function CreateTaskModal({
                   </>
                 ) : null}
               </>
+            ) : sponsorshipId === null ? (
+              <>General task — not tied to a child or sponsorship.</>
             ) : (
               <>Campaign sponsorship — no child anchor.</>
             )}
@@ -168,6 +194,39 @@ export function CreateTaskModal({
         </header>
 
         <div className="px-6 py-5 space-y-4">
+          {/* Template picker — sets the task type + (for named
+              templates) pre-fills title/description/priority. */}
+          <div>
+            <span className="block text-[12.5px] font-medium text-ink mb-1.5">
+              Template
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {TASK_TEMPLATES.map((t) => {
+                const active = type === t.type;
+                return (
+                  <button
+                    key={t.type}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    aria-pressed={active}
+                    className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                      active
+                        ? "border-tangerine bg-tangerine-mist"
+                        : "border-stone-300 bg-white hover:border-tangerine-soft hover:bg-tangerine-mist/40"
+                    }`}
+                  >
+                    <span className="block text-[13px] font-medium text-ink">
+                      {t.label}
+                    </span>
+                    <span className="block text-[11.5px] text-ink-soft leading-snug">
+                      {t.hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Title */}
           <label className="block">
             <span className="block text-[12.5px] font-medium text-ink mb-1.5">
@@ -297,8 +356,9 @@ export function CreateTaskModal({
             ) : null}
             {childId === null ? (
               <p className="mt-2 text-[12px] text-ink-soft leading-snug">
-                Campaign sponsorship — no child, no division scope. Pick a
-                DI manually.
+                {sponsorshipId === null
+                  ? "General task — no child or division scope. Pick a DI manually."
+                  : "Campaign sponsorship — no child, no division scope. Pick a DI manually."}
               </p>
             ) : null}
           </fieldset>

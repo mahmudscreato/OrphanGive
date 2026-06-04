@@ -13,9 +13,11 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { requireAdminUser } from "@/lib/admin-auth";
 import {
+  listAssignableDIs,
   listSelectableSponsorships,
   type SelectableSponsorship,
 } from "@/lib/admin-tasks";
+import { CreateTaskButton } from "@/components/admin/CreateTaskButton";
 import { sponsorshipStatusLabel } from "@/lib/status-labels";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +41,12 @@ export default async function NewTaskPage() {
   const session = await requireAdminUser();
   if (!session) return null;
 
-  const sponsorships = await listSelectableSponsorships();
+  const [sponsorships, generalDIs] = await Promise.all([
+    listSelectableSponsorships(),
+    // Piece #2 — all active DIs, for the general-task path (no child
+    // means no division scope, so every DI is eligible / manual pick).
+    listAssignableDIs(null),
+  ]);
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-5xl mx-auto">
@@ -56,10 +63,38 @@ export default async function NewTaskPage() {
           New field task
         </h1>
         <p className="mt-2 text-[14px] text-ink-soft leading-relaxed">
-          Pick the sponsorship this task is for. The next step opens the
-          create-task form pre-filled with the right context.
+          Create a general task, or tie a task to a sponsorship by picking
+          one below — the next step opens the create-task form pre-filled
+          with the right context.
         </p>
       </header>
+
+      {/* Piece #2 — general task: no child, no sponsorship. Opens the
+          same create-task modal with the sponsorship/child unset. */}
+      <div className="mb-6 rounded-2xl bg-white border border-stone-200 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-[16px] text-ink leading-tight">
+            General task
+          </h2>
+          <p className="text-[13px] text-ink-soft leading-snug mt-0.5">
+            Not tied to a child or sponsorship — e.g. an internal or ops
+            to-do for a Data Inputter.
+          </p>
+        </div>
+        <CreateTaskButton
+          sponsorshipId={null}
+          childId={null}
+          childDisplayName={null}
+          childDivisionCode={null}
+          childDivisionName={null}
+          availableDIs={generalDIs}
+          label="Create general task"
+        />
+      </div>
+
+      <h2 className="font-mono text-[11px] tracking-[0.14em] uppercase text-slate mb-2">
+        Or tie it to a sponsorship
+      </h2>
 
       {sponsorships.length === 0 ? (
         <div className="rounded-2xl bg-white border border-stone-200 p-10 text-center">

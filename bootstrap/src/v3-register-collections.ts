@@ -221,6 +221,12 @@ const NEW_COLLECTIONS: Record<string, CollectionDef> = {
     fields: [
       f.str('title', { required: true }),
       f.text('description'),
+      // Task system piece #2 — categorises the task + drives the
+      // quick-create templates. Nullable, default 'general' so tasks
+      // created before this field (or outside the typed flow) stay
+      // valid. Added to existing stacks via
+      // migrations/task-types-1/001-add-task-type-field.mjs.
+      f.enum('type', ['need_report', 'delivery_photos', 'need_moments', 'health_check', 'general', 'custom'], { def: 'general' }),
       f.m2o('child', { required: false }),
       f.m2o('assignee', { required: true }),
       f.m2o('created_by', { required: true }),
