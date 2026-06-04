@@ -1,5 +1,10 @@
 // Task system — task detail comments — task_comment + task_comment_attachment.
 //
+// v2 — FIXES the v1 integer-PK bug: createCollection now passes the uuid
+// PK in fields[] (v1 omitted fields[], so Directus auto-made an integer
+// id and the comment→task_comment FK was rejected). Self-heals an
+// already-broken+empty DB by dropping & recreating. See README.
+//
 // Internal admin↔DI comment thread on a task, with image/PDF attachments.
 //
 // INTERNAL ONLY — never donor-visible. Same fail-closed pattern as
@@ -104,8 +109,22 @@ async function createCollection(name, meta) {
       ...meta,
     },
     schema: { name },
+    // CRITICAL FIX (v2): pass fields[] WITH the uuid PK.
+    //
+    // The original migration created collections via POST /collections
+    // WITHOUT a fields[] array. Directus then auto-scaffolds a DEFAULT
+    // AUTO-INCREMENT INTEGER `id` — so task_comment.id came out integer,
+    // and the later explicit uuid `id` field-add was skipped ("exists").
+    // The junction's uuid `comment` column could then NOT reference the
+    // integer task_comment.id → the FK was rejected (500).
+    //
+    // Declaring the uuid PK in fields[] at create time scaffolds
+    // `id uuid PRIMARY KEY DEFAULT gen_random_uuid()` instead — matching
+    // the proven bootstrap pattern (v3-register-collections.ts) and
+    // making the comment↔attachment uuid FK valid.
+    fields: [PK],
   });
-  if (r.ok) note(`collection ${name}`, "created");
+  if (r.ok) note(`collection ${name}`, "created (uuid PK)");
   else note(`collection ${name}`, `FAIL ${r.status} ${r.text.slice(0, 200)}`);
 }
 
@@ -139,6 +158,71 @@ async function createRelation(collection, field, related_collection, on_delete) 
       `FAIL ${r.status} ${r.text.slice(0, 200)}`,
     );
   }
+}
+
+// ─── Self-heal: repair the integer-id bug from the v1 run ───────────
+//
+// The v1 migration created these collections with AUTO-INCREMENT INTEGER
+// ids. We can't change a PK's type in place (a dependent FK + Directus
+// have no clean API for it), so the repair is: DROP the broken
+// collection and let the corrected create path remake it with a uuid PK.
+//
+// DATA-SAFE: only drops a collection whose id is NOT uuid AND that has
+// ZERO rows. If a broken collection somehow has rows, we REFUSE to drop
+// and abort — never destroy data.
+
+async function idFieldType(coll) {
+  // Returns 'uuid' | 'integer' | ... , or null if the collection/field
+  // doesn't exist.
+  const r = await api("GET", `/fields/${coll}/id`);
+  if (r.status !== 200) return null;
+  return r.json?.data?.type ?? null;
+}
+
+async function collectionIsEmpty(coll) {
+  // Server token bypasses the fail-closed policy, so it can read items.
+  // If the read fails for any reason, return false (treated as "has
+  // data") so we never drop on uncertainty.
+  const r = await api("GET", `/items/${coll}?limit=1&fields=id`);
+  if (!r.ok) return false;
+  const rows = r.json?.data;
+  return Array.isArray(rows) && rows.length === 0;
+}
+
+async function dropCollection(coll) {
+  const r = await api("DELETE", `/collections/${coll}`);
+  if (r.ok) note(`drop ${coll}`, "dropped");
+  else if (r.status === 404) note(`drop ${coll}`, "absent (skip)");
+  else note(`drop ${coll}`, `FAIL ${r.status} ${r.text.slice(0, 200)}`);
+}
+
+/**
+ * If `coll` exists with the integer-id bug AND is empty, drop it so the
+ * create path can remake it with a uuid PK. Returns false ONLY when the
+ * collection is broken but NOT empty (caller should abort). Returns true
+ * for: absent, already-uuid, or broken-but-dropped.
+ */
+async function repairIfBroken(coll) {
+  const t = await idFieldType(coll);
+  if (t === null) {
+    note(`repair ${coll}`, "absent — will create fresh");
+    return true;
+  }
+  if (t === "uuid") {
+    note(`repair ${coll}`, "id is uuid (already correct)");
+    return true;
+  }
+  const empty = await collectionIsEmpty(coll);
+  if (!empty) {
+    note(
+      `repair ${coll}`,
+      `id is '${t}' but collection is NOT empty — refusing to drop`,
+    );
+    return false;
+  }
+  note(`repair ${coll}`, `id is '${t}' + empty → dropping to recreate as uuid`);
+  await dropCollection(coll);
+  return true;
 }
 
 // ─── Field definitions ──────────────────────────────────────────────
@@ -232,6 +316,23 @@ async function main() {
     process.exit(1);
   }
   note("field task.title", "exists");
+
+  // Self-heal the v1 integer-id bug. Drop the junction FIRST (it has a
+  // file FK), then the parent. Only drops empty + broken collections;
+  // a fresh DB or an already-fixed DB is a no-op.
+  console.log(
+    "\n=== Self-heal: repair v1 integer-id collections (if present + empty) ===",
+  );
+  const okJunction = await repairIfBroken("task_comment_attachment");
+  const okParent = await repairIfBroken("task_comment");
+  if (!okJunction || !okParent) {
+    console.error(
+      "\nABORT: a task_comment* collection has the integer-id bug but is NOT empty.\n" +
+        "Refusing to drop data. Resolve manually (see README — Repairing the\n" +
+        "broken production state) then re-run.",
+    );
+    process.exit(1);
+  }
 
   console.log("\n=== Create task_comment collection ===");
   await createCollection("task_comment", {
