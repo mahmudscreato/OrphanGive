@@ -24,6 +24,7 @@ import {
   User,
   LogOut,
   FileEdit,
+  History,
 } from "lucide-react";
 // Session 48a — bell moved to DiTopBar in the main content area;
 // no longer rendered in the sidebar.
@@ -53,6 +54,7 @@ const NAV_ITEMS: ReadonlyArray<{
   },
   { href: "/di/tasks", label: "Tasks", icon: ListTodo, exact: false },
   { href: "/di/submissions", label: "Submissions", icon: Inbox, exact: false },
+  { href: "/di/activity", label: "Activity", icon: History, exact: false },
   { href: "/di/profile", label: "Profile", icon: User, exact: false },
 ];
 

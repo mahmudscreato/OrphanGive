@@ -15,6 +15,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   FileEdit,
+  History,
   Home,
   Inbox,
   ListTodo,
@@ -44,6 +45,7 @@ const TABS: ReadonlyArray<{
   },
   { href: "/di/tasks", label: "Tasks", icon: ListTodo, exact: false },
   { href: "/di/submissions", label: "Submissions", icon: Inbox, exact: false },
+  { href: "/di/activity", label: "Activity", icon: History, exact: false },
   { href: "/di/profile", label: "Profile", icon: User, exact: false },
 ];
 
