@@ -1,9 +1,11 @@
 // Admin verify / send-back controls for a task awaiting verification.
 //
-// Rendered on /admin/tasks ONLY for rows where di_status ===
-// 'completed_pending_verification' AND admin_status === 'open' (i.e.
-// the DI has submitted the work and the admin hasn't decided yet).
-// Once a decision is written, the parent stops rendering this and the
+// Rendered on /admin/tasks for rows where di_status ===
+// 'completed_pending_verification' AND admin_status is 'open' (awaiting
+// a decision) OR 'rejected_redo' (sent back but not yet re-started by
+// the DI) — so the admin can still flip a sent-back task to Verify.
+// Hidden once admin_status='verified_complete' (terminal). When a
+// decision is written the parent stops rendering this and the
 // AdminStatusPill ("Verified" / "Sent back") reflects the outcome.
 //
 // POSTs to the admin write path (no body) then router.refresh() so the

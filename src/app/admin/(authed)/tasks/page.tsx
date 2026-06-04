@@ -245,13 +245,18 @@ function TaskRow({ row }: { row: AdminTaskRow }) {
         </span>
       </div>
 
-      {/* Admin verify / send-back. Shown ONLY when the DI has submitted
-          the work (di_status = completed_pending_verification) AND no
-          admin decision has been made yet (admin_status = open). Once a
-          decision is written, the AdminStatusPill above reflects it and
-          this control disappears. */}
+      {/* Admin verify / send-back. Shown while the DI's submitted work
+          is awaiting (admin_status='open') OR already sent back but not
+          yet re-started by the DI (admin_status='rejected_redo') — both
+          require di_status='completed_pending_verification'. Keeping the
+          buttons on a sent-back task lets the admin flip to Verify
+          before the DI picks it up. Hidden once admin_status=
+          'verified_complete' (terminal — a verified task is done). When
+          the DI re-starts a rejected task, di_status moves off
+          completed_pending_verification and the buttons stop showing. */}
       {row.di_status === "completed_pending_verification" &&
-      row.admin_status === "open" ? (
+      (row.admin_status === "open" ||
+        row.admin_status === "rejected_redo") ? (
         <TaskVerifyActions taskId={row.id} />
       ) : null}
     </div>
