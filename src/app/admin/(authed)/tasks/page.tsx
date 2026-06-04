@@ -23,7 +23,9 @@ import {
 import type {
   TaskDiStatus,
   TaskAdminStatus,
+  TaskType,
 } from "@/lib/di-tasks";
+import { TASK_TYPE_LABELS } from "@/lib/task-templates";
 
 export const dynamic = "force-dynamic";
 
@@ -195,6 +197,7 @@ function TaskRow({ row }: { row: AdminTaskRow }) {
           {row.title}
         </h3>
         <div className="flex gap-1.5">
+          <TypePill type={row.type} />
           <DiStatusPill status={row.di_status} />
           <AdminStatusPill status={row.admin_status} />
           <PriorityPill priority={row.priority} />
@@ -242,6 +245,19 @@ function TaskRow({ row }: { row: AdminTaskRow }) {
         </span>
       </div>
     </div>
+  );
+}
+
+function TypePill({ type }: { type: TaskType }) {
+  // Suppress 'general' — the neutral/legacy default (mirrors the way
+  // PriorityPill suppresses 'normal' and AdminStatusPill suppresses
+  // 'open'). The four named types + 'custom' get a badge so tasks are
+  // distinguishable at a glance.
+  if (type === "general") return null;
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-tangerine-mist text-tangerine-deeper">
+      {TASK_TYPE_LABELS[type]}
+    </span>
   );
 }
 

@@ -40,11 +40,22 @@ export const dynamic = "force-dynamic";
 
 const bodySchema = z
   .object({
-    sponsorshipId: z.string().uuid(),
+    // Piece #2 — sponsorship is now OPTIONAL (null = general task).
+    sponsorshipId: z.string().uuid().nullable(),
     childId: z.string().uuid().nullable(),
     assigneeUserId: z.string().uuid().nullable(),
     autoAssign: z.boolean().default(false),
     title: z.string().min(1).max(200),
+    // Piece #2 — task type is REQUIRED (the create UI always sends it
+    // via the template picker; "Custom"/"General" still carry a type).
+    type: z.enum([
+      "need_report",
+      "delivery_photos",
+      "need_moments",
+      "health_check",
+      "general",
+      "custom",
+    ]),
     description: z.string().max(2000).nullable().optional(),
     dueDate: z
       .string()
@@ -155,6 +166,7 @@ export async function POST(req: NextRequest) {
       childId: body.childId,
       assigneeUserId,
       title: body.title,
+      type: body.type,
       description: body.description ?? null,
       dueDate: body.dueDate ?? null,
       priority: body.priority,
@@ -190,6 +202,7 @@ export async function POST(req: NextRequest) {
       childId: body.childId,
       assigneeUserId,
       assignedVia,
+      type: body.type,
       childDivisionCode: result.childDivisionCode,
       priority: body.priority ?? "normal",
       hasDueDate: body.dueDate !== null && body.dueDate !== undefined,

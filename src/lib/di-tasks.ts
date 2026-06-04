@@ -53,6 +53,20 @@ export type TaskAdminStatus = "open" | "verified_complete" | "rejected_redo";
 
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 
+// Task system piece #2 — the structured task category. Backed by the
+// nullable `task.type` column (default 'general'; see
+// migrations/task-types-1). The quick-create templates in
+// src/lib/task-templates.ts map each type to default pre-fill copy.
+// 'general' is the neutral/legacy bucket (existing typeless tasks
+// coerce to it); 'custom' is an explicit blank-but-typed task.
+export type TaskType =
+  | "need_report"
+  | "delivery_photos"
+  | "need_moments"
+  | "health_check"
+  | "general"
+  | "custom";
+
 export interface TaskSummary {
   id: string;
   title: string;

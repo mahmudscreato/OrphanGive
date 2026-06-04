@@ -34,6 +34,7 @@ import type {
   TaskPriority,
   TaskDiStatus,
   TaskAdminStatus,
+  TaskType,
 } from "./di-tasks";
 
 // ─── Public types ───────────────────────────────────────────────────
@@ -55,10 +56,16 @@ export interface AssignableDI {
 
 export interface CreateTaskInput {
   adminUserId: string;
-  sponsorshipId: string; // required — every task in this spine surface ties to a sponsorship
-  childId: string | null; // null for campaign sponsorships (sponsorship.child IS NULL)
+  // Piece #2 — sponsorship is now OPTIONAL. null = a general task not
+  // tied to any sponsorship (the data model + DI UI already support
+  // child/sponsorship being null; this relaxes the admin create path).
+  sponsorshipId: string | null;
+  childId: string | null; // null for campaign sponsorships OR general tasks
   assigneeUserId: string;
   title: string;
+  // Piece #2 — the structured task category. Defaults to 'general' if
+  // omitted so callers that predate the field still produce a valid row.
+  type?: TaskType;
   description?: string | null;
   dueDate?: string | null; // YYYY-MM-DD
   priority?: TaskPriority;
@@ -74,6 +81,7 @@ export interface AdminTaskRow {
   id: string;
   title: string;
   description: string | null;
+  type: TaskType;
   priority: TaskPriority;
   due_date: string | null;
   date_created: string | null;
@@ -296,8 +304,10 @@ export async function createTask(
   if (!UUID_RE.test(input.adminUserId)) {
     throw new InvalidTaskInputError("adminUserId", "must be a uuid");
   }
-  if (!UUID_RE.test(input.sponsorshipId)) {
-    throw new InvalidTaskInputError("sponsorshipId", "must be a uuid");
+  // Piece #2 — sponsorship is optional (null = general task). Validate
+  // the uuid shape only when one IS provided.
+  if (input.sponsorshipId !== null && !UUID_RE.test(input.sponsorshipId)) {
+    throw new InvalidTaskInputError("sponsorshipId", "must be a uuid or null");
   }
   if (input.childId !== null && !UUID_RE.test(input.childId)) {
     throw new InvalidTaskInputError("childId", "must be a uuid or null");
@@ -321,6 +331,11 @@ export async function createTask(
     throw new InvalidTaskInputError("dueDate", "must be YYYY-MM-DD or null");
   }
   const priority: TaskPriority = input.priority ?? "normal";
+  // Piece #2 — coerce an unknown/missing type to 'general' (the column
+  // default + legacy bucket) so we never write a bad enum value.
+  const type: TaskType = VALID_TASK_TYPES_SET.has(input.type ?? "")
+    ? (input.type as TaskType)
+    : "general";
 
   // Look up the child's division code for the result (the route
   // handler uses it in the audit metadata so we know whether the
@@ -344,6 +359,7 @@ export async function createTask(
   const payload: Record<string, unknown> = {
     title,
     description,
+    type,
     child: input.childId,
     sponsorship: input.sponsorshipId,
     assignee: input.assigneeUserId,
@@ -384,6 +400,7 @@ const ADMIN_TASK_FIELDS = [
   "id",
   "title",
   "description",
+  "type",
   "priority",
   "due_date",
   "date_created",
@@ -404,6 +421,7 @@ type AdminTaskQueryRow = {
   id: string;
   title: string | null;
   description: string | null;
+  type: string | null;
   priority: string | null;
   due_date: string | null;
   date_created: string | null;
@@ -445,6 +463,14 @@ const VALID_PRIORITIES_SET = new Set<string>([
   "high",
   "urgent",
 ]);
+const VALID_TASK_TYPES_SET = new Set<string>([
+  "need_report",
+  "delivery_photos",
+  "need_moments",
+  "health_check",
+  "general",
+  "custom",
+]);
 
 function rowToAdminTaskRow(row: AdminTaskQueryRow): AdminTaskRow {
   const assigneeObj =
@@ -455,6 +481,10 @@ function rowToAdminTaskRow(row: AdminTaskQueryRow): AdminTaskRow {
     id: row.id,
     title: row.title?.trim() || "(untitled)",
     description: row.description?.trim() ?? null,
+    // Piece #2 — coerce null/unknown type → 'general' (legacy bucket).
+    type: (VALID_TASK_TYPES_SET.has(row.type ?? "")
+      ? row.type
+      : "general") as TaskType,
     priority: (VALID_PRIORITIES_SET.has(row.priority ?? "")
       ? row.priority
       : "normal") as TaskPriority,
