@@ -125,6 +125,48 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * FIX — document thumbnail. Documents accept image/* AND application/pdf, but
+ * the preview previously always rendered the file in an <img>, so PDFs failed
+ * to decode and showed the browser's broken-image icon. This renders the file
+ * as an image and, if it can't be decoded as one (onError — i.e. a PDF), falls
+ * back to a PDF/file icon. Image documents still preview normally. (accept is
+ * restricted to images + PDF, so a non-renderable preview is a PDF.)
+ */
+function DocumentThumb({
+  fileUrl,
+  dimmed,
+}: {
+  fileUrl: string;
+  dimmed: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div
+        className="w-20 h-20 rounded-lg border border-stone-200 bg-stone-50 flex flex-col items-center justify-center gap-1"
+        aria-hidden="true"
+      >
+        <FileText className="w-7 h-7 text-stone-400 stroke-[1.5]" />
+        <span className="text-[9px] font-semibold uppercase tracking-wider text-stone-400">
+          PDF
+        </span>
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={fileUrl}
+      alt=""
+      onError={() => setFailed(true)}
+      className={`w-20 h-20 rounded-lg object-cover bg-stone-100 ${
+        dimmed ? "opacity-60" : ""
+      }`}
+    />
+  );
+}
+
 export function DocumentsSection({
   childId,
   initial,
@@ -480,13 +522,10 @@ export function DocumentsSection({
                 {/* Preview / placeholder */}
                 <div className="shrink-0">
                   {visible?.fileUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={visible.fileUrl}
-                      alt=""
-                      className={`w-20 h-20 rounded-lg object-cover bg-stone-100 ${
-                        slot.uploading || slot.notesSaving ? "opacity-60" : ""
-                      }`}
+                    <DocumentThumb
+                      key={visible.fileUrl}
+                      fileUrl={visible.fileUrl}
+                      dimmed={slot.uploading || slot.notesSaving}
                     />
                   ) : (
                     <div

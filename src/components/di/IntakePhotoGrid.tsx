@@ -137,10 +137,16 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
   // ─── Helpers ──
   const usedSlots = slots.length;
   const inflightCount = inflight.length;
+  // FIX — only entries still uploading (error === null) count as "in
+  // progress". A FAILED upload keeps its placeholder (so the error tile +
+  // Dismiss button can show) but must NOT keep the "Uploading…" spinner
+  // running or the uploader disabled — otherwise one failure pins the
+  // spinner forever and the DI can't add the next photo without leaving.
+  const activeUploadCount = inflight.filter((u) => u.error === null).length;
   const totalSlots = usedSlots + inflightCount;
   const remainingCapacity = Math.max(0, MAX_INTAKE_PHOTOS - totalSlots);
   const canUploadMore = remainingCapacity > 0;
-  const isUploading = inflightCount > 0;
+  const isUploading = activeUploadCount > 0;
 
   function pickFile() {
     fileInputRef.current?.click();
@@ -532,7 +538,7 @@ export function IntakePhotoGrid({ childId, initial }: IntakePhotoGridProps) {
               <Camera className="w-3.5 h-3.5 stroke-[1.75]" aria-hidden="true" />
             )}
             {isUploading
-              ? `Uploading ${inflightCount}…`
+              ? `Uploading ${activeUploadCount}…`
               : remainingCapacity === MAX_INTAKE_PHOTOS
                 ? "Add photos"
                 : `Add up to ${remainingCapacity} more`}

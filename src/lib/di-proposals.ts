@@ -157,7 +157,8 @@ export interface ChildCreatableFields {
   support_type: string;
   monthly_cost: number;
   story: string;
-  guardian_summary_internal: string;
+  // Optional on create (see route schema + createCreateProposal).
+  guardian_summary_internal?: string;
   guardian_relationship: string;
   // Session 48a — required-on-submit additions:
   parent_loss: string;
@@ -768,7 +769,7 @@ async function createCreateProposal(
   v.required("support_type", f.support_type);
   v.required("monthly_cost", f.monthly_cost);
   v.required("story", f.story);
-  v.required("guardian_summary_internal", f.guardian_summary_internal);
+  // Guardian context (internal) is optional — no required check.
   v.required("guardian_relationship", f.guardian_relationship);
   // Session 48a — new mandatory-on-create fields.
   v.required("parent_loss", f.parent_loss);
@@ -906,7 +907,7 @@ async function createCreateProposal(
       guardian_employment: f.guardian_employment?.trim() || null,
       guardian_phone: f.guardian_phone.trim(),
       guardian_phone_alt: f.guardian_phone_alt?.trim() || null,
-      guardian_summary_internal: f.guardian_summary_internal.trim(),
+      guardian_summary_internal: f.guardian_summary_internal?.trim() || null,
       additional_family_notes: f.additional_family_notes?.trim() || null,
       // Field visit / submission (Session 48a — both columns mirrored
       // by mirrorSubmissionDate above so writes go to both)

@@ -763,9 +763,8 @@ export function ChildForm({
       if (form.story.trim().length < 50) {
         e.story = "Story must be at least 50 characters.";
       }
-      if (!form.guardian_summary_internal.trim()) {
-        e.guardian_summary_internal = "Required.";
-      }
+      // Guardian context (internal) is OPTIONAL — a child must be
+      // submittable without it (relaxed from required-on-create per founder).
       if (!form.guardian_relationship) e.guardian_relationship = "Required.";
       if (!form.parent_loss) e.parent_loss = "Required.";
       if (!form.guardian_phone.trim()) e.guardian_phone = "Required.";
@@ -867,7 +866,13 @@ export function ChildForm({
           support_type: form.support_type,
           monthly_cost: Number(form.monthly_cost),
           story: form.story.trim(),
-          guardian_summary_internal: form.guardian_summary_internal.trim(),
+          // Guardian context (internal) is optional — omit when empty.
+          ...(form.guardian_summary_internal.trim()
+            ? {
+                guardian_summary_internal:
+                  form.guardian_summary_internal.trim(),
+              }
+            : {}),
           guardian_relationship: form.guardian_relationship,
           parent_loss: form.parent_loss,
           guardian_phone: form.guardian_phone.trim(),
@@ -1779,8 +1784,7 @@ export function ChildForm({
       <Section title="Intake photos">
         <p className="text-[13px] text-ink-soft mb-3 leading-relaxed">
           Add 3–5 photos from your initial visit so admin can verify
-          the profile. These are kept internal — donors never see
-          them.
+          the profile.
         </p>
         <IntakePhotoGrid
           childId={effectiveChildId}
@@ -2289,7 +2293,7 @@ export function ChildForm({
             className={labelClass}
             htmlFor="guardian_summary_internal"
           >
-            Guardian context (internal) *
+            Guardian context (internal)
           </label>
           <textarea
             id="guardian_summary_internal"

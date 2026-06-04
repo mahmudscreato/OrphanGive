@@ -47,6 +47,12 @@ export const dynamic = "force-dynamic";
 // across into the pending submission body. Anything not in this list
 // is dropped silently (e.g. status, target_child handled separately).
 const COPYABLE_FIELDS = [
+  // P1.3 — first_name MUST be carried from the draft into the submission.
+  // It was missing here, so every draft submit dropped the required public
+  // name and produced a spurious "First name (public) — Required." error
+  // even when the field was filled. (display_name was present; first_name
+  // was overlooked when first_name was introduced.)
+  "first_name",
   "display_name",
   "gender",
   "date_of_birth",
