@@ -154,6 +154,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // per-child DI History tab (action prefix filter is di_*), but
   // the map must be exhaustive over AuditAction for type-safety.
   admin_created_task: ListChecks,
+  // Piece #3 — donation auto-task (system actor). Never surfaces on
+  // the per-child History tab (di_* prefix filter) but the map must
+  // stay exhaustive over AuditAction for type-safety.
+  system_created_task: ListChecks,
   // P2 — reveal lifecycle. These don't surface on the DI History
   // tab (donor + system actions; no di_ prefix) but the map must
   // stay exhaustive over AuditAction for type-safety.
