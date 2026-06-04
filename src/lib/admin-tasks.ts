@@ -28,6 +28,7 @@ import {
   readItems,
   readRoles,
   readUsers,
+  updateItem,
 } from "@directus/sdk";
 import { directusServer } from "./directus";
 import type {
@@ -644,4 +645,179 @@ export async function listSelectableSponsorships(): Promise<
       date_created: r.date_created,
     };
   });
+}
+
+// ─── Public API: admin verify / reject (admin half of the task
+//                state machine) ──────────────────────────────────────
+//
+// The DI owns the `di_status` axis (di-tasks.ts): they move a task
+// open → in_progress → completed_pending_verification. When a task
+// lands in `completed_pending_verification` it is waiting for an
+// admin's decision on the SEPARATE `admin_status` axis:
+//
+//   VERIFY  → admin_status = 'verified_complete'   (work accepted; done)
+//   REJECT  → admin_status = 'rejected_redo'       (sent back to the DI)
+//
+// After a 'rejected_redo' write the DI's OWN transition logic
+// (di-tasks.ts isLegalTransition) permits
+// completed_pending_verification → in_progress, so the DI can pick the
+// task back up and redo it. We do NOT touch di_status here — that axis
+// is the DI's, and modifying it from the admin side would break the
+// single-owner invariant the two-axis model depends on.
+//
+// No reject-reason is captured: the task schema has no free-text
+// reason/notes column for verification, and this slice does not add
+// one (per the build's "no new columns" guardrail). The decision +
+// actor + timestamp live on the row (admin_status / verified_by /
+// verified_at) and in the audit_log event the route writes.
+
+export class AdminTaskNotFoundError extends Error {
+  readonly code = "task_not_found" as const;
+  constructor(message = "Task not found") {
+    super(message);
+    this.name = "AdminTaskNotFoundError";
+  }
+}
+
+export class TaskNotVerifiableError extends Error {
+  readonly code = "task_not_verifiable" as const;
+  constructor(public readonly currentDiStatus: TaskDiStatus) {
+    super(
+      `Task is not awaiting verification (di_status="${currentDiStatus}"). ` +
+        `Only a task the DI has marked "completed_pending_verification" can be ` +
+        `verified or sent back.`,
+    );
+    this.name = "TaskNotVerifiableError";
+  }
+}
+
+export interface AdminTaskDecisionResult {
+  taskId: string;
+  adminStatus: Extract<TaskAdminStatus, "verified_complete" | "rejected_redo">;
+  childId: string | null;
+  sponsorshipId: string | null;
+}
+
+const TASK_DECISION_FIELDS = [
+  "id",
+  "di_status",
+  "admin_status",
+  "child",
+  "sponsorship",
+] as const;
+
+type TaskDecisionRow = {
+  id: string;
+  di_status: string | null;
+  admin_status: string | null;
+  child: string | { id?: string } | null;
+  sponsorship: string | null;
+};
+
+/**
+ * Shared writer for the admin verification axis. Validates the task
+ * exists and is in `completed_pending_verification` (the only state a
+ * DI hands to the admin for a decision), then writes:
+ *   admin_status = newAdminStatus
+ *   verified_at  = now()
+ *   verified_by  = adminUserId   (M2O directus_users — uuid key)
+ *
+ * Reads via readItems+filter (NOT readItem) so a genuinely-missing id
+ * resolves to [] (→ AdminTaskNotFoundError) rather than throwing,
+ * letting a real Directus/transport error bubble as a generic 500.
+ *
+ * Does NOT touch di_status (the DI's axis). Does NOT write the audit
+ * row — the route handler does that AFTER this returns so it can
+ * attach the request IP / user-agent.
+ *
+ * Throws AdminTaskNotFoundError / TaskNotVerifiableError /
+ * InvalidTaskInputError; a transport failure on the write throws a
+ * generic Error (→ route 500).
+ */
+async function setTaskAdminStatus(
+  taskId: string,
+  adminUserId: string,
+  newAdminStatus: "verified_complete" | "rejected_redo",
+): Promise<AdminTaskDecisionResult> {
+  if (!UUID_RE.test(taskId)) {
+    throw new AdminTaskNotFoundError("invalid task id");
+  }
+  if (!UUID_RE.test(adminUserId)) {
+    throw new InvalidTaskInputError("adminUserId", "must be a uuid");
+  }
+
+  let row: TaskDecisionRow | null = null;
+  try {
+    const result = (await directusServer().request(
+      readItems("task" as never, {
+        filter: { id: { _eq: taskId } },
+        fields: [...TASK_DECISION_FIELDS],
+        limit: 1,
+      } as never),
+    )) as unknown as TaskDecisionRow[] | undefined;
+    row = Array.isArray(result) ? result[0] ?? null : null;
+  } catch (err) {
+    console.error(
+      "[admin-tasks] setTaskAdminStatus read failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("task read failed");
+  }
+  if (!row || !row.id) throw new AdminTaskNotFoundError();
+
+  const diStatus = (VALID_DI_STATUSES_SET.has(row.di_status ?? "")
+    ? row.di_status
+    : "open") as TaskDiStatus;
+  if (diStatus !== "completed_pending_verification") {
+    throw new TaskNotVerifiableError(diStatus);
+  }
+
+  try {
+    await directusServer().request(
+      updateItem("task" as never, taskId as never, {
+        admin_status: newAdminStatus,
+        verified_at: new Date().toISOString(),
+        verified_by: adminUserId,
+      } as never),
+    );
+  } catch (err) {
+    console.error(
+      "[admin-tasks] setTaskAdminStatus update failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("task update failed");
+  }
+
+  const childObj = row.child && typeof row.child === "object" ? row.child : null;
+  return {
+    taskId,
+    adminStatus: newAdminStatus,
+    childId: childObj?.id ?? (typeof row.child === "string" ? row.child : null),
+    sponsorshipId: row.sponsorship,
+  };
+}
+
+/**
+ * VERIFY a task the DI marked complete. admin_status →
+ * 'verified_complete'. Only valid when di_status ===
+ * 'completed_pending_verification'.
+ */
+export function verifyTask(
+  taskId: string,
+  adminUserId: string,
+): Promise<AdminTaskDecisionResult> {
+  return setTaskAdminStatus(taskId, adminUserId, "verified_complete");
+}
+
+/**
+ * REJECT / send a task back to the DI. admin_status → 'rejected_redo'.
+ * Only valid when di_status === 'completed_pending_verification'. The
+ * DI's own transition logic then lets them move the task back to
+ * in_progress to redo it (see di-tasks.ts isLegalTransition).
+ */
+export function rejectTask(
+  taskId: string,
+  adminUserId: string,
+): Promise<AdminTaskDecisionResult> {
+  return setTaskAdminStatus(taskId, adminUserId, "rejected_redo");
 }

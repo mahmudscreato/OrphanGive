@@ -269,6 +269,21 @@ export type AuditAction =
   //                assignedVia: 'manual' | 'auto' }.
   // No Tier-3 child fields.
   | "admin_created_task"
+  // ─── Task admin verification (admin half of the task state machine) ───
+  //
+  // Admin's decision on a task the DI marked
+  // 'completed_pending_verification':
+  //   admin_verified_task  → admin_status='verified_complete' (work accepted)
+  //   admin_rejected_task  → admin_status='rejected_redo'     (sent back; the
+  //                          DI's own transition logic then permits
+  //                          completed_pending_verification → in_progress)
+  // Metadata is IDs + the decision enum only — { taskId, sponsorshipId,
+  // childId, decision }. No Tier-3 child fields, no reason text (the
+  // schema has no verification-reason column). childId is included so
+  // the DI's Recent Activity feed can surface the decision when the
+  // child is in the DI's scope.
+  | "admin_verified_task"
+  | "admin_rejected_task"
   // ─── P2 — reveal lifecycle audit ───
   //
   // Donor / system actions on `reveal_request` (Tier-3 access grant
@@ -607,6 +622,11 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Admin cleared the fulfillment exception`,
   // Spine 1.1 — admin field-task creation.
   admin_created_task: (a) => `${a} created a field task`,
+  // Admin half of the task state machine — verify / send-back. Phrased
+  // from the DI's POV since these can surface on the DI's Recent
+  // Activity feed (admin action on a child in the DI's scope).
+  admin_verified_task: () => `Admin verified your completed task`,
+  admin_rejected_task: () => `Admin sent your task back to redo`,
   // P2 — reveal lifecycle.
   donor_requested_reveal: () => `Donor requested a reveal`,
   donor_withdrew_reveal: () => `Donor withdrew a reveal request`,
