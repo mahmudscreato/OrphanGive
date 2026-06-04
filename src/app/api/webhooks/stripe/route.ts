@@ -31,6 +31,11 @@ import { recordWebhookAuditEvent } from "@/lib/webhook-audit";
 // webhook (charge.refunded / customer.subscription.deleted). Best-
 // effort; never blocks the webhook ack.
 import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
+// Task system piece #3 — a freshly recorded payment auto-creates a
+// fulfilment task (one per payment row, idempotent on the payment id).
+// Best-effort: createFulfillmentTaskForPayment never throws, so the
+// payment flow is never affected by a task-creation hiccup.
+import { createFulfillmentTaskForPayment } from "@/lib/donation-task";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -141,6 +146,22 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
   // already sent the receipt.
   if (created && paymentId) {
     await fireMonthlyReceiptEmail(paymentId);
+  }
+
+  // Piece #3 — auto-create the fulfilment task for this fresh payment
+  // (recurring invoice + first invoice both land here). Gated on the
+  // same fresh-payment signal as the receipt email, so replays don't
+  // duplicate. Best-effort; never throws.
+  if (created && paymentId) {
+    const childId =
+      typeof sponsorship.child === "string"
+        ? sponsorship.child
+        : sponsorship.child?.id ?? null;
+    await createFulfillmentTaskForPayment({
+      sponsorshipId: sponsorship.id,
+      childId,
+      paymentId,
+    });
   }
 
   // Phase 0 follow-up — audit the invoice-paid event. Best-effort.
@@ -442,7 +463,7 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
       ? (pi.amount ?? 0) / 100 // full upfront sum
       : s.amount_usd;
 
-    const { created } = await createPaymentIfMissing({
+    const { created, id: paymentId } = await createPaymentIfMissing({
       sponsorshipId: s.id,
       amount_usd: paymentAmount,
       status: "succeeded",
@@ -472,6 +493,21 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
     await updateSponsorship(s.id, patch);
 
     if (wasFirstActivation) newlyActiveIds.push(s.id);
+
+    // Piece #3 — auto-create the fulfilment task for this fresh payment
+    // (one-time gift or monthly-prepaid bundle). One payment row per
+    // sponsorship → one task per child, keyed on the payment id so a
+    // shared PaymentIntent across the bundle still de-dups correctly.
+    // Best-effort; never throws.
+    if (created && paymentId) {
+      const childId =
+        typeof s.child === "string" ? s.child : s.child?.id ?? null;
+      await createFulfillmentTaskForPayment({
+        sponsorshipId: s.id,
+        childId,
+        paymentId,
+      });
+    }
   }
 
   // Convert cart for this donor.

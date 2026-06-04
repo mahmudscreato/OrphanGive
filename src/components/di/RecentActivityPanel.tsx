@@ -148,6 +148,9 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Activity feed when the task's child is in the DI's scope.
   admin_verified_task: CheckCircle2,
   admin_rejected_task: RotateCcw,
+  // Piece #3 — donation auto-task (system actor). Never surfaces on
+  // the DI feed (system actor, no di_ prefix); type-safety placeholder.
+  system_created_task: ListChecks,
   // P2 — reveal lifecycle. Donor + system actions; never surface on
   // the DI feed (no di_ prefix). Type-safety placeholders only.
   donor_requested_reveal: Eye,

@@ -284,6 +284,13 @@ export type AuditAction =
   // child is in the DI's scope.
   | "admin_verified_task"
   | "admin_rejected_task"
+  // ─── Task system piece #3 — donation auto-task ───
+  //
+  // A successfully recorded donation payment (Stripe webhook, system
+  // actor) auto-creates a 'delivery_photos' fulfilment task. Metadata
+  // is IDs + enums only: { sponsorshipId, childId, paymentId, type,
+  // assigned }. No child name / Tier-3 field. Actor is the SYSTEM user.
+  | "system_created_task"
   // ─── P2 — reveal lifecycle audit ───
   //
   // Donor / system actions on `reveal_request` (Tier-3 access grant
@@ -627,6 +634,8 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   // Activity feed (admin action on a child in the DI's scope).
   admin_verified_task: () => `Admin verified your completed task`,
   admin_rejected_task: () => `Admin sent your task back to redo`,
+  // Piece #3 — donation auto-created a delivery task (system actor).
+  system_created_task: () => `A paid donation auto-created a delivery task`,
   // P2 — reveal lifecycle.
   donor_requested_reveal: () => `Donor requested a reveal`,
   donor_withdrew_reveal: () => `Donor withdrew a reveal request`,
