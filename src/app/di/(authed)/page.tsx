@@ -13,7 +13,7 @@
 //   - 3 quick actions (Add new child / Resume a draft / Check
 //     submissions) — the Resume button is a client component that
 //     opens an inline picker of recent drafts.
-//   - Recent activity feed (last 10 events for this DI).
+//   - (Recent activity feed moved to its own page at /di/activity.)
 //
 // Back-of-house aesthetic: clean, no decorative confetti / brush /
 // script anywhere. Stat numbers use Fraunces for a little warmth;
@@ -34,13 +34,11 @@ import {
 } from "lucide-react";
 import { requireDiUser } from "@/lib/di-auth";
 import { getDiDashboardStats } from "@/lib/di-dashboard-stats";
-import { getRecentActivityForUser } from "@/lib/di-audit";
 import { listDraftsForUser } from "@/lib/di-proposals";
 import { countUnreadForUser } from "@/lib/di-notifications";
 import { getBdDivisions } from "@/lib/di-children";
 import { StatTile } from "@/components/di/StatTile";
 import { QuickAction } from "@/components/di/QuickAction";
-import { RecentActivityPanel } from "@/components/di/RecentActivityPanel";
 import {
   DraftPickerModal,
   type DraftPickerEntry,
@@ -74,14 +72,14 @@ export default async function DiHomePage() {
   const session = await requireDiUser();
   const userId = session.userId;
 
-  // Five parallel reads: stats bundle (4 lifecycle counts), recent
-  // activity (last 10), recent drafts (top 5 for the picker), unread
-  // notification count, and BD division name resolution. Each
-  // helper handles its own error path; nothing here cascades.
-  const [stats, recentActivity, recentDrafts, unreadCount, allDivisions] =
+  // Four parallel reads: stats bundle (4 lifecycle counts), recent
+  // drafts (top 5 for the picker), unread notification count, and BD
+  // division name resolution. Each helper handles its own error path;
+  // nothing here cascades. (The recent-activity feed moved to its own
+  // page at /di/activity.)
+  const [stats, recentDrafts, unreadCount, allDivisions] =
     await Promise.all([
       getDiDashboardStats(userId),
-      getRecentActivityForUser(userId, 10),
       listDraftsForUser(userId),
       countUnreadForUser(userId),
       getBdDivisions(
@@ -297,10 +295,6 @@ export default async function DiHomePage() {
         </div>
       </section>
 
-      {/* ── Recent activity ── */}
-      <section>
-        <RecentActivityPanel events={recentActivity} />
-      </section>
     </div>
   );
 }
