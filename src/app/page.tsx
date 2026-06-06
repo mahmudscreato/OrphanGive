@@ -13,6 +13,17 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// Site-wide 1200×630 share card (JPEG). Same asset the root layout
+// and page-metadata helper use. It MUST be declared here because Next
+// merges metadata SHALLOWLY: this page's own `openGraph` block REPLACES
+// the layout's wholesale, so without an `images` key the homepage emits
+// NO og:image — and WhatsApp/Facebook then fall back to scraping the
+// first <img> on the page (the nav SVG logo), which they can't render
+// as a share card. (Same shallow-merge gotcha documented in
+// src/lib/page-metadata.ts and previously fixed for /faq.)
+const OG_IMAGE_URL =
+  "https://res.cloudinary.com/dh9w1apsk/image/upload/c_fill,w_1200,h_630,f_jpg,q_auto/v1778529921/_OrphanGive_CG_V2_25_khxro8.jpg";
+
 // Lot 4 Job B — explicit homepage metadata. The root layout's
 // metadataBase + title.default already cover the basics, but Next 16
 // merges per-page metadata into the head; an explicit export here
@@ -31,6 +42,29 @@ export const metadata: Metadata = {
       "Monthly child sponsorship with verified profiles, guardian consent, and transparent field reports. Operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021).",
     url: "/",
     type: "website",
+    // og:image (+ explicit dimensions/type) so scrapers don't fall back
+    // to the nav SVG. JPEG — the most universally-rendered share format.
+    images: [
+      {
+        url: OG_IMAGE_URL,
+        secureUrl: OG_IMAGE_URL,
+        width: 1200,
+        height: 630,
+        type: "image/jpeg",
+        alt: "OrphanGive",
+      },
+    ],
+  },
+  // Explicit twitter block (correctly named twitter:* tags — NOT
+  // og:temporal:twitter:*). Without one, the homepage would lean on
+  // layout inheritance; declaring it here keeps the most-shared URL
+  // self-contained and guarantees a large-image card with the JPEG.
+  twitter: {
+    card: "summary_large_image",
+    title: "OrphanGive — Sponsor a verified orphan in Bangladesh",
+    description:
+      "Monthly child sponsorship with verified profiles, guardian consent, and transparent field reports. Operated by Goodverse Foundation (Reg. S-14837/2026) in partnership with Children's Heaven Trust (Reg. iv-98/2021).",
+    images: [OG_IMAGE_URL],
   },
 };
 
