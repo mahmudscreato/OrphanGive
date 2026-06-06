@@ -386,7 +386,17 @@ export default async function DiTaskDetailPage({
           </p>
         )}
 
-        {task.childId ? (
+        {/* BUG-1 FIX: gate the link on the RESOLVED in-scope `child`
+            (getDiChildById), not on `task.childId`. The report-new page
+            404s (notFound) whenever getDiChildById returns null for this
+            DI — i.e. the child isn't in their caseload (not their
+            uploaded/assigned child, or a withdrawn / awaiting_intake
+            stub). Previously the link rendered for any task.childId, so
+            a task whose child is out of this DI's scope produced a
+            "File report" link that 404'd. Showing the link only when
+            `child` is non-null guarantees the target resolves (same
+            getDiChildById call, same args → same non-null result). */}
+        {child ? (
           <Link
             href={fileReportHref}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-tangerine text-white text-[14px] font-medium hover:bg-tangerine-deep transition-colors"
@@ -394,6 +404,15 @@ export default async function DiTaskDetailPage({
             <Upload className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
             {hasFiledReport ? "File another report" : "File report for this task"}
           </Link>
+        ) : task.childId ? (
+          // Task carries a child FK, but that child isn't in this DI's
+          // caseload — filing a report would 404. Direct them to the
+          // normal lifecycle instead of a broken link.
+          <p className="text-[13px] italic text-ink-soft">
+            This task&apos;s linked child isn&apos;t in your caseload, so a
+            report can&apos;t be filed from here. Mark the task complete
+            when it&apos;s done, or ask an admin.
+          </p>
         ) : (
           <p className="text-[13px] italic text-ink-soft">
             This task has no linked child, so a report can&apos;t be filed
