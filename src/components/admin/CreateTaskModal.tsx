@@ -121,31 +121,31 @@ export function CreateTaskModal({
     return c.firstName || c.displayName || "Unnamed child";
   }
 
-  // Reorder: the selected assignee DI's assigned children first, then
-  // the rest; filtered by the search box. Plain const (NOT useMemo) so
-  // it sits after the `if (!open)` early return without breaking the
-  // rules of hooks. The list is small (Tier-1, ≤500).
+  // DI-scoped: list ONLY the selected DI's assigned children
+  // (child.assigned_di === manualAssigneeId), searchable within that
+  // caseload. When no DI is selected yet, show nothing (the picker
+  // prompts to pick a DI first). Plain const (NOT useMemo) so it sits
+  // after the `if (!open)` early return without breaking the rules of
+  // hooks. The list is small (Tier-1, ≤500).
   const childQuery = childSearch.trim().toLowerCase();
-  const visibleChildren = showChildPicker
-    ? [...(pickableChildren ?? [])]
-        .filter((c) =>
-          childQuery
-            ? [c.firstName, c.displayName, c.divisionName]
-                .filter(Boolean)
-                .some((s) => s!.toLowerCase().includes(childQuery))
-            : true,
-        )
-        .sort((a, b) => {
-          const aMine = a.assignedDiId === manualAssigneeId ? 0 : 1;
-          const bMine = b.assignedDiId === manualAssigneeId ? 0 : 1;
-          if (aMine !== bMine) return aMine - bMine;
-          return childLabelFor(a).toLowerCase() <
-            childLabelFor(b).toLowerCase()
-            ? -1
-            : 1;
-        })
-        .slice(0, 60)
-    : [];
+  const visibleChildren =
+    showChildPicker && manualAssigneeId
+      ? [...(pickableChildren ?? [])]
+          .filter((c) => c.assignedDiId === manualAssigneeId)
+          .filter((c) =>
+            childQuery
+              ? [c.firstName, c.displayName, c.divisionName]
+                  .filter(Boolean)
+                  .some((s) => s!.toLowerCase().includes(childQuery))
+              : true,
+          )
+          .sort((a, b) =>
+            childLabelFor(a).toLowerCase() < childLabelFor(b).toLowerCase()
+              ? -1
+              : 1,
+          )
+          .slice(0, 60)
+      : [];
 
   function submit() {
     setError(null);
@@ -386,7 +386,13 @@ export function CreateTaskModal({
                   Pick a Data Inputter
                   <select
                     value={manualAssigneeId}
-                    onChange={(e) => setManualAssigneeId(e.target.value)}
+                    onChange={(e) => {
+                      setManualAssigneeId(e.target.value);
+                      // Picker is DI-scoped now: clear any child picked
+                      // for the previous DI so we never submit a child
+                      // outside the chosen DI's caseload.
+                      setSelectedChildId(null);
+                    }}
                     disabled={assigneeMode !== "manual"}
                     className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2 text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine focus:border-tangerine disabled:opacity-50"
                   >
@@ -428,16 +434,19 @@ export function CreateTaskModal({
                 Child <span className="text-ink-soft font-normal">(optional)</span>
               </span>
               <p className="text-[12px] text-ink-soft mb-2 leading-snug">
-                The selected DI&apos;s assigned children show first. Leave on
-                &ldquo;No child&rdquo; for a general task.
+                Only the selected DI&apos;s assigned children can be picked
+                here. Leave on &ldquo;No child&rdquo; for a general task.
               </p>
-              <input
-                type="text"
-                value={childSearch}
-                onChange={(e) => setChildSearch(e.target.value)}
-                placeholder="Search children…"
-                className="w-full rounded-lg border border-stone-300 px-3 py-2 text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine focus:border-tangerine mb-2"
-              />
+              {/* Search only once a DI is chosen — the list is DI-scoped. */}
+              {manualAssigneeId ? (
+                <input
+                  type="text"
+                  value={childSearch}
+                  onChange={(e) => setChildSearch(e.target.value)}
+                  placeholder="Search this DI's children…"
+                  className="w-full rounded-lg border border-stone-300 px-3 py-2 text-[14px] text-ink focus:outline-none focus:ring-2 focus:ring-tangerine focus:border-tangerine mb-2"
+                />
+              ) : null}
               <div className="max-h-44 overflow-y-auto rounded-lg border border-stone-200 divide-y divide-stone-100">
                 <button
                   type="button"
@@ -450,42 +459,46 @@ export function CreateTaskModal({
                 >
                   No child — general task
                 </button>
-                {visibleChildren.map((c) => {
-                  const active = selectedChildId === c.id;
-                  const mine = c.assignedDiId === manualAssigneeId;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setSelectedChildId(c.id)}
-                      className={`w-full text-left px-3 py-2 text-[13.5px] flex items-center justify-between gap-2 ${
-                        active
-                          ? "bg-tangerine-mist text-tangerine-deeper font-medium"
-                          : "text-ink hover:bg-stone-50"
-                      }`}
-                    >
-                      <span className="truncate">
-                        {childLabelFor(c)}
-                        {c.divisionName ? (
-                          <span className="text-ink-soft">
-                            {" "}
-                            · {c.divisionName}
-                          </span>
-                        ) : null}
-                      </span>
-                      {mine ? (
-                        <span className="shrink-0 text-[10.5px] font-medium text-moss-deep">
-                          ✓ this DI
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-                {visibleChildren.length === 0 ? (
+                {!manualAssigneeId ? (
                   <p className="px-3 py-2 text-[12.5px] text-ink-soft">
-                    No children match your search.
+                    Pick a Data Inputter above to see their assigned children.
                   </p>
-                ) : null}
+                ) : (
+                  <>
+                    {visibleChildren.map((c) => {
+                      const active = selectedChildId === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setSelectedChildId(c.id)}
+                          className={`w-full text-left px-3 py-2 text-[13.5px] ${
+                            active
+                              ? "bg-tangerine-mist text-tangerine-deeper font-medium"
+                              : "text-ink hover:bg-stone-50"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {childLabelFor(c)}
+                            {c.divisionName ? (
+                              <span className="text-ink-soft">
+                                {" "}
+                                · {c.divisionName}
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {visibleChildren.length === 0 ? (
+                      <p className="px-3 py-2 text-[12.5px] text-ink-soft">
+                        {childSearch.trim()
+                          ? "No children match your search."
+                          : "This Data Inputter has no assigned children."}
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
           ) : null}
