@@ -217,7 +217,12 @@ export function CreateTaskModal({
       aria-modal="true"
       aria-labelledby="create-task-title"
     >
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-lift">
+      {/* BUG-2 FIX: was max-w-lg (512px) — too narrow for the template
+          grid + child picker. Widen to max-w-3xl (768px) to match the
+          admin detail-page content width. Pure layout; fields/logic
+          unchanged. max-h + overflow keeps the taller form usable on
+          short viewports now that it's wider. */}
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-lift">
         <header className="px-6 pt-6 pb-3 border-b border-stone-200">
           <h2
             id="create-task-title"
