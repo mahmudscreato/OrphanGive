@@ -54,7 +54,15 @@ type Status = "active" | "prepaid" | "paused" | "cancelled" | "completed";
 type Props = {
   sponsorshipId: string;
   paymentMode: "monthly" | "one_time";
+  // Normalized display status (drives the cancelled/completed early-out).
   status: Status | string;
+  // RAW sponsorship.status from the DB (active | paused | pending_payment
+  // | cancelled | completed). The pause/resume/modify buttons gate on
+  // THIS, not on `status`, because normalizeStatus() collapses
+  // pending_payment → "active" (page.tsx) — gating on the normalized
+  // value would surface a Pause/Modify button on a pending_payment row
+  // where the endpoint returns 400.
+  dbStatus: string;
   amountUsd: number;
   childId: string;
   childName: string;
@@ -80,6 +88,7 @@ export function SponsorshipActions({
   sponsorshipId,
   paymentMode,
   status,
+  dbStatus,
   amountUsd,
   childId,
   childName,
@@ -146,9 +155,40 @@ export function SponsorshipActions({
   // doesn't apply.
   const showCancelButton = paymentMode === "monthly";
 
+  // Pause / Resume / Change-amount gating. These mirror the endpoints'
+  // own guards so a visible button can never hit a 400:
+  //   - pause       (POST /pause):  monthly + DB status 'active'
+  //   - resume      (POST /resume): DB status 'paused'
+  //   - modify      (POST /modify-amount): monthly + 'active' | 'paused'
+  // Gated on the RAW dbStatus (pending_payment is NOT shown — it
+  // normalizes to "active" but the endpoints reject it). Prepaid
+  // (monthly_prepaid) is excluded from pause/modify — there's no
+  // recurring charge to pause and the term price is fixed.
+  const isRecurringMonthly =
+    paymentMode === "monthly" && paymentSchedule !== "monthly_prepaid";
+  const canPause = isRecurringMonthly && dbStatus === "active";
+  const canResume = dbStatus === "paused";
+  const canModify =
+    isRecurringMonthly && (dbStatus === "active" || dbStatus === "paused");
+
   return (
     <>
       <div className="flex items-center gap-3 flex-wrap">
+        {canPause ? (
+          <ButtonOutline tone="grey" onClick={() => openModal("pause")}>
+            Pause
+          </ButtonOutline>
+        ) : null}
+        {canResume ? (
+          <ButtonOutline tone="tangerine" onClick={() => openModal("resume")}>
+            Resume
+          </ButtonOutline>
+        ) : null}
+        {canModify ? (
+          <ButtonOutline tone="grey" onClick={() => openModal("modify")}>
+            Change amount
+          </ButtonOutline>
+        ) : null}
         <ButtonOutline tone="tangerine" onClick={() => openModal("extend")}>
           Add more months
         </ButtonOutline>

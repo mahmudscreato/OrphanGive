@@ -179,6 +179,10 @@ export default async function SponsorshipDetailPage({
               sponsorshipId={sponsorship.id}
               paymentMode={sponsorship.payment_mode}
               status={status}
+              // Raw DB status — the pause/resume/modify buttons gate on
+              // this, not the normalized `status` above (which collapses
+              // pending_payment → "active").
+              dbStatus={sponsorship.status}
               amountUsd={sponsorship.amount_usd}
               childId={childId}
               childName={childName}
