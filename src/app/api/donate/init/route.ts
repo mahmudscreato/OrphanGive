@@ -32,7 +32,7 @@ import {
   updateItem,
 } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
-import { getCurrentDonor } from "@/lib/donor-data";
+import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
 import {
   getStripe,
   getStripePublishableKey,
@@ -237,7 +237,11 @@ export async function POST(req: NextRequest) {
   if (!donor) {
     return bad("Not authenticated", 401);
   }
-  if (donor.og_admin_approval_status !== "approved") {
+  // Approval gate removed — gate on getDonorState (OTP-verified =
+  // "approved") rather than the raw og_admin_approval_status field, which
+  // a now-effectively-approved (active + pending) donor would still fail.
+  // Still blocks rejected / suspended / unverified.
+  if (getDonorState(donor) !== "approved") {
     return bad("Donor account is not approved for donations", 403);
   }
 

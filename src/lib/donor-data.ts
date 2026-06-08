@@ -89,16 +89,22 @@ export function getDonorState(donor: Donor | null): DonorState {
     return "pending_verification";
   }
 
-  // From here we treat status as effectively 'active'. og_admin_approval_status
-  // is the second gate.
+  // Admin-approval gate REMOVED — OTP-verified email is the gate now.
+  // An 'active' (OTP-verified) donor is sponsorship-capable ("approved")
+  // UNLESS explicitly rejected (suspended is handled above). 'pending'
+  // (the post-OTP default, incl. legacy not-yet-approved rows) now
+  // resolves to "approved" — this instantly unblocks every existing
+  // pending donor with no DB migration, and every guard (state ===
+  // "approved") keeps working untouched. The "pending_approval" state is
+  // no longer produced (its dormant UI/proxy branches are now dead but
+  // intentionally left in place). 'rejected' and 'suspended' still block.
   switch (donor.og_admin_approval_status) {
     case "rejected":
       return "rejected";
     case "approved":
-      return "approved";
     case "pending":
     default:
-      return "pending_approval";
+      return "approved";
   }
 }
 
