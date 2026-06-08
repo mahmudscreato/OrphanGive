@@ -6,6 +6,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { COUNTRIES, COUNTRY_BY_CODE, DEFAULT_COUNTRY_CODE } from "@/lib/countries";
 import { signupSchema, type SignupInput } from "@/lib/donor-signup";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 
 const HOW_HEARD_OPTIONS = [
   { value: "search", label: "Search engine" },
@@ -25,6 +26,11 @@ export function SignUpForm() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
+  // Cloudflare Turnstile. `turnstileEnabled` is true only when the public
+  // site key is configured (inlined at build); otherwise the widget is a
+  // no-op and submit isn't gated on a token.
+  const turnstileEnabled = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   const {
     control,
@@ -56,7 +62,13 @@ export function SignUpForm() {
         const res = await fetch("/api/donor/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
+          // Turnstile token rides alongside the form values (the server
+          // reads it from the raw body; signupSchema strips it). undefined
+          // when captcha is off — the server then no-ops verification.
+          body: JSON.stringify({
+            ...values,
+            turnstileToken: turnstileToken || undefined,
+          }),
         });
         const json: { success?: boolean; error?: string; email?: string } = await res
           .json()
@@ -233,10 +245,19 @@ export function SignUpForm() {
         </div>
       ) : null}
 
+      {/* Cloudflare Turnstile — renders only when the site key is set
+          (otherwise a no-op). On solve it sets the token, which unlocks
+          the submit button below. */}
+      {turnstileEnabled ? (
+        <div className="col-span-2">
+          <TurnstileWidget onToken={setTurnstileToken} />
+        </div>
+      ) : null}
+
       <div className="col-span-2 mt-2 flex flex-wrap items-center gap-4">
         <button
           type="submit"
-          disabled={!isValid || pending}
+          disabled={!isValid || pending || (turnstileEnabled && !turnstileToken)}
           className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-tangerine text-ink px-8 py-[15px] text-[15px] transition-all duration-[250ms] ease-soft hover:bg-tangerine-deep hover:shadow-warm hover:-translate-y-px disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
         >
           {pending ? "Creating account…" : "Create account →"}

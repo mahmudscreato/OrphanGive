@@ -11,6 +11,9 @@ import {
   sendOtpEmail,
   signupSchema,
 } from "@/lib/donor-signup";
+// Cloudflare Turnstile bot protection. Graceful no-op when
+// TURNSTILE_SECRET_KEY is unset (verifyTurnstile returns ok+skipped).
+import { verifyTurnstile } from "@/lib/turnstile";
 
 // Use the Node runtime explicitly: bcryptjs works in Edge but is far slower
 // without native crypto. Resend's SDK also assumes Node fetch quirks.
@@ -42,6 +45,27 @@ export async function POST(req: NextRequest) {
   }
   const input = parsed.data;
   const ip = clientIp(req);
+
+  // Cloudflare Turnstile captcha — verified BEFORE createUser. The token is
+  // read from the raw body (signupSchema strips unknown keys, so it isn't
+  // in `input`). Graceful no-op when TURNSTILE_SECRET_KEY is unset:
+  // verifyTurnstile returns ok=true (skipped) so signup works unchanged.
+  // When configured, a missing/invalid token is rejected here. The rate
+  // limits below remain as defence-in-depth.
+  const turnstileToken =
+    json &&
+    typeof json === "object" &&
+    "turnstileToken" in json &&
+    typeof (json as Record<string, unknown>).turnstileToken === "string"
+      ? ((json as Record<string, unknown>).turnstileToken as string)
+      : null;
+  const captcha = await verifyTurnstile(turnstileToken, ip);
+  if (!captcha.ok) {
+    return NextResponse.json(
+      { error: "Captcha verification failed. Please refresh and try again." },
+      { status: 400 },
+    );
+  }
 
   // Per-IP rate limit on signup creation. Generic error on lockout to avoid
   // signaling that we're tracking IPs.
