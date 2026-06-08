@@ -36,6 +36,11 @@ import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
 // Best-effort: createFulfillmentTaskForPayment never throws, so the
 // payment flow is never affected by a task-creation hiccup.
 import { createFulfillmentTaskForPayment } from "@/lib/donation-task";
+// Admin notification email — fired at the SAME trigger point + idempotency
+// guard as the auto-task (one payment row → one email). Best-effort:
+// notifyAdminOfSponsorshipPayment never throws, so an email hiccup can't
+// affect the payment or the webhook.
+import { notifyAdminOfSponsorshipPayment } from "@/lib/sponsorship-notify";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -161,6 +166,15 @@ async function activateFromPaidInvoice(ctx: PaidInvoiceCtx) {
       sponsorshipId: sponsorship.id,
       childId,
       paymentId,
+    });
+    // Admin notification — one email per fresh payment row (same
+    // idempotency guard as the auto-task above). Best-effort; never throws.
+    await notifyAdminOfSponsorshipPayment({
+      sponsorshipId: sponsorship.id,
+      paymentId,
+      childId,
+      amountUsd,
+      paymentMode: sponsorship.payment_mode,
     });
   }
 
@@ -506,6 +520,15 @@ async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent) {
         sponsorshipId: s.id,
         childId,
         paymentId,
+      });
+      // Admin notification — one email per fresh payment row (same
+      // idempotency guard as the auto-task above). Best-effort; never throws.
+      await notifyAdminOfSponsorshipPayment({
+        sponsorshipId: s.id,
+        paymentId,
+        childId,
+        amountUsd: paymentAmount,
+        paymentMode: s.payment_mode,
       });
     }
   }
