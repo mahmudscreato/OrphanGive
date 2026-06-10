@@ -44,21 +44,20 @@
 -- live FK tree so you can confirm completeness against THIS database first.
 --
 -- ── HOW TO RUN ──────────────────────────────────────────────────────────────
---   1) Copy this file into the db container (or pipe it in). Then:
+--   Pass the TARGET EMAILS at run time with -v emails='a@x.com,b@x.com' (comma-
+--   separated; spaces trimmed; empty entries ignored). Nothing is edited into
+--   this file. An unset/empty emails variable ABORTS (never runs against "all").
 --
 --   DRY-RUN (default — counts only, deletes nothing):
 --     docker exec -i og-database psql -U directus -d directus \
---       -v ON_ERROR_STOP=1 -f /path/wipe-test-donors.sql
---   or piped:
---     docker exec -i og-database psql -U directus -d directus \
---       -v ON_ERROR_STOP=1 < wipe-test-donors.sql
+--       -v ON_ERROR_STOP=1 -v emails='a@test.com,b@test.com' < wipe-test-donors.sql
 --
 --   EXECUTE FOR REAL (only after reviewing the dry-run output):
 --     docker exec -i og-database psql -U directus -d directus \
---       -v ON_ERROR_STOP=1 -v confirm=DELETE < wipe-test-donors.sql
+--       -v ON_ERROR_STOP=1 -v emails='a@test.com,b@test.com' -v confirm=DELETE < wipe-test-donors.sql
 --
 --   (The magic word is the literal `DELETE`. Without it, the script always
---    rolls back.)
+--    rolls back. Without -v emails=… it aborts before touching anything.)
 -- ============================================================================
 
 \set ON_ERROR_STOP on
@@ -67,6 +66,14 @@
 \if :{?confirm}
 \else
   \set confirm DRY_RUN
+\endif
+
+-- Default the target-emails variable to empty when -v emails=… is not passed,
+-- so :'emails' is always a valid quoted literal (an empty set then ABORTS in
+-- the DO block — we never run against an empty/"all" target).
+\if :{?emails}
+\else
+  \set emails ''
 \endif
 
 -- ── (read-only) FK-DISCOVERY: every FK in this DB that points at a donor ────
@@ -97,17 +104,16 @@ BEGIN;
 SET LOCAL app.confirm = :'confirm';
 
 -- ════════════════════════════════════════════════════════════════════════
---  TARGET LIST — EDIT ME.  Add/remove the TEST donor emails here.
---  (Only users with the 'Donor' role are eligible; anything else aborts.)
+--  TARGET LIST — comes from the -v emails='a@x.com,b@x.com' command-line var.
+--  Split on comma, trim whitespace, drop empty entries, lowercase. Only users
+--  with the 'Donor' role are eligible; anything else aborts. :'emails' is psql-
+--  quoted, so an email value cannot break out of the string literal.
 -- ════════════════════════════════════════════════════════════════════════
 CREATE TEMP TABLE _target_donor_emails (email text) ON COMMIT DROP;
-INSERT INTO _target_donor_emails (email) VALUES
-  ('test-donor-1@example.com'),
-  ('test-donor-2@example.com')
-  -- ('another-test@example.com')
-;
--- ── To target by ID instead of email, replace the INSERT above with the IDs
---    and change the resolver join in the DO block from email→id to id.
+INSERT INTO _target_donor_emails (email)
+SELECT lower(btrim(e))
+FROM regexp_split_to_table(:'emails', ',') AS e
+WHERE btrim(e) <> '';
 
 DO $$
 DECLARE
@@ -119,6 +125,15 @@ DECLARE
   v_miss   int;
   v_n      bigint;
 BEGIN
+  ----------------------------------------------------------------------------
+  -- SAFETY 0: no target emails provided (unset / empty / whitespace) → abort.
+  -- Never run against an empty or "all" target.
+  ----------------------------------------------------------------------------
+  IF (SELECT count(*) FROM _target_donor_emails) = 0 THEN
+    RAISE EXCEPTION
+      'ABORT: no target emails provided. Pass -v emails=''a@x.com,b@x.com'' (comma-separated).';
+  END IF;
+
   ----------------------------------------------------------------------------
   -- SAFETY 1: any provided email mapping to a NON-Donor user → hard abort.
   ----------------------------------------------------------------------------

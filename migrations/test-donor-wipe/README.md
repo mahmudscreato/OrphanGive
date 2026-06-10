@@ -11,9 +11,12 @@ financial records). We work *with* it by deleting children-before-parent in one
 transaction. **No schema/constraint change.**
 
 ## Safety properties
-- **Targets only the emails you list** in the `_target_donor_emails` VALUES block at
-  the top of the `.sql`. Never a blanket "delete all donors".
-- **Donor-role only.** If any listed email maps to a non-`Donor` user (admin/DI/
+- **Targets only the emails you pass** at run time via `-v emails='a@x.com,b@x.com'`
+  (comma-separated; spaces trimmed; empty entries dropped). Nothing is edited into
+  the file. Never a blanket "delete all donors".
+- **Empty/unset emails abort.** No `-v emails=…` (or an empty/whitespace value) →
+  hard abort, deletes nothing. Never runs against an empty or "all" target.
+- **Donor-role only.** If any passed email maps to a non-`Donor` user (admin/DI/
   guardian), the script **aborts** and deletes nothing.
 - **Dry-run by default.** Without `-v confirm=DELETE` it prints exact COUNTS and
   rolls back — deletes nothing.
@@ -21,21 +24,22 @@ transaction. **No schema/constraint change.**
   still references the donor, the final delete fails and the whole thing rolls back.
 - Prints the **live FK tree** (every FK column referencing `directus_users`) at the
   top so you can confirm the deletion list is complete against the real DB.
+- `:'emails'` is psql-quoted, so an email value can't break out of the query.
 
 ## How to run (founder)
 
-1. Edit the `_target_donor_emails` VALUES list in `wipe-test-donors.sql`.
-2. **Dry-run first** (counts only, deletes nothing):
+1. **Dry-run first** (counts only, deletes nothing) — pass the test emails:
    ```bash
    docker exec -i og-database psql -U directus -d directus \
-     -v ON_ERROR_STOP=1 < wipe-test-donors.sql
+     -v ON_ERROR_STOP=1 -v emails='a@test.com,b@test.com' < wipe-test-donors.sql
    ```
-3. Review the printed counts + FK tree. Then **execute for real**:
+2. Review the printed counts + FK tree. Then **execute for real**:
    ```bash
    docker exec -i og-database psql -U directus -d directus \
-     -v ON_ERROR_STOP=1 -v confirm=DELETE < wipe-test-donors.sql
+     -v ON_ERROR_STOP=1 -v emails='a@test.com,b@test.com' -v confirm=DELETE < wipe-test-donors.sql
    ```
-   The literal word `DELETE` is the only thing that switches off dry-run.
+   The literal word `DELETE` is the only thing that switches off dry-run; without
+   `-v emails=…` the script aborts before touching anything.
 
 ## Deletion order (leaves → root, all scoped to the target donors)
 1. `task_comment_attachment` → 2. `task_comment` → 3. `task` → 4. `payment` →
@@ -48,6 +52,11 @@ are skipped rather than erroring.
 
 ## Validation
 Verified against a throwaway Postgres 16 container (NOT `og-database`) with stub
-tables mirroring the real FKs: dry-run rolls back unchanged; `confirm=DELETE`
-removes the test donor + full chain while the real donor, admin, and the real
-donor's sponsorship survive; a non-Donor email in the list aborts with no deletes.
+tables mirroring the real FKs (incl. `sponsorship.donor` NOT NULL), seeded with 2
+test donors + 1 real donor + 1 admin:
+- **dry-run** `-v emails='…two test…'` → counts + FK tree, ROLLBACK, nothing deleted,
+  real donor's sponsorship excluded;
+- **`-v emails='…' -v confirm=DELETE`** → deletes both test donors + full chain in
+  order (no FK violation), real donor + admin + real sponsorship survive, COMMIT;
+- **non-Donor email** in the list → hard abort, nothing deleted;
+- **empty / whitespace / unset emails** → hard abort with a clear message.
