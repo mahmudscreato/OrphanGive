@@ -567,7 +567,10 @@ function ApprovalPill({ status }: { status: DonorApprovalStatus }) {
     DonorApprovalStatus,
     { bg: string; text: string; label: string }
   > = {
-    pending: { bg: "bg-amber-50", text: "text-amber-800", label: "Pending" },
+    // Approval gate removed — 'pending' / 'not_started' donors are already
+    // sponsorship-capable once OTP-verified, so a neutral "Not required"
+    // (not an amber "Pending") avoids reading as "awaiting your review".
+    pending: { bg: "bg-stone-100", text: "text-stone-700", label: "Not required" },
     approved: {
       bg: "bg-moss-soft",
       text: "text-moss-deep",
@@ -581,7 +584,7 @@ function ApprovalPill({ status }: { status: DonorApprovalStatus }) {
     not_started: {
       bg: "bg-stone-100",
       text: "text-stone-700",
-      label: "Approval not started",
+      label: "Not required",
     },
   };
   const s = styles[status];

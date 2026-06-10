@@ -68,13 +68,14 @@ export function DonorActionBar({
 
   // ── Visibility rules ──
   //
-  // We intentionally still render the Approve button on already-
-  // approved donors (collapsed visually below) so admin can re-stamp
-  // the approval timestamp if needed for an audit trail follow-up.
-  // Same for Reject. The action helpers are idempotent — they record
-  // a fresh audit row each time.
+  // Approval gate REMOVED — OTP-verified email is the gate now, so every
+  // active donor is already sponsorship-capable. "Approve" is a no-op, so
+  // we HIDE the button to avoid admin confusion. The /approve route is
+  // left dormant + idempotent (not deleted); onApprove() below is kept
+  // but unreachable. Reject + Suspend remain the moderation controls
+  // (rejected / suspended still block the donor).
   const isSuspended = accountStatus === "suspended";
-  const canShowApprove = !isSuspended;
+  const canShowApprove = false;
   const canShowReject = !isSuspended;
 
   function handleApiError(err: ApiError, defaultMsg: string): string {
