@@ -63,16 +63,25 @@ export async function POST(
       adminSession.userId,
       parsed.data.reason,
     );
-    if (result.uploaderId) {
-      const childLabel = await fetchChildDisplayName(result.childId);
+    // Notify the uploader; fall back to the child's assigned DI when
+    // uploaded_by is null (legacy rows, or any future null) so the reject
+    // never silently fails to reach a DI. Only skip if BOTH are null.
+    const child = await fetchChildForNotify(result.childId);
+    const recipient = result.uploaderId ?? child.assignedDi;
+    if (recipient) {
       await notify({
-        recipientUserId: result.uploaderId,
+        recipientUserId: recipient,
         type: "admin_rejected_document",
-        title: `Document rejected for ${childLabel}`,
+        title: `Document rejected for ${child.displayName}`,
         body: `Admin's note: ${result.reason}`,
         relatedCollection: "child_document",
         relatedId: id,
       });
+    } else {
+      console.warn(
+        "[/api/admin/documents/reject] no notify recipient — uploaded_by AND assigned_di both null",
+        { documentId: id, childId: result.childId },
+      );
     }
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
@@ -93,18 +102,26 @@ export async function POST(
   }
 }
 
-async function fetchChildDisplayName(childId: string | null): Promise<string> {
-  if (!childId) return "the child";
+async function fetchChildForNotify(
+  childId: string | null,
+): Promise<{ displayName: string; assignedDi: string | null }> {
+  if (!childId) return { displayName: "the child", assignedDi: null };
   try {
     const rows = (await directusServer().request(
       readItems("child" as never, {
         filter: { id: { _eq: childId } },
-        fields: ["display_name"],
+        fields: ["display_name", "assigned_di"],
         limit: 1,
       } as never),
-    )) as unknown as Array<{ display_name: string | null }> | undefined;
-    return rows?.[0]?.display_name?.trim() || "this child";
+    )) as unknown as
+      | Array<{ display_name: string | null; assigned_di: string | null }>
+      | undefined;
+    const row = rows?.[0];
+    return {
+      displayName: row?.display_name?.trim() || "this child",
+      assignedDi: (row?.assigned_di as string | null) ?? null,
+    };
   } catch {
-    return "this child";
+    return { displayName: "this child", assignedDi: null };
   }
 }

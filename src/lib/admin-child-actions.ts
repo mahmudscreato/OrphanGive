@@ -565,7 +565,22 @@ export async function requestDocumentReupload(
   }
 
   const nowIso = new Date().toISOString();
-  const recipient = doc.uploaded_by;
+  // Notify the uploader; fall back to the child's assigned DI when
+  // uploaded_by is null (legacy rows / any future null) so the request
+  // reaches a DI instead of silently no-op'ing. Only null if BOTH null.
+  let recipient: string | null = doc.uploaded_by ?? null;
+  if (!recipient) {
+    try {
+      const childRow = (await directusServer().request(
+        readItem("child" as never, childId as never, {
+          fields: ["assigned_di"],
+        } as never),
+      )) as unknown as { assigned_di?: string | null } | null | undefined;
+      recipient = childRow?.assigned_di ?? null;
+    } catch {
+      recipient = null;
+    }
+  }
 
   await recordAuditEvent({
     actorUserId: adminUserId,
