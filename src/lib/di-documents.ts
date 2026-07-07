@@ -256,9 +256,9 @@ async function getOwnDocument(
  *     uploaded already via /api/di/uploads/photo or another upload
  *     pipeline that returns a directus_files UUID).
  *
- * Issued AS THE DI USER via withToken so `uploaded_by` (which has
- * the user-created special on the field) gets stamped with the DI's
- * UUID rather than admin's.
+ * Issued AS THE DI USER via withToken (scope/RLS). `uploaded_by` is set
+ * EXPLICITLY to the DI's UUID in the payload — the field has no
+ * user-created special, so it would otherwise be written NULL.
  *
  * Replacement workflow: there's a partial unique index on
  * (child, document_type) WHERE status='approved'. If admin has
@@ -299,7 +299,11 @@ export async function createDocument(
         file: input.fileUuid,
         notes: input.notes?.trim() || null,
         status: "pending",
-        // uploaded_by + date_created auto-fill via Directus specials.
+        // uploaded_by is a plain m2o — there is NO `user-created` special on
+        // this field, so it does NOT auto-fill. Set it explicitly to the DI so
+        // attribution ("Uploaded by …") resolves and reject/re-upload notifies
+        // reach the uploader. date_created still auto-fills via its special.
+        uploaded_by: session.userId,
       } as never),
     ),
   )) as unknown as { id?: string } | undefined;

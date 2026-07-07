@@ -27,6 +27,7 @@ import { getAdminDocumentDetail } from "@/lib/admin-documents";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { ReviewActionBar } from "@/components/admin/ReviewActionBar";
 import { AdminRemoveButton } from "@/components/admin/AdminRemoveButton";
+import { ReuploadRequestButton } from "@/components/admin/ReuploadRequestButton";
 
 export const dynamic = "force-dynamic";
 
@@ -192,6 +193,31 @@ export default async function AdminDocumentDetailPage({
         disabled={doc.status !== "pending"}
         disabledStatusLabel={doc.status}
       />
+
+      {/* Rejected docs: the approve/reject bar above is disabled, which
+          left the admin at a dead end. Surface the existing "request
+          re-upload" action so there's an obvious next step. The uploader
+          is already notified on reject; this sends an explicit nudge with
+          a note. Admins never upload replacements themselves — only DIs
+          re-upload (via their DocumentsSection, which already unlocks for
+          status='rejected'). */}
+      {doc.status === "rejected" && doc.childId ? (
+        <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-4">
+          <p className="mb-3 text-[13px] text-ink-soft leading-relaxed">
+            This document was rejected. The uploader is notified
+            automatically — use this to send an explicit re-upload request
+            with a note.
+          </p>
+          <ReuploadRequestButton
+            childId={doc.childId}
+            target={{
+              kind: "document",
+              documentId: doc.id,
+              label: doc.documentTypeLabel,
+            }}
+          />
+        </div>
+      ) : null}
 
       {/* Session 52c → 52d — Remove cleanup. Pending: two-tap
           confirm, silent. Approved: opens modal prompting for
