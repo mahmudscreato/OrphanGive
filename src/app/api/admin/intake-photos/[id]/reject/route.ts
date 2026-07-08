@@ -8,7 +8,7 @@ import {
   NotFoundError,
   rejectIntakePhoto,
 } from "@/lib/admin-intake-photos";
-import { notify } from "@/lib/di-notifications";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 
@@ -54,16 +54,25 @@ export async function POST(
       adminSession.userId,
       parsed.data.reason,
     );
-    if (result.uploaderId) {
+    const recipient = await resolveDiRecipient(
+      result.uploaderId,
+      result.childId,
+    );
+    if (recipient) {
       const childLabel = await fetchChildDisplayName(result.childId);
       await notify({
-        recipientUserId: result.uploaderId,
+        recipientUserId: recipient,
         type: "admin_rejected_intake_photo",
         title: `Intake photo rejected for ${childLabel}`,
         body: `Admin's note: ${result.reason}`,
         relatedCollection: "child_intake_photo",
         relatedId: id,
       });
+    } else {
+      console.warn(
+        "[/api/admin/intake-photos/reject] no notify recipient — uploaded_by AND assigned_di both null",
+        { photoId: id, childId: result.childId },
+      );
     }
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

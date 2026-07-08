@@ -11,7 +11,7 @@ import {
   NotFoundError,
 } from "@/lib/admin-documents";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/form-constants";
-import { notify } from "@/lib/di-notifications";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 
@@ -31,20 +31,28 @@ export async function POST(
   }
   try {
     const result = await approveDocument(id, adminSession.userId);
-    // Notify the uploading DI. Best-effort — failures swallowed
-    // inside notify(). Lookup the document type from the freshly-
-    // updated row's metadata isn't needed; we re-fetch a tiny
-    // record for the human-readable child label below.
-    if (result.uploaderId) {
+    // Notify the uploading DI; fall back to the child's assigned DI when
+    // uploaded_by is null (legacy rows). Skip only if BOTH are null.
+    // Best-effort — failures swallowed inside notify().
+    const recipient = await resolveDiRecipient(
+      result.uploaderId,
+      result.childId,
+    );
+    if (recipient) {
       const childLabel = await fetchChildDisplayName(result.childId);
       await notify({
-        recipientUserId: result.uploaderId,
+        recipientUserId: recipient,
         type: "admin_approved_document",
         title: `Document approved for ${childLabel}`,
         body: `Your document is verified. It now counts toward ${childLabel}'s verification badge on the public profile.`,
         relatedCollection: "child_document",
         relatedId: id,
       });
+    } else {
+      console.warn(
+        "[/api/admin/documents/approve] no notify recipient — uploaded_by AND assigned_di both null",
+        { documentId: id, childId: result.childId },
+      );
     }
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

@@ -230,9 +230,9 @@ async function getOwnIntakePhoto(
  *     uploaded already via /api/di/uploads/photo or the same upload
  *     pipeline used for moments).
  *
- * Issued AS THE DI USER via withToken so `uploaded_by` (which is set
- * with the `user-created` special on the field) gets stamped with the
- * DI's UUID rather than admin's.
+ * Issued AS THE DI USER via withToken (scope/RLS). `uploaded_by` is set
+ * EXPLICITLY to the DI's UUID in the payload — the field has no
+ * user-created special, so it would otherwise be written NULL.
  */
 export async function createIntakePhoto(
   session: { userId: string; accessToken: string },
@@ -266,8 +266,11 @@ export async function createIntakePhoto(
             ? Math.max(0, Math.round(input.displayOrder))
             : 0,
         status: "pending",
-        // uploaded_by + date_created auto-fill via Directus specials —
-        // user-created and date-created respectively.
+        // uploaded_by is a plain m2o — there is NO `user-created` special on
+        // this field, so it does NOT auto-fill. Set it explicitly to the DI so
+        // attribution resolves and admin approve/reject/re-upload notifications
+        // reach the uploader. date_created still auto-fills via its special.
+        uploaded_by: session.userId,
       } as never),
     ),
   )) as unknown as { id?: string } | undefined;
