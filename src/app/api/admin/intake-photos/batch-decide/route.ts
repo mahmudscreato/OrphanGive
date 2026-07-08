@@ -23,7 +23,7 @@ import {
   NotFoundError,
   rejectIntakePhoto,
 } from "@/lib/admin-intake-photos";
-import { notify } from "@/lib/di-notifications";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 
@@ -87,16 +87,22 @@ export async function POST(req: NextRequest) {
     try {
       if (d.decision === "approve") {
         const r = await approveIntakePhoto(d.photoId, adminSession.userId);
-        if (r.uploaderId) {
+        const recipient = await resolveDiRecipient(r.uploaderId, r.childId);
+        if (recipient) {
           const childLabel = await fetchChildDisplayName(r.childId);
           await notify({
-            recipientUserId: r.uploaderId,
+            recipientUserId: recipient,
             type: "admin_approved_intake_photo",
             title: `Intake photo approved for ${childLabel}`,
             body: `Your intake photo is verified and visible to sponsors of ${childLabel}.`,
             relatedCollection: "child_intake_photo",
             relatedId: d.photoId,
           });
+        } else {
+          console.warn(
+            "[/api/admin/intake-photos/batch-decide approve] no notify recipient — uploaded_by AND assigned_di both null",
+            { photoId: d.photoId, childId: r.childId },
+          );
         }
         results.push({ photoId: d.photoId, ok: true });
       } else {
@@ -105,16 +111,22 @@ export async function POST(req: NextRequest) {
           adminSession.userId,
           d.reason,
         );
-        if (r.uploaderId) {
+        const recipient = await resolveDiRecipient(r.uploaderId, r.childId);
+        if (recipient) {
           const childLabel = await fetchChildDisplayName(r.childId);
           await notify({
-            recipientUserId: r.uploaderId,
+            recipientUserId: recipient,
             type: "admin_rejected_intake_photo",
             title: `Intake photo rejected for ${childLabel}`,
             body: `Admin's note: ${r.reason}`,
             relatedCollection: "child_intake_photo",
             relatedId: d.photoId,
           });
+        } else {
+          console.warn(
+            "[/api/admin/intake-photos/batch-decide reject] no notify recipient — uploaded_by AND assigned_di both null",
+            { photoId: d.photoId, childId: r.childId },
+          );
         }
         results.push({ photoId: d.photoId, ok: true });
       }

@@ -17,7 +17,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { requireAdminUser } from "@/lib/admin-auth";
 import { NotFoundError, removeIntakePhoto } from "@/lib/admin-intake-photos";
-import { notify } from "@/lib/di-notifications";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 import { readItems } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 
@@ -58,20 +58,32 @@ export async function DELETE(
   try {
     const result = await removeIntakePhoto(id, adminSession.userId, reason);
 
-    if (result.wasStatus === "approved" && result.uploaderId) {
-      const childLabel = await fetchChildDisplayName(result.childId);
-      const reasonText =
-        reason && reason.trim().length > 0
-          ? `Admin's note: ${reason.trim()}`
-          : "No reason provided. Reach out if you have questions.";
-      await notify({
-        recipientUserId: result.uploaderId,
-        type: "admin_removed_approved_intake_photo",
-        title: `Intake photo removed from ${childLabel}`,
-        body: `An intake photo you uploaded for ${childLabel} was removed by admin. ${reasonText}`,
-        relatedCollection: "child_intake_photo",
-        relatedId: id,
-      });
+    if (result.wasStatus === "approved") {
+      // Fall back to the child's assigned DI when uploaded_by is null.
+      const recipient = await resolveDiRecipient(
+        result.uploaderId,
+        result.childId,
+      );
+      if (recipient) {
+        const childLabel = await fetchChildDisplayName(result.childId);
+        const reasonText =
+          reason && reason.trim().length > 0
+            ? `Admin's note: ${reason.trim()}`
+            : "No reason provided. Reach out if you have questions.";
+        await notify({
+          recipientUserId: recipient,
+          type: "admin_removed_approved_intake_photo",
+          title: `Intake photo removed from ${childLabel}`,
+          body: `An intake photo you uploaded for ${childLabel} was removed by admin. ${reasonText}`,
+          relatedCollection: "child_intake_photo",
+          relatedId: id,
+        });
+      } else {
+        console.warn(
+          "[/api/admin/intake-photos/[id] DELETE] no notify recipient — uploaded_by AND assigned_di both null",
+          { photoId: id, childId: result.childId },
+        );
+      }
     }
 
     return NextResponse.json({ ok: true, ...result });

@@ -35,7 +35,7 @@
 
 import "server-only";
 
-import { createItem, readItems, updateItem } from "@directus/sdk";
+import { createItem, readItem, readItems, updateItem } from "@directus/sdk";
 import { directusServer } from "./directus";
 
 // ─── Public types ───────────────────────────────────────────────────
@@ -226,6 +226,35 @@ export async function notify(input: NotifyInput): Promise<void> {
       type: input.type,
       err: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+/**
+ * Resolve the DI to notify for a content-review event: the uploader
+ * (`uploaded_by`) when known, else fall back to the child's `assigned_di`.
+ * Returns null ONLY when BOTH are null — callers should log + skip.
+ *
+ * This is the same fallback the merged documents reject fix uses, factored
+ * so every content-review notify site (documents + intake photos, approve /
+ * reject / remove / re-upload) reaches the DI even for legacy rows whose
+ * `uploaded_by` predates the explicit-set fix. When `uploaderId` is present
+ * it returns immediately with no DB read.
+ */
+export async function resolveDiRecipient(
+  uploaderId: string | null | undefined,
+  childId: string | null | undefined,
+): Promise<string | null> {
+  if (uploaderId) return uploaderId;
+  if (!childId) return null;
+  try {
+    const row = (await directusServer().request(
+      readItem("child" as never, childId as never, {
+        fields: ["assigned_di"],
+      } as never),
+    )) as unknown as { assigned_di?: string | null } | null | undefined;
+    return row?.assigned_di ?? null;
+  } catch {
+    return null;
   }
 }
 
