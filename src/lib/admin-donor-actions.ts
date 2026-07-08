@@ -36,9 +36,14 @@
 
 import "server-only";
 
-import { updateUser } from "@directus/sdk";
+import { updateUser, readUsers } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { recordAuditEvent } from "./di-audit";
+// SECURITY: moderation actions (approve/reject/suspend/reactivate) resolve
+// the target through fetchDonorOrThrow, which is role-scoped so a non-donor
+// id (admin / Super Admin / DI / service account) resolves to "not found"
+// and can never be acted on via the donor admin surface.
+import { DONOR_ROLE_FILTER } from "./directus-roles";
 
 // ─── Typed errors ───────────────────────────────────────────────────
 
@@ -91,16 +96,21 @@ interface MinimalDonorRow {
 
 async function fetchDonorOrThrow(donorId: string): Promise<MinimalDonorRow> {
   if (!donorId) throw new DonorNotFoundError();
-  // readUser via the admin token. We don't use the SDK's typed
-  // readUser because TS narrows the field type too aggressively —
-  // pass through readUser-by-fields and assert the shape.
+  // SECURITY: fetch via readUsers with the DONOR_ROLE_FILTER baked into the
+  // query so a non-donor id (admin / Super Admin / DI / the service accounts)
+  // returns an EMPTY result — indistinguishable from a missing id — and
+  // throws DonorNotFoundError. This is what makes the whole donor moderation
+  // surface (detail page + approve/reject/suspend/reactivate, which all route
+  // through here) structurally unable to touch a non-donor.
   try {
-    const { readUser } = await import("@directus/sdk");
-    const row = (await directusServer().request(
-      readUser(donorId, {
+    const rows = (await directusServer().request(
+      readUsers({
+        filter: { _and: [{ id: { _eq: donorId } }, DONOR_ROLE_FILTER] },
         fields: ["id", "email", "status", "og_admin_approval_status"],
+        limit: 1,
       } as never),
-    )) as unknown as MinimalDonorRow | null | undefined;
+    )) as unknown as MinimalDonorRow[] | null | undefined;
+    const row = rows?.[0];
     if (!row) throw new DonorNotFoundError();
     return row;
   } catch (err) {

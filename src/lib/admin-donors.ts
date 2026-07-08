@@ -46,6 +46,10 @@ import "server-only";
 import { readItems, readUser, readUsers } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { COUNTRY_BY_CODE } from "./countries";
+// SECURITY: every donor query MUST be scoped to donor roles so non-donor
+// users (admins, Super Admin, DIs, and the service accounts) can never be
+// listed, counted, or opened/suspended through the donor admin surface.
+import { DONOR_ROLE_FILTER } from "./directus-roles";
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -360,7 +364,7 @@ export async function countPendingDonorApprovals(): Promise<number> {
     const rows = (await directusServer().request(
       readUsers({
         filter: {
-          og_admin_approval_status: { _eq: "pending" },
+          _and: [DONOR_ROLE_FILTER, { og_admin_approval_status: { _eq: "pending" } }],
         },
         fields: ["id"],
         limit: -1,
@@ -467,7 +471,10 @@ export async function listAdminDonors(
   try {
     const result = (await directusServer().request(
       readUsers({
-        filter: filters.length > 0 ? { _and: filters } : undefined,
+        // SECURITY: role scope is ALWAYS applied (first in the _and), so
+        // the list can never surface a non-donor user regardless of the
+        // other filters.
+        filter: { _and: [DONOR_ROLE_FILTER, ...filters] },
         fields: [...DONOR_FIELDS],
         sort: sortClause,
         limit: rawFetchLimit,
