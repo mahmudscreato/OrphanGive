@@ -1,18 +1,16 @@
 // Admin Lot 1 — admin home dashboard.
 //
-// A four-section landing surface for daily operations:
-//   1. Pending work        — what's queued, click-through to triage
-//   2. Operational snapshot — active/live counts at a glance
-//   3. Attention items     — fulfillment exceptions (only when present)
-//   4. Recent activity     — last N audit events with human labels
+// Daily-operations landing surface:
+//   1. Quick actions       — one-tap into the most-used admin flows
+//   2. Pending work        — what's queued, click-through to triage
+//   3. Operational snapshot — active/live counts at a glance
+//   4. Attention items     — fulfillment exceptions (only when present)
 //
 // Read-only. Every count comes from existing counter helpers or a
 // single safeCount call in admin-dashboard.ts. No writes, no schema,
-// no business-logic touch.
-//
-// Privacy: Tier-1 labels only. Recent-activity feed renders via the
-// centralised audit-labels helpers — never dereferences audit
-// metadata directly.
+// no business-logic touch. Every tile/button links to a real, filtered
+// destination — a tile's number always links to a list showing exactly
+// those items.
 
 import {
   AlertTriangle,
@@ -25,18 +23,17 @@ import {
   ImagePlus,
   ListChecks,
   PauseCircle,
+  Plus,
   ShieldAlert,
-  Truck,
-  UserCircle,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { requireAdminUser } from "@/lib/admin-auth";
 import { getAdminDashboardData } from "@/lib/admin-dashboard";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatTile } from "@/components/admin/AdminStatTile";
 import { AttentionCard } from "@/components/admin/AttentionCard";
 import { DashboardSection } from "@/components/admin/DashboardSection";
-import { RecentActivityFeed } from "@/components/admin/RecentActivityFeed";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +41,22 @@ function formatCount(n: number | null): string {
   if (n === null) return "—";
   return new Intl.NumberFormat("en-US").format(n);
 }
+
+// Deep-link to the "DI marked complete, awaiting admin verification"
+// slice of the tasks list — the tasks page honours these two params.
+const TASKS_TO_VERIFY_HREF =
+  "/admin/tasks?di_status=completed_pending_verification&admin_status=open";
+
+const QUICK_ACTIONS: ReadonlyArray<{
+  label: string;
+  href: string;
+  icon: typeof ListChecks;
+}> = [
+  { label: "Review queue", href: "/admin/reviews", icon: ListChecks },
+  { label: "Tasks to verify", href: TASKS_TO_VERIFY_HREF, icon: ClipboardCheck },
+  { label: "New task", href: "/admin/tasks/new", icon: Plus },
+  { label: "Pending proposals", href: "/admin/proposals?filter=pending", icon: FileBarChart },
+];
 
 export default async function AdminHomePage() {
   const session = await requireAdminUser();
@@ -54,13 +67,6 @@ export default async function AdminHomePage() {
 
   const data = await getAdminDashboardData();
   const { base } = data;
-
-  // Aggregate moments + intake photos as a single "Moments & photos"
-  // tile because admin treats them as one batch when triaging.
-  const momentsCombined =
-    base.pendingMomentCount === null && base.pendingIntakePhotoCount === null
-      ? null
-      : (base.pendingMomentCount ?? 0) + (base.pendingIntakePhotoCount ?? 0);
 
   // Surface attention items only when any > 0 — avoid four amber
   // cards on a quiet day. fulfillment_exception columns are on main
@@ -75,9 +81,29 @@ export default async function AdminHomePage() {
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-6xl mx-auto">
       <AdminPageHeader
         title={greeting}
-        subtitle="Today's queues, operational state, and what changed recently."
+        subtitle="Today's queues and the state of the platform."
         flourish="Approve thoughtfully, reject with kindness."
       />
+
+      {/* ─── Quick actions ────────────────────────────────────────── */}
+      <DashboardSection eyebrow="Jump straight in" title="Quick actions">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          {QUICK_ACTIONS.map(({ label, href, icon: Icon }) => (
+            <Link
+              key={label}
+              href={href}
+              className="group flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3.5 shadow-sm transition-colors hover:border-tangerine hover:bg-tangerine-mist/30"
+            >
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-tangerine-mist/60 text-tangerine-deep group-hover:bg-tangerine group-hover:text-ink transition-colors">
+                <Icon className="h-[18px] w-[18px] stroke-[1.75]" aria-hidden="true" />
+              </span>
+              <span className="font-medium text-[14px] text-ink leading-tight">
+                {label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </DashboardSection>
 
       {/* ─── Pending work ─────────────────────────────────────────── */}
       <DashboardSection
@@ -101,26 +127,11 @@ export default async function AdminHomePage() {
             hint="donor-facing updates"
           />
           <AdminStatTile
-            label="Moments & photos"
-            value={formatCount(momentsCombined)}
+            label="Moments"
+            value={formatCount(base.pendingMomentCount)}
             href="/admin/reviews/moments"
             icon={Camera}
-            tooltip={`${formatCount(base.pendingMomentCount)} timeline · ${formatCount(base.pendingIntakePhotoCount)} intake`}
-            hint="timeline + intake"
-          />
-          <AdminStatTile
-            label="Documents"
-            value={formatCount(base.pendingDocumentCount)}
-            href="/admin/reviews/documents"
-            icon={FileText}
-            hint="legal/identity evidence"
-          />
-          <AdminStatTile
-            label="Deliveries"
-            value={formatCount(base.pendingDeliveryCount)}
-            href="/admin/reviews"
-            icon={Truck}
-            hint="aid drops awaiting review"
+            hint="timeline posts"
           />
           <AdminStatTile
             label="Intake photos"
@@ -130,16 +141,23 @@ export default async function AdminHomePage() {
             hint="initial-visit evidence"
           />
           <AdminStatTile
+            label="Documents"
+            value={formatCount(base.pendingDocumentCount)}
+            href="/admin/reviews/documents"
+            icon={FileText}
+            hint="legal/identity evidence"
+          />
+          <AdminStatTile
             label="Open tasks"
             value={formatCount(data.openTasks)}
-            href="/admin/tasks"
+            href="/admin/tasks?di_status=open"
             icon={ListChecks}
             hint="field work in progress"
           />
           <AdminStatTile
             label="Tasks to verify"
             value={formatCount(data.tasksAwaitingVerification)}
-            href="/admin/tasks"
+            href={TASKS_TO_VERIFY_HREF}
             icon={ClipboardCheck}
             hint="DI marked complete"
           />
@@ -165,13 +183,6 @@ export default async function AdminHomePage() {
             href="/admin/children"
             icon={Users}
             hint="in the program now"
-          />
-          <AdminStatTile
-            label="Donors awaiting approval"
-            value={formatCount(data.pendingDonorApprovals)}
-            href="/admin/donors?filter=pending"
-            icon={UserCircle}
-            hint="signup queue"
           />
           <AdminStatTile
             label="Audit log"
@@ -233,16 +244,6 @@ export default async function AdminHomePage() {
           </div>
         </DashboardSection>
       ) : null}
-
-      {/* ─── Recent activity ──────────────────────────────────────── */}
-      <DashboardSection
-        eyebrow="What's been happening"
-        title="Recent activity"
-        viewAllHref="/admin/audit"
-        viewAllLabel="Open audit log"
-      >
-        <RecentActivityFeed events={data.recentActivity} />
-      </DashboardSection>
     </div>
   );
 }

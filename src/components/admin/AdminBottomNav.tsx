@@ -22,9 +22,13 @@ import {
 // AdminSidebar. The mobile bottom nav doesn't currently surface a
 // partnerships tab (no room for a 6th); the badge key is here so
 // the layout's badges object type-checks without splitting types.
+// "tasks" is here (like "donors"/"partnerships") purely so the shared
+// `badges` object the layout passes to BOTH navs type-checks; the mobile
+// bottom nav has no Tasks tab (only 6 slots), so no tasks badge renders here.
 type BadgeKey =
   | "proposals"
   | "reviews"
+  | "tasks"
   | "donors"
   | "children"
   | "partnerships";
