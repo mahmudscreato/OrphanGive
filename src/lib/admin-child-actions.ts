@@ -43,7 +43,8 @@
 
 import "server-only";
 
-import { readItem, updateItem } from "@directus/sdk";
+import { z } from "zod";
+import { createItem, readItem, updateItem } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { recordAuditEvent } from "./di-audit";
 import { notify } from "./di-notifications";
@@ -147,6 +148,55 @@ export interface AdminChildEditableFields {
   last_visit_date?: string | null;
   submission_date?: string | null;
 }
+
+// Shared Zod schema for the admin child field set — used by BOTH the
+// direct-edit route (/api/admin/children/[id]/edit) and the create route
+// (/api/admin/children). Loose/partial: every field optional, unknown keys
+// stripped. The action helpers do change-detection + the required-blank /
+// required-on-publish guards.
+export const adminChildFieldsSchema = z
+  .object({
+    display_name: z.string().min(1).max(200).optional(),
+    gender: z.string().max(40).nullable().optional(),
+    date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    photo_consent: z.boolean().nullable().optional(),
+    bd_division: z.string().max(50).nullable().optional(),
+    bd_district: z.string().max(50).nullable().optional(),
+    district_internal: z.string().max(200).nullable().optional(),
+    permanent_address: z.string().max(500).nullable().optional(),
+    education_level: z.string().max(60).nullable().optional(),
+    class_grade: z.string().max(100).nullable().optional(),
+    educational_organization: z.string().uuid().nullable().optional(),
+    school_name_raw: z.string().max(200).nullable().optional(),
+    areas_of_interest: z.array(z.string()).max(20).nullable().optional(),
+    story: z.string().min(50).max(2000).optional(),
+    support_type: z.string().max(60).nullable().optional(),
+    monthly_cost: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    priority_support: z.string().max(40).nullable().optional(),
+    priority_notes: z.string().max(500).nullable().optional(),
+    blood_group: z.string().max(8).nullable().optional(),
+    vaccination_status: z.string().max(40).nullable().optional(),
+    last_medical_checkup: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    disability_status: z.string().max(40).nullable().optional(),
+    disability_notes: z.string().max(1000).nullable().optional(),
+    parent_loss: z.string().max(40).nullable().optional(),
+    siblings_count: z.number().int().min(0).max(30).nullable().optional(),
+    sibling_position: z.number().int().min(0).max(30).nullable().optional(),
+    siblings_notes: z.string().max(500).nullable().optional(),
+    household_size: z.number().int().min(0).max(30).nullable().optional(),
+    household_income_source: z.string().max(40).nullable().optional(),
+    monthly_household_income_bdt: z.number().int().min(0).max(10_000_000).nullable().optional(),
+    guardian_relationship: z.string().max(40).nullable().optional(),
+    guardian_employment_type: z.string().max(40).nullable().optional(),
+    guardian_employment: z.string().max(200).nullable().optional(),
+    guardian_phone: z.string().min(7).max(32).nullable().optional(),
+    guardian_phone_alt: z.string().max(32).nullable().optional(),
+    guardian_summary_internal: z.string().min(1).max(2000).optional(),
+    additional_family_notes: z.string().max(1000).nullable().optional(),
+    last_visit_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    submission_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  })
+  .strip();
 
 // Fields that we know are required-on-CREATE per the DI form. Admin
 // edits aren't allowed to BLANK these — admins are bypassing the
@@ -323,6 +373,87 @@ export async function editChildAsAdmin(
     appliedFields: Object.keys(writePayload),
     editedAt: nowIso,
   };
+}
+
+export interface CreateChildResult {
+  childId: string;
+}
+
+/**
+ * Admin direct-CREATE of a child profile. Lands as 'awaiting_intake' — NOT
+ * public/sponsorable (all public reads filter status='active') — attributed
+ * to the creating admin. The admin then reviews on the detail page and
+ * PUBLISHES via reactivateChildAsAdmin (which enforces the required-field
+ * gate). Publishing is a separate explicit action; this never auto-publishes.
+ *
+ * Reuses editChildAsAdmin for the field write so ALL normalisation
+ * (bd_* slug codes, areas_of_interest -> pg array, string trims) and the
+ * required-blank guard are shared — no parallel writer.
+ */
+export async function createChildAsAdmin(
+  adminUserId: string,
+  fields: AdminChildEditableFields,
+  request?: Request,
+): Promise<CreateChildResult> {
+  const displayName =
+    typeof fields.display_name === "string" ? fields.display_name.trim() : "";
+  if (displayName.length === 0) {
+    throw new InvalidChildStateError(
+      "Display name is required to create a child.",
+    );
+  }
+
+  // 1) Minimal stub, NOT public. `created_by` is a plain m2o with NO
+  //    user-created special, so set it EXPLICITLY to the admin (same lesson
+  //    as the uploaded_by fixes) — never "Unknown".
+  let childId: string;
+  try {
+    const created = (await directusServer().request(
+      createItem("child" as never, {
+        display_name: displayName,
+        status: "awaiting_intake",
+        created_by: adminUserId,
+      } as never),
+    )) as unknown as { id?: string } | undefined;
+    const id = created?.id;
+    if (!id) throw new Error("createItem returned no id");
+    childId = String(id);
+  } catch (err) {
+    throw new ChildWriteFailedError(err);
+  }
+
+  // 2) Apply the remaining fields via the EXISTING admin edit path. Only
+  //    pass defined, non-empty values so the required-blank guard never
+  //    fires on create — a required field left blank simply stays unset,
+  //    and the publish gate (reactivateChildAsAdmin) enforces it later.
+  const applyFields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (k === "display_name") continue; // already on the stub
+    if (v === undefined || v === null) continue;
+    if (typeof v === "string" && v.trim().length === 0) continue;
+    applyFields[k] = v;
+  }
+  if (Object.keys(applyFields).length > 0) {
+    await editChildAsAdmin(
+      childId,
+      adminUserId,
+      applyFields as AdminChildEditableFields,
+      request,
+    );
+  }
+
+  // 3) Explicit create audit (admin attribution).
+  await recordAuditEvent({
+    actorUserId: adminUserId,
+    actorRole: "admin",
+    action: "admin_created_child",
+    collection: "child",
+    recordId: childId,
+    metadata: { display_name: displayName, status: "awaiting_intake" },
+    request,
+  });
+
+  return { childId };
 }
 
 // Helper: read the "current" value for a given editable key from

@@ -108,6 +108,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_triggered_password_reset: HistoryIcon,
   // Session 66 — admin child management. Type-safety placeholders.
   admin_viewed_child: HistoryIcon,
+  admin_created_child: Edit3,
   admin_edited_child: Edit3,
   admin_archived_child: Trash2,
   admin_reactivated_child: CheckCircle2,

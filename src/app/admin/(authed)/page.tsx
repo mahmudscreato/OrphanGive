@@ -25,6 +25,7 @@ import {
   PauseCircle,
   Plus,
   ShieldAlert,
+  UserPlus,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -54,8 +55,8 @@ const QUICK_ACTIONS: ReadonlyArray<{
 }> = [
   { label: "Review queue", href: "/admin/reviews", icon: ListChecks },
   { label: "Tasks to verify", href: TASKS_TO_VERIFY_HREF, icon: ClipboardCheck },
-  { label: "New task", href: "/admin/tasks/new", icon: Plus },
-  { label: "Pending proposals", href: "/admin/proposals?filter=pending", icon: FileBarChart },
+  { label: "+ New Child", href: "/admin/children/new", icon: UserPlus },
+  { label: "New Task", href: "/admin/tasks/new", icon: Plus },
 ];
 
 export default async function AdminHomePage() {

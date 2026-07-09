@@ -47,7 +47,13 @@ export function AdminChildActionBar({
   const [serverError, setServerError] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
+  // 'withdrawn' = archived (was public, flip back to Reactivate).
+  // 'awaiting_intake' = never published yet (admin-created or DI stub) —
+  // the publish step. Both use the same reactivate endpoint (flip → active,
+  // gated on required fields); only the label differs.
   const isArchived = status === "withdrawn";
+  const isAwaitingIntake = status === "awaiting_intake";
+  const canPublish = isArchived || isAwaitingIntake;
 
   function handleApiError(err: ApiError, fallback: string): string {
     if (err.error === "unauthorized") {
@@ -83,7 +89,11 @@ export function AdminChildActionBar({
           setServerError(handleApiError(data, "Couldn't reactivate."));
           return;
         }
-        setSuccessToast("Reactivated. The child is back on public surfaces.");
+        setSuccessToast(
+          isAwaitingIntake
+            ? "Published. The child is now live on public surfaces."
+            : "Reactivated. The child is back on public surfaces.",
+        );
         window.setTimeout(() => router.refresh(), 600);
       } catch {
         setServerError("Network error. Try again.");
@@ -149,7 +159,7 @@ export function AdminChildActionBar({
           Edit basic info
         </Link>
 
-        {isArchived ? (
+        {canPublish ? (
           <button
             type="button"
             onClick={onReactivate}
@@ -161,7 +171,7 @@ export function AdminChildActionBar({
             ) : (
               <PlayCircle className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
             )}
-            Reactivate
+            {isAwaitingIntake ? "Publish" : "Reactivate"}
           </button>
         ) : (
           <button
