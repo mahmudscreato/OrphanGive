@@ -154,6 +154,7 @@ export type AuditAction =
   // Re-upload events carry their reason in audit.metadata.reason +
   // the document/photo id in metadata.target_id.
   | "admin_viewed_child"
+  | "admin_created_child"
   | "admin_edited_child"
   | "admin_archived_child"
   | "admin_reactivated_child"
@@ -578,6 +579,7 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   // reach the DI via the in-app notification system; the History tab
   // also renders them once we wire the description side.
   admin_viewed_child: (a) => `${a} opened a child profile`,
+  admin_created_child: () => `Admin created a new child profile`,
   admin_edited_child: () => `Admin edited the child profile`,
   admin_archived_child: () => `Admin archived this child`,
   admin_reactivated_child: () => `Admin reactivated this child`,

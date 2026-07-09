@@ -19,82 +19,22 @@
 //   500 server_error
 
 import { NextResponse, type NextRequest } from "next/server";
-import { z } from "zod";
 import { requireAdminUser } from "@/lib/admin-auth";
 import {
   ChildNotFoundError,
   ChildWriteFailedError,
   InvalidChildStateError,
+  adminChildFieldsSchema,
   editChildAsAdmin,
   type AdminChildEditableFields,
 } from "@/lib/admin-child-actions";
 
 export const dynamic = "force-dynamic";
 
-// Loose schema: every field optional, anything not listed gets
-// stripped (Zod's .strip() is the default). The action helper does
-// the actual change-detection + required-blanking guard.
-const editSchema = z
-  .object({
-    display_name: z.string().min(1).max(200).optional(),
-    gender: z.string().max(40).nullable().optional(),
-    date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-    photo_consent: z.boolean().nullable().optional(),
-    bd_division: z.string().max(50).nullable().optional(),
-    bd_district: z.string().max(50).nullable().optional(),
-    district_internal: z.string().max(200).nullable().optional(),
-    permanent_address: z.string().max(500).nullable().optional(),
-    education_level: z.string().max(60).nullable().optional(),
-    class_grade: z.string().max(100).nullable().optional(),
-    educational_organization: z.string().uuid().nullable().optional(),
-    school_name_raw: z.string().max(200).nullable().optional(),
-    areas_of_interest: z.array(z.string()).max(20).nullable().optional(),
-    story: z.string().min(50).max(2000).optional(),
-    support_type: z.string().max(60).nullable().optional(),
-    monthly_cost: z.number().int().min(0).max(1_000_000).nullable().optional(),
-    priority_support: z.string().max(40).nullable().optional(),
-    priority_notes: z.string().max(500).nullable().optional(),
-    blood_group: z.string().max(8).nullable().optional(),
-    vaccination_status: z.string().max(40).nullable().optional(),
-    last_medical_checkup: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .nullable()
-      .optional(),
-    disability_status: z.string().max(40).nullable().optional(),
-    disability_notes: z.string().max(1000).nullable().optional(),
-    parent_loss: z.string().max(40).nullable().optional(),
-    siblings_count: z.number().int().min(0).max(30).nullable().optional(),
-    sibling_position: z.number().int().min(0).max(30).nullable().optional(),
-    siblings_notes: z.string().max(500).nullable().optional(),
-    household_size: z.number().int().min(0).max(30).nullable().optional(),
-    household_income_source: z.string().max(40).nullable().optional(),
-    monthly_household_income_bdt: z
-      .number()
-      .int()
-      .min(0)
-      .max(10_000_000)
-      .nullable()
-      .optional(),
-    guardian_relationship: z.string().max(40).nullable().optional(),
-    guardian_employment_type: z.string().max(40).nullable().optional(),
-    guardian_employment: z.string().max(200).nullable().optional(),
-    guardian_phone: z.string().min(7).max(32).nullable().optional(),
-    guardian_phone_alt: z.string().max(32).nullable().optional(),
-    guardian_summary_internal: z.string().min(1).max(2000).optional(),
-    additional_family_notes: z.string().max(1000).nullable().optional(),
-    last_visit_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .nullable()
-      .optional(),
-    submission_date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .nullable()
-      .optional(),
-  })
-  .strip();
+// Field validation is the SHARED adminChildFieldsSchema (also used by the
+// create route). The action helper does change-detection + the
+// required-blanking guard.
+const editSchema = adminChildFieldsSchema;
 
 export async function POST(
   req: NextRequest,
