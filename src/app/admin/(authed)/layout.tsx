@@ -19,6 +19,8 @@ import { getAdminHomeStats } from "@/lib/admin-home-stats";
 import { countActiveChildrenForBadge } from "@/lib/admin-children";
 // P4 — `new`-status partnership inquiries badge.
 import { countNewPartnershipInquiries } from "@/lib/partnership-inquiries";
+// Tasks nav badge — count of DI-completed tasks awaiting admin verification.
+import { countTasksAwaitingVerification } from "@/lib/admin-dashboard";
 import { AdminBottomNav } from "@/components/admin/AdminBottomNav";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -37,11 +39,13 @@ export default async function AdminAuthedLayout({
   // Sessions 60 + 65 + 66 — pending counts for the nav badges,
   // fetched in parallel.
   // P4 — partnerships `new` count added to the parallel set.
-  const [stats, activeChildren, partnershipsNew] = await Promise.all([
-    getAdminHomeStats(),
-    countActiveChildrenForBadge(),
-    countNewPartnershipInquiries(),
-  ]);
+  const [stats, activeChildren, partnershipsNew, tasksToVerify] =
+    await Promise.all([
+      getAdminHomeStats(),
+      countActiveChildrenForBadge(),
+      countNewPartnershipInquiries(),
+      countTasksAwaitingVerification(),
+    ]);
   // Spine 1.2 — Reviews badge must include the reports queue.
   // pendingReportCount uses the SAME helper (countPendingReports) the
   // /admin/reviews index tile uses, so badge total and index tile
@@ -60,6 +64,7 @@ export default async function AdminAuthedLayout({
       stats.pendingReportCount === null
         ? null
         : reviewsCount,
+    tasks: tasksToVerify,
     children: activeChildren,
     partnerships: partnershipsNew,
   };

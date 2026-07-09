@@ -55,7 +55,9 @@ export interface AdminHomeStats {
   pendingProposalCount: number | null;
   pendingMomentCount: number | null;
   pendingIntakePhotoCount: number | null;
-  pendingDeliveryCount: number | null;
+  // NOTE: pendingDeliveryCount removed — the home "Deliveries" tile was
+  // dropped (no admin delivery-review queue exists to link to). Re-add
+  // when a real /admin delivery queue ships.
   pendingDocumentCount: number | null;
   // Spine 1.2 — surfaced for the sidebar Reviews badge aggregation
   // (src/app/admin/(authed)/layout.tsx). The /admin/reviews index
@@ -69,14 +71,12 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     pendingProposalCount,
     pendingMomentCount,
     pendingIntakePhotoCount,
-    pendingDeliveryCount,
     pendingDocumentCount,
     pendingReportCount,
   ] = await Promise.all([
     safeCount("child_proposal", { status: { _eq: "pending" } }),
     safeCount("child_moment", { status: { _eq: "pending" } }),
     safeCount("child_intake_photo", { status: { _eq: "pending" } }),
-    safeCount("aid_delivery", { status: { _eq: "pending" } }),
     // Documents: Session 52d — delegate to countPendingDocuments
     // (the single read path also used by the queue list page
     // header) so divergence is impossible. 52c had separate
@@ -95,7 +95,6 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     pendingProposalCount,
     pendingMomentCount,
     pendingIntakePhotoCount,
-    pendingDeliveryCount,
     pendingDocumentCount,
     pendingReportCount,
   };
