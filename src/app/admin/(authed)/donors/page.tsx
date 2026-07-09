@@ -27,15 +27,19 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
+// Donor admin-approval was removed (getDonorState maps active→approved), so
+// the "Pending" and "Not started" approval buckets are defunct — there is
+// nothing to approve. Only "Rejected" (a real moderation block) and "All"
+// remain useful. ("Approved" kept as a legacy subset — see report note.)
+// The parseApproval helper still accepts the dropped values from the URL,
+// so old bookmarks degrade gracefully rather than error.
 const APPROVAL_TABS: ReadonlyArray<{
   value: DonorApprovalStatus | "all";
   label: string;
 }> = [
   { value: "all", label: "All" },
-  { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
-  { value: "not_started", label: "Not started" },
 ];
 
 const SORT_OPTIONS: ReadonlyArray<{ value: DonorListSort; label: string }> = [

@@ -36,7 +36,7 @@ const FAVICON_URL =
 
 // Sessions 60 + 65 + 66 — combined badge key union.
 // P4 — `partnerships` badge for new inquiries from /for-charities.
-type BadgeKey = "proposals" | "reviews" | "donors" | "children" | "partnerships";
+type BadgeKey = "proposals" | "reviews" | "children" | "partnerships";
 
 // Admin Lot 1 — section axis for visual grouping. `group` is kept
 // for backwards-compat (existing primary/secondary divider logic
@@ -152,13 +152,14 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     group: "primary",
     section: "people",
   },
-  // Session 65 — donor management.
+  // Session 65 — donor management. No badge: donor admin-approval was
+  // removed, so the old "pending approvals" count is defunct (nothing to
+  // approve). Moderation (reject/suspend) stays on the list/detail page.
   {
     href: "/admin/donors",
     label: "Donors",
     icon: UserCircle,
     exact: false,
-    badgeKey: "donors",
     group: "primary",
     section: "people",
   },

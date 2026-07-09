@@ -11,8 +11,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 import { getAdminHomeStats } from "@/lib/admin-home-stats";
-// Session 65 — donor pending count for the Donors nav badge.
-import { countPendingDonorApprovals } from "@/lib/admin-donors";
+// Donor admin-approval was removed (getDonorState maps active→approved), so
+// the old "pending donor approvals" nav badge is defunct and was dropped —
+// there is nothing to approve. See admin-donors for the still-valid
+// moderation actions (reject/suspend).
 // Session 66 — active-children count for the Children nav badge.
 import { countActiveChildrenForBadge } from "@/lib/admin-children";
 // P4 — `new`-status partnership inquiries badge.
@@ -35,9 +37,8 @@ export default async function AdminAuthedLayout({
   // Sessions 60 + 65 + 66 — pending counts for the nav badges,
   // fetched in parallel.
   // P4 — partnerships `new` count added to the parallel set.
-  const [stats, donorPending, activeChildren, partnershipsNew] = await Promise.all([
+  const [stats, activeChildren, partnershipsNew] = await Promise.all([
     getAdminHomeStats(),
-    countPendingDonorApprovals(),
     countActiveChildrenForBadge(),
     countNewPartnershipInquiries(),
   ]);
@@ -59,7 +60,6 @@ export default async function AdminAuthedLayout({
       stats.pendingReportCount === null
         ? null
         : reviewsCount,
-    donors: donorPending,
     children: activeChildren,
     partnerships: partnershipsNew,
   };
