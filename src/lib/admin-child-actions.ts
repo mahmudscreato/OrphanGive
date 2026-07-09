@@ -453,6 +453,29 @@ export async function reactivateChildAsAdmin(
   if (row.status === "active") {
     throw new InvalidChildStateError("Child is already active.");
   }
+
+  // Fix C — reactivation publishes the child publicly, so it must not
+  // resurrect an incomplete stub (e.g. a rejected CREATE proposal's stub,
+  // now 'withdrawn' per Fix B, whose only real field is display_name).
+  // Gate on the SAME required set the admin edit form enforces: refuse if
+  // any required field is blank, name them, and route the admin to Edit.
+  const missing: string[] = [];
+  for (const field of ADMIN_EDIT_REQUIRED_FIELDS) {
+    const v = currentValueOf(row.current, field);
+    if (
+      v === null ||
+      v === undefined ||
+      (typeof v === "string" && v.trim().length === 0)
+    ) {
+      missing.push(field);
+    }
+  }
+  if (missing.length > 0) {
+    throw new InvalidChildStateError(
+      `Cannot reactivate — required field(s) missing: ${missing.join(", ")}. Edit the child to complete the profile first.`,
+    );
+  }
+
   const previousStatus = row.status ?? "withdrawn";
   const nowIso = new Date().toISOString();
 

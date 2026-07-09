@@ -58,7 +58,11 @@ export default async function AdminPartnershipDetailPage({
   // this is fine for v1; switch to a dedicated readItem if the
   // queue grows).
   const all = await listPartnershipInquiries({ status: "all" });
-  const inquiry = all.find((r) => r.id === id);
+  // partnership_inquiry.id is an INTEGER in the DB (the type says string but
+  // the value arrives as a number); the route param is always a string. A
+  // strict `r.id === id` compares number-to-string and never matches, so
+  // EVERY detail page 404'd. Coerce both sides to string.
+  const inquiry = all.find((r) => String(r.id) === id);
   if (!inquiry) notFound();
 
   const pill = STATUS_PILL[inquiry.status] ?? STATUS_PILL.new;

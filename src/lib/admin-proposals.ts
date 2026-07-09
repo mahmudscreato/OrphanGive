@@ -530,6 +530,30 @@ export async function rejectProposal(
     throw new Error("proposal_update_failed");
   }
 
+  // Fix B — CREATE proposals only: withdraw the stub child so it stops
+  // showing as amber "Awaiting intake" in the admin Children list. The stub
+  // IS proposal.target_child (Session 52a+ create proposals link it;
+  // legacy pre-stub create proposals have target_child=null → no stub to
+  // touch). EDIT proposals are intentionally untouched — rejecting an edit
+  // must NOT withdraw the live child it targets. 'withdrawn' reuses the
+  // existing archive status (already excluded from public/sponsorable
+  // surfaces and pilled as "Archived" in the admin list). Best-effort: the
+  // proposal is already rejected; a stub-cleanup failure only logs.
+  if (proposal.proposal_type === "create" && proposal.target_child) {
+    try {
+      await directusServer().request(
+        updateItem("child" as never, proposal.target_child as never, {
+          status: "withdrawn",
+        } as never),
+      );
+    } catch (err) {
+      console.warn(
+        "[admin-proposals] rejectProposal: stub child withdraw failed (swallowed)",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // Best-effort audit.
   try {
     await directusServer().request(
