@@ -59,11 +59,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Profile photo (child.Photo, a directus_files uuid) rides alongside the
+  // field payload but isn't part of the editable field schema — read it from
+  // the raw body and validate it's a uuid-shaped string.
+  const rawPhoto =
+    json && typeof json === "object" && "Photo" in json
+      ? (json as Record<string, unknown>).Photo
+      : undefined;
+  const photoUuid =
+    typeof rawPhoto === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      rawPhoto,
+    )
+      ? rawPhoto
+      : null;
+
+  // Consent rule (mirrors the DI form): if a photo is attached, photo_consent
+  // MUST be true — no photo may be published without recorded consent.
+  if (photoUuid && parsed.data.photo_consent !== true) {
+    return NextResponse.json(
+      {
+        error: "invalid_state",
+        message:
+          "Photo consent is required when a photo is attached. Tick the consent box or remove the photo.",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const result = await createChildAsAdmin(
       session.userId,
       parsed.data as AdminChildEditableFields,
-      req,
+      { photoUuid, request: req },
     );
     return NextResponse.json(result);
   } catch (err) {

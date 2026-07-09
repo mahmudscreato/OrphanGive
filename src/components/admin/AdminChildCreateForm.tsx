@@ -18,6 +18,8 @@ import { useMemo, useState, useTransition } from "react";
 import { Loader2, Save } from "lucide-react";
 import { BANGLADESH_DIVISIONS } from "@/lib/children-data";
 import type { BdDistrictOption } from "@/lib/di-children";
+// Reuse the DI profile-photo uploader; point it at the admin upload endpoint.
+import { PhotoUploadField } from "@/components/di/PhotoUploadField";
 import {
   AREA_OF_INTEREST_OPTIONS,
   BLOOD_GROUP_OPTIONS,
@@ -92,6 +94,8 @@ export function AdminChildCreateForm({
   const [pending, startTransition] = useTransition();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [areas, setAreas] = useState<string[]>([]);
+  const [photoUuid, setPhotoUuid] = useState<string | null>(null);
+  const [photoConsent, setPhotoConsent] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -131,6 +135,11 @@ export function AdminChildCreateForm({
     const guardianPhone = form.guardian_phone.trim();
     if (guardianPhone.length > 0 && guardianPhone.length < 7)
       e.guardian_phone = "Enter a valid phone number.";
+    // Consent rule (mirrors the DI form): a photo may not be attached without
+    // recorded consent.
+    if (photoUuid && !photoConsent)
+      e.photo_consent =
+        "Tick the consent box to use this photo, or remove it.";
     for (const nk of [
       "monthly_cost",
       "siblings_count",
@@ -195,6 +204,12 @@ export function AdminChildCreateForm({
       "monthly_household_income_bdt",
     ].forEach(num);
     if (areas.length > 0) p.areas_of_interest = areas;
+    // Photo (child.Photo file uuid) + consent. Only sent when a photo was
+    // uploaded; the server also enforces consent-when-photo.
+    if (photoUuid) {
+      p.Photo = photoUuid;
+      p.photo_consent = photoConsent;
+    }
     return p;
   }
 
@@ -256,6 +271,40 @@ export function AdminChildCreateForm({
         <SelectField label="Gender" k="gender" form={form} set={set} opts={GENDER_OPTIONS} />
         <DateField label="Date of birth" k="date_of_birth" form={form} set={set} />
       </Section>
+
+      {/* Profile photo — Tier-1 public, but ONLY after publish + consent.
+          Uploads via the admin endpoint (reuses the DI uploader component +
+          the same server-side file handling). Private until published. */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-5 md:p-6">
+        <h2 className="font-display text-[17px] text-ink mb-1">Profile photo</h2>
+        <p className="text-[12.5px] text-ink-soft mb-4">
+          Optional. JPEG / PNG / WebP, up to 5 MB. Shown to donors only after
+          the child is published and consent is recorded — private until then.
+        </p>
+        <PhotoUploadField
+          currentPhotoUuid={photoUuid}
+          onUuidChange={setPhotoUuid}
+          uploadUrl="/api/admin/uploads/photo"
+        />
+        {photoUuid ? (
+          <label className="mt-4 flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={photoConsent}
+              onChange={(e) => setPhotoConsent(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 text-tangerine focus:ring-tangerine-soft"
+            />
+            <span className="text-[13.5px] text-ink leading-snug">
+              The parent / guardian has consented to this photo being shown to
+              donors.{" "}
+              <span className="text-[#A02B2B]">Required to keep this photo.</span>
+            </span>
+          </label>
+        ) : null}
+        {errors.photo_consent ? (
+          <p className={errorClass}>{errors.photo_consent}</p>
+        ) : null}
+      </section>
 
       <Section title="Location">
         <SelectField

@@ -393,8 +393,9 @@ export interface CreateChildResult {
 export async function createChildAsAdmin(
   adminUserId: string,
   fields: AdminChildEditableFields,
-  request?: Request,
+  opts: { photoUuid?: string | null; request?: Request } = {},
 ): Promise<CreateChildResult> {
+  const { photoUuid = null, request } = opts;
   const displayName =
     typeof fields.display_name === "string" ? fields.display_name.trim() : "";
   if (displayName.length === 0) {
@@ -405,7 +406,10 @@ export async function createChildAsAdmin(
 
   // 1) Minimal stub, NOT public. `created_by` is a plain m2o with NO
   //    user-created special, so set it EXPLICITLY to the admin (same lesson
-  //    as the uploaded_by fixes) — never "Unknown".
+  //    as the uploaded_by fixes) — never "Unknown". Photo (a directus_files
+  //    M2O — same field DI-created children use) is written here from the
+  //    pre-uploaded file uuid. The photo stays PRIVATE/non-public until the
+  //    child is published; consent (photo_consent) rides in via editChildAsAdmin.
   let childId: string;
   try {
     const created = (await directusServer().request(
@@ -413,6 +417,7 @@ export async function createChildAsAdmin(
         display_name: displayName,
         status: "awaiting_intake",
         created_by: adminUserId,
+        ...(photoUuid ? { Photo: photoUuid } : {}),
       } as never),
     )) as unknown as { id?: string } | undefined;
     const id = created?.id;
@@ -449,7 +454,11 @@ export async function createChildAsAdmin(
     action: "admin_created_child",
     collection: "child",
     recordId: childId,
-    metadata: { display_name: displayName, status: "awaiting_intake" },
+    metadata: {
+      display_name: displayName,
+      status: "awaiting_intake",
+      has_photo: !!photoUuid,
+    },
     request,
   });
 

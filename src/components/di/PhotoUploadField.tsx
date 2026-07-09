@@ -23,6 +23,10 @@ export interface PhotoUploadFieldProps {
   // Optional inline error string surfaced from the parent form's
   // submit-time validation (separate from upload errors handled here).
   externalError?: string | null;
+  // Which upload endpoint to POST to. Defaults to the DI endpoint so the
+  // DI ChildForm is unchanged; the admin create form passes the admin-gated
+  // endpoint. Both reuse the same server-side uploadPhotoToDirectus helper.
+  uploadUrl?: string;
 }
 
 function formatBytes(n: number): string {
@@ -36,6 +40,7 @@ export function PhotoUploadField({
   onUuidChange,
   required = false,
   externalError = null,
+  uploadUrl = "/api/di/uploads/photo",
 }: PhotoUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewUuid, setPreviewUuid] = useState<string | null>(
@@ -77,7 +82,7 @@ export function PhotoUploadField({
     try {
       const form = new FormData();
       form.append("photo", file);
-      const res = await fetch("/api/di/uploads/photo", {
+      const res = await fetch(uploadUrl, {
         method: "POST",
         body: form,
       });
