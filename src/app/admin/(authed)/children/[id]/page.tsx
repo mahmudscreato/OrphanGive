@@ -51,6 +51,8 @@ import {
 } from "@/lib/donor-currency-format";
 import { recordAuditEvent } from "@/lib/di-audit";
 import { AdminChildActionBar } from "@/components/admin/AdminChildActionBar";
+import { AdminDocumentDirectUpload } from "@/components/admin/AdminDocumentDirectUpload";
+import { AdminIntakePhotoDirectUpload } from "@/components/admin/AdminIntakePhotoDirectUpload";
 import { ReuploadRequestButton } from "@/components/admin/ReuploadRequestButton";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // the sponsorship row's Stripe subscription id render.
@@ -164,6 +166,7 @@ export default async function AdminChildDetailPage({
       <div className="mt-5">
         <DocumentsPanel
           childId={detail.id}
+          childDisplayName={detail.display_name}
           documents={documents}
         />
       </div>
@@ -171,6 +174,7 @@ export default async function AdminChildDetailPage({
       <div className="mt-5">
         <IntakePhotosPanel
           childId={detail.id}
+          childDisplayName={detail.display_name}
           photos={intakePhotos}
         />
       </div>
@@ -387,9 +391,11 @@ type DocSummary = Awaited<ReturnType<typeof getDocumentsForChild>>[number];
 
 function DocumentsPanel({
   childId,
+  childDisplayName,
   documents,
 }: {
   childId: string;
+  childDisplayName: string;
   documents: DocSummary[];
 }) {
   return (
@@ -460,6 +466,16 @@ function DocumentsPanel({
           ))}
         </ul>
       )}
+      {/* Session 71 — admin direct document upload. Lands approved,
+          attributed to admin; reuses the existing
+          /api/admin/documents endpoint. Sits below the list so admin
+          can fill in missing documents from the child's record. */}
+      <div className="mt-5 pt-5 border-t border-stone-200">
+        <AdminDocumentDirectUpload
+          childId={childId}
+          childDisplayName={childDisplayName}
+        />
+      </div>
     </section>
   );
 }
@@ -504,9 +520,11 @@ type IntakeSummary = Awaited<ReturnType<typeof getIntakePhotosForChild>>[number]
 
 function IntakePhotosPanel({
   childId,
+  childDisplayName,
   photos,
 }: {
   childId: string;
+  childDisplayName: string;
   photos: IntakeSummary[];
 }) {
   return (
@@ -577,6 +595,17 @@ function IntakePhotosPanel({
           ))}
         </div>
       )}
+      {/* Session 71 — admin direct intake-photo upload. Lands approved,
+          attributed to admin; reuses the existing /api/admin/intake-
+          photos endpoint. Respects the same soft 5-photo cap the DI
+          grid enforces (currentCount = all photos on file). */}
+      <div className="mt-5 pt-5 border-t border-stone-200">
+        <AdminIntakePhotoDirectUpload
+          childId={childId}
+          childDisplayName={childDisplayName}
+          currentCount={photos.length}
+        />
+      </div>
     </section>
   );
 }
