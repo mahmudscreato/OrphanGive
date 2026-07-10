@@ -104,6 +104,9 @@ export interface AdminChildEditableFields {
   gender?: string | null;
   date_of_birth?: string | null;
   photo_consent?: boolean | null;
+  // Profile photo (directus_files uuid). Writable on create AND edit (the
+  // admin can replace a child's photo). Consent is enforced at the route.
+  Photo?: string | null;
   // Location
   bd_division?: string | null;
   bd_district?: string | null;
@@ -160,6 +163,7 @@ export const adminChildFieldsSchema = z
     gender: z.string().max(40).nullable().optional(),
     date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     photo_consent: z.boolean().nullable().optional(),
+    Photo: z.string().uuid().nullable().optional(),
     bd_division: z.string().max(50).nullable().optional(),
     bd_district: z.string().max(50).nullable().optional(),
     district_internal: z.string().max(200).nullable().optional(),

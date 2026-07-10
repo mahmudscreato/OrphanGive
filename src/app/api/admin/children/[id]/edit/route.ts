@@ -72,6 +72,20 @@ export async function POST(
     );
   }
 
+  // Consent rule (mirrors create): when a photo is being set/replaced,
+  // photo_consent MUST be true. Photo is only in the payload when the admin
+  // actually uploaded a new one (the form omits it when unchanged).
+  if (parsed.data.Photo && parsed.data.photo_consent !== true) {
+    return NextResponse.json(
+      {
+        error: "invalid_state",
+        message:
+          "Photo consent is required when setting a photo. Tick the consent box or remove the photo.",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const result = await editChildAsAdmin(
       id,

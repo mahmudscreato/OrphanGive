@@ -55,7 +55,7 @@ const QUICK_ACTIONS: ReadonlyArray<{
 }> = [
   { label: "Review queue", href: "/admin/reviews", icon: ListChecks },
   { label: "Tasks to verify", href: TASKS_TO_VERIFY_HREF, icon: ClipboardCheck },
-  { label: "+ New Child", href: "/admin/children/new", icon: UserPlus },
+  { label: "New Child", href: "/admin/children/new", icon: UserPlus },
   { label: "New Task", href: "/admin/tasks/new", icon: Plus },
 ];
 
