@@ -76,10 +76,15 @@ export type NotificationType =
   // admins set child.assigned_di by hand in Directus admin — no
   // server-side handler to hook into).
   | "admin_assigned_child"
-  // TODO Session 47.5+: wire `admin_assigned_task` notification when
-  // admin task creation has a server-side handler (currently admins
-  // create tasks directly via Directus admin — no /api hook).
+  // Auto-task assignment (donation → task) + admin manual assign both
+  // now fire this (fix/task-fulfillment-loop) — the TODO is resolved.
   | "admin_assigned_task"
+  // fix/task-fulfillment-loop — the admin half of the task loop now
+  // notifies the DI who owns the task: verified (work accepted) or
+  // rejected/sent-back (DI must redo). Distinct from
+  // admin_verified_delivery (which is the aid_delivery.status flow).
+  | "admin_verified_task"
+  | "admin_rejected_task"
   // TODO Session 47.5+: wire `admin_verified_delivery` notification
   // when admin delivery verification has a server-side handler
   // (currently admins flip aid_delivery.status='verified' via
@@ -151,6 +156,8 @@ const VALID_TYPES = new Set<string>([
   "admin_removed_approved_intake_photo",
   "admin_assigned_child",
   "admin_assigned_task",
+  "admin_verified_task",
+  "admin_rejected_task",
   "admin_verified_delivery",
   // Session 66
   "admin_requested_document_reupload",

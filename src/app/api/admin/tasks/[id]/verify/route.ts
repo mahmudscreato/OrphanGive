@@ -26,6 +26,7 @@ import {
   verifyTask,
 } from "@/lib/admin-tasks";
 import { recordAuditEvent } from "@/lib/di-audit";
+import { notify } from "@/lib/di-notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,6 +84,20 @@ export async function POST(
     },
     request: req,
   });
+
+  // fix/task-fulfillment-loop — tell the DI their work was accepted.
+  // Best-effort (notify swallows its own errors) + gated on a non-null
+  // assignee; never affects the verify result.
+  if (result.assigneeId) {
+    await notify({
+      recipientUserId: result.assigneeId,
+      type: "admin_verified_task",
+      title: "Task verified",
+      body: "Admin verified your completed delivery task. Nothing more to do — thank you!",
+      relatedCollection: "task",
+      relatedId: result.taskId,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

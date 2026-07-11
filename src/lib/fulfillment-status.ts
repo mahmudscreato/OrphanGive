@@ -136,6 +136,7 @@ export type FulfillmentSource =
   | "exception" // fulfillment_exception column set
   | "spine_report_published" // latest child_update.status='published'
   | "spine_report_in_review" // latest child_update.status ∈ {submitted_by_di, ...}
+  | "spine_task_verified" // task.admin_status='verified_complete' (admin-confirmed delivery)
   | "spine_task_completed" // task.di_status='completed_pending_verification'
   | "spine_task_active" // task.di_status ∈ {open, in_progress}
   | "spine_none"; // no task, no report
@@ -294,6 +295,8 @@ function internalDetailFor(
       return "Latest report has been sent to donor (child_update.status=published).";
     case "spine_report_in_review":
       return "Report is in the admin review pipeline.";
+    case "spine_task_verified":
+      return "Admin verified the delivery task (task.admin_status=verified_complete).";
     case "spine_task_completed":
       return "DI marked the task complete (task.di_status=completed_pending_verification).";
     case "spine_task_active":
@@ -403,6 +406,18 @@ export function resolveFulfillment(input: {
         sponsorship.cancelled_at,
       );
     }
+    // FIX A (task-fulfillment loop): an admin-verified task is an
+    // admin-confirmed delivery — surface the same terminal composite
+    // ("Delivered • Sponsorship ended [date]") a published report would.
+    // Only when there's no published report to prefer above.
+    if (latestTask?.admin_status === "verified_complete") {
+      return emit(
+        "delivered",
+        "spine_task_verified",
+        latestTask.date_created,
+        sponsorship.cancelled_at,
+      );
+    }
     return emit("cancelled", "payment_cancelled", sponsorship.cancelled_at);
   }
 
@@ -424,6 +439,26 @@ export function resolveFulfillment(input: {
   }
 
   // ─── 7. Derived spine phase ───
+
+  // FIX A (task-fulfillment loop): a task the admin VERIFIED
+  // (admin_status='verified_complete') is an admin-confirmed delivery →
+  // DELIVERED. This is ADDED alongside the existing published-report
+  // path (it never replaces it): a published report is the richer donor
+  // signal ("read the update from the field"), so we DEFER to it when
+  // one exists and only surface the verified task otherwise. Without a
+  // published report — the common aid-delivery case, where the task is
+  // the only delivery evidence — this is the branch that finally
+  // advances the donor from "Almost there" to "Delivered". Note
+  // `di_status` stays 'completed_pending_verification' after admin
+  // verifies (admin only flips `admin_status`), which is exactly why
+  // reading `admin_status` here is required.
+  const hasPublishedReport = latestReport?.status === "published";
+  if (
+    latestTask?.admin_status === "verified_complete" &&
+    !hasPublishedReport
+  ) {
+    return emit("delivered", "spine_task_verified", latestTask.date_created);
+  }
 
   // Latest report — the most-recent-cycle signal. For monthly
   // sponsors, "delivered" means the latest cycle delivered; the next

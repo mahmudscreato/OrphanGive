@@ -47,6 +47,8 @@ import "server-only";
 import { createItem, readItems, readFieldsByCollection } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { recordAuditEvent } from "./di-audit";
+import { notify } from "./di-notifications";
+import { notifyAdminOfPendingSubmission } from "./di-notify";
 
 export interface FulfillmentTaskInput {
   sponsorshipId: string;
@@ -305,6 +307,43 @@ export async function createFulfillmentTaskForPayment(
         assigned: assignee !== null,
       },
     });
+
+    // ── Tell the responsible role (fix/task-fulfillment-loop) ──────────
+    // The audit above is actor_role='system', which is filtered out of
+    // the DI activity feed — so audit alone never notifies anyone. Wire
+    // the actual notification here. Both paths are best-effort: notify()
+    // + notifyAdminOfPendingSubmission() swallow their own errors and
+    // never throw, and this whole block is inside the outer try/catch —
+    // a notification hiccup can never affect the payment or the task.
+    if (assignee !== null) {
+      // FIX B — a DI is responsible: in-app notify them a paid task
+      // landed in their queue. admin_assigned_task already renders in
+      // the DI bell + notifications list (TYPE_ICON exhaustive maps).
+      await notify({
+        recipientUserId: assignee,
+        type: "admin_assigned_task",
+        title: "New delivery task",
+        body: firstName
+          ? `A sponsored donation for ${firstName} is ready to deliver. Complete the delivery, then upload a photo to confirm.`
+          : "A sponsored donation is ready to deliver. Complete the delivery, then upload a photo to confirm.",
+        relatedCollection: "task",
+        relatedId: taskId,
+      });
+    } else {
+      // FIX D — nobody is responsible (no child.assigned_di). The task
+      // would otherwise sit unassigned and unseen. Alert the admins by
+      // email (reusing the existing ADMIN_NOTIFY_EMAILS path) so someone
+      // assigns it. Collection 'task' + a "needs assigning" summary.
+      await notifyAdminOfPendingSubmission({
+        collection: "task",
+        recordId: taskId,
+        submittedByUserId: systemUserId,
+        childId: input.childId ?? undefined,
+        summary:
+          "A paid sponsorship created a delivery task, but no Data Inputter " +
+          "is responsible for this child — please assign it.",
+      });
+    }
   } catch (err) {
     // Final catch-all — the payment flow must never be affected.
     console.error(
