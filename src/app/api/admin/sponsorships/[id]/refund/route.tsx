@@ -64,6 +64,14 @@ export async function POST(
   if (!auth.ok) return auth.response;
   const { admin, sponsorship } = auth.ctx;
 
+  // fix/super-admin-route-gating — refunds move money out; Super Admin
+  // only. authedAdminSponsorship already proved a valid admin session
+  // (else auth.ok is false → 401), so a non-super here is a plain Admin
+  // → 403, not 401. Uses the existing session.isSuperAdmin field.
+  if (!admin.isSuperAdmin) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
   let json: unknown = undefined;
   try {
     json = await req.json();

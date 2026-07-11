@@ -53,10 +53,15 @@ export function DonorActionBar({
   donorId,
   approvalStatus,
   accountStatus,
+  isSuperAdmin,
 }: {
   donorId: string;
   approvalStatus: DonorApprovalStatus;
   accountStatus: DonorAccountStatus;
+  // fix/super-admin-route-gating — Suspend is Super-Admin-only (the
+  // route 403s a plain Admin). Reject + Reactivate + Password-reset stay
+  // available to plain Admins (reversible / operational).
+  isSuperAdmin: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -269,7 +274,9 @@ export function DonorActionBar({
             )}
             Reactivate
           </button>
-        ) : (
+        ) : isSuperAdmin ? (
+          // Suspend — Super-Admin-only. Hidden for plain Admins (the
+          // route would 403). Reactivate above stays available to all.
           <button
             type="button"
             onClick={() => {
@@ -282,7 +289,7 @@ export function DonorActionBar({
             <PauseCircle className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
             Suspend
           </button>
-        )}
+        ) : null}
 
         <button
           type="button"

@@ -43,11 +43,16 @@ export function SponsorshipActionBar({
   status,
   paymentMode,
   charges,
+  isSuperAdmin,
 }: {
   sponsorshipId: string;
   status: SponsorshipStatus;
   paymentMode: "monthly" | "one_time";
   charges: AdminStripeCharge[];
+  // fix/super-admin-route-gating — Cancel + Refund are Super-Admin-only
+  // (money/irreversible); the routes 403 a plain Admin, so hide the
+  // buttons for them. Pause/Resume stay available to plain Admins.
+  isSuperAdmin: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -159,8 +164,11 @@ export function SponsorshipActionBar({
   // What's available given current state?
   const canPause = paymentMode === "monthly" && status === "active";
   const canResume = paymentMode === "monthly" && status === "paused";
-  const canCancel = status === "active" || status === "paused";
-  const canRefund = charges.length > 0;
+  // Cancel + Refund additionally require Super Admin (money/irreversible).
+  // The `show*` flags fold that in so the buttons AND the "no actions"
+  // fallback stay consistent for a plain Admin.
+  const showCancel = isSuperAdmin && (status === "active" || status === "paused");
+  const showRefund = isSuperAdmin && charges.length > 0;
 
   return (
     <section
@@ -218,7 +226,7 @@ export function SponsorshipActionBar({
           </button>
         ) : null}
 
-        {canCancel ? (
+        {showCancel ? (
           <button
             type="button"
             onClick={() => setShowCancelModal(true)}
@@ -230,7 +238,7 @@ export function SponsorshipActionBar({
           </button>
         ) : null}
 
-        {canRefund ? (
+        {showRefund ? (
           <button
             type="button"
             onClick={() => setShowRefundModal(true)}
@@ -242,7 +250,7 @@ export function SponsorshipActionBar({
           </button>
         ) : null}
 
-        {!canPause && !canResume && !canCancel && !canRefund ? (
+        {!canPause && !canResume && !showCancel && !showRefund ? (
           <p className="text-[13px] text-ink-soft italic">
             No actions available in current state ({status}).
           </p>

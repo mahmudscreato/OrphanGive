@@ -186,6 +186,7 @@ export default async function AdminSponsorshipDetailPage({
         status={detail.raw.status}
         paymentMode={detail.raw.payment_mode}
         charges={charges}
+        isSuperAdmin={session.isSuperAdmin}
       />
 
       {/* Donation Lifecycle sub-phase 3 — admin fulfillment exception

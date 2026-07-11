@@ -199,6 +199,7 @@ export default async function AdminChildDetailPage({
           status={detail.status}
           canDelete={deleteSafety.safe}
           deleteBlockedReason={deleteSafety.reason}
+          isSuperAdmin={session.isSuperAdmin}
         />
       </div>
     </div>
