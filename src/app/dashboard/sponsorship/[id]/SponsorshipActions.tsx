@@ -146,12 +146,42 @@ export function SponsorshipActions({
   // doesn't apply.
   const showCancelButton = paymentMode === "monthly";
 
+  // Pause / Resume / Change-amount button gates. These MIRROR the backend
+  // route guards exactly so a button never appears in a state the route
+  // would reject (all three additionally require monthly + a Stripe
+  // subscription; a monthly active/paused sponsorship always has one, and
+  // the rare missing-subscription case degrades gracefully via the modal's
+  // ErrorBox rather than a dead button):
+  //   pause         → monthly + status='active'      (pause/route.ts:22,28)
+  //   resume        → monthly + status='paused'      (resume/route.ts:26,32)
+  //   modify-amount → monthly + status ∈ active|paused (modify-amount/route.ts:47,53)
+  const isMonthly = paymentMode === "monthly";
+  const showResume = isMonthly && status === "paused";
+  const showPause = isMonthly && status === "active";
+  const showModify =
+    isMonthly && (status === "active" || status === "paused");
+
   return (
     <>
       <div className="flex items-center gap-3 flex-wrap">
         <ButtonOutline tone="tangerine" onClick={() => openModal("extend")}>
           Add more months
         </ButtonOutline>
+        {showResume ? (
+          <ButtonOutline tone="tangerine" onClick={() => openModal("resume")}>
+            Resume sponsorship
+          </ButtonOutline>
+        ) : null}
+        {showPause ? (
+          <ButtonOutline tone="grey" onClick={() => openModal("pause")}>
+            Pause sponsorship
+          </ButtonOutline>
+        ) : null}
+        {showModify ? (
+          <ButtonOutline tone="grey" onClick={() => openModal("modify")}>
+            Change amount
+          </ButtonOutline>
+        ) : null}
         {showCancelButton ? (
           <ButtonOutline tone="danger" onClick={() => openModal("cancel")}>
             Cancel sponsorship
