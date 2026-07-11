@@ -160,42 +160,84 @@ export type ChildMoment = {
   date_created: string | null;
 };
 
+// fix/donor-updates-feed (U2) — SINGLE SOURCE for which sponsorship
+// states let a donor keep seeing a child's updates. A donor retains
+// visibility while the sponsorship is active, has been fully paid out
+// (completed), or is temporarily paused. Cancelled + pending_payment do
+// NOT grant visibility. Both the moments reader and the reports reader
+// derive their child-set from this list via getVisibleChildScope, so the
+// breadth is defined in exactly one place.
+export const VISIBLE_SPONSORSHIP_STATUSES = [
+  "active",
+  "completed",
+  "paused",
+] as const;
+
+type VisibleChildScope = {
+  childIds: string[];
+  childMap: Map<
+    string,
+    { name: string | null; photo: string | null; sponsorshipId: string }
+  >;
+};
+
+// Derives the donor's visible-children set — the scoping spine shared by
+// getRecentMomentsForDonor and getRecentReportsForDonor. childIds are
+// collected ONLY from THIS donor's own sponsorships whose status is in
+// VISIBLE_SPONSORSHIP_STATUSES, so neither reader can ever surface a
+// child the donor didn't sponsor (or only has a cancelled sponsorship
+// for). childMap carries each child's display name/photo (resolved from
+// any of the donor's sponsorship payloads for that child) + a
+// representative sponsorshipId for building the per-sponsorship link.
+async function getVisibleChildScope(
+  donorId: string,
+): Promise<VisibleChildScope> {
+  const sponsorships = await getDonorSponsorships(donorId, { limit: 200 });
+
+  // Name/photo are resolvable from ANY sponsorship payload for the child
+  // (same child regardless of that sponsorship's status).
+  const meta = new Map<string, { name: string | null; photo: string | null }>();
+  for (const s of sponsorships) {
+    if (typeof s.child !== "string" && s.child) {
+      const existing = meta.get(s.child.id);
+      if (!existing || !existing.name) {
+        meta.set(s.child.id, {
+          name: s.child.display_name ?? null,
+          photo: s.child.Photo ?? null,
+        });
+      }
+    }
+  }
+
+  const childMap: VisibleChildScope["childMap"] = new Map();
+  const childIds: string[] = [];
+  for (const s of sponsorships) {
+    if (!(VISIBLE_SPONSORSHIP_STATUSES as readonly string[]).includes(s.status)) {
+      continue;
+    }
+    const cid = childIdOf(s);
+    if (!cid || childMap.has(cid)) continue;
+    const m = meta.get(cid);
+    childMap.set(cid, {
+      name: m?.name ?? null,
+      photo: m?.photo ?? null,
+      sponsorshipId: s.id,
+    });
+    childIds.push(cid);
+  }
+  return { childIds, childMap };
+}
+
 export async function getRecentMomentsForDonor(
   donorId: string,
   limit = 10,
 ): Promise<ChildMoment[]> {
   if (!UUID_RE.test(donorId)) return [];
 
-  // Active sponsorships → unique child ids.
-  const sponsorships = await getDonorSponsorships(donorId, { limit: 200 });
-  const childIds = Array.from(
-    new Set(
-      sponsorships
-        .filter((s) => s.status === "active")
-        .map((s) => childIdOf(s))
-        .filter((v): v is string => Boolean(v)),
-    ),
-  );
+  // Visible-children scope (active + completed + paused) — the SINGLE
+  // source, shared with getRecentReportsForDonor.
+  const { childIds, childMap } = await getVisibleChildScope(donorId);
   if (childIds.length === 0) return [];
-
-  // Build a quick child-id → display-name map from the same sponsorship
-  // payloads so we don't refetch.
-  const childMap = new Map<
-    string,
-    { name: string | null; photo: string | null }
-  >();
-  for (const s of sponsorships) {
-    if (typeof s.child === "string") {
-      if (!childMap.has(s.child)) {
-        childMap.set(s.child, { name: null, photo: null });
-      }
-    } else if (s.child) {
-      childMap.set(s.child.id, {
-        name: s.child.display_name ?? null,
-        photo: s.child.Photo ?? null,
-      });
-    }
-  }
 
   try {
     const rows = (await directusServer().request(
@@ -243,6 +285,100 @@ export async function getRecentMomentsForDonor(
   } catch (err) {
     console.warn(
       "[dashboard-data] getRecentMomentsForDonor failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
+// ─── Recent published reports (fix/donor-updates-feed U1) ───────────────────
+// The donor-facing feed twin of getApprovedChildUpdates (which is
+// per-child + sponsorship-scoped on the detail page). This one is
+// batched over the donor's visible-children set — the SAME set the
+// moments reader uses (getVisibleChildScope) — and applies the identical
+// donor-visibility filter (status='published' AND published_at <= now).
+// sponsorship_id is a representative link target: the per-sponsorship
+// detail page where the donor reads the full report.
+export type ChildReport = {
+  id: string;
+  child_id: string;
+  child_name: string | null;
+  child_photo: string | null;
+  // The donor's sponsorship of this child — the report is read on
+  // /dashboard/sponsorship/[sponsorship_id]. Null only if the mapping is
+  // somehow missing (the item then falls back to the child profile).
+  sponsorship_id: string | null;
+  title: string | null;
+  // Donor-facing body: admin's curated donor_text wins over the DI's raw
+  // content (the COALESCE(donor_text, content) convention).
+  body: string | null;
+  photo: string | null;
+  published_at: string | null;
+};
+
+export async function getRecentReportsForDonor(
+  donorId: string,
+  limit = 100,
+): Promise<ChildReport[]> {
+  if (!UUID_RE.test(donorId)) return [];
+
+  const { childIds, childMap } = await getVisibleChildScope(donorId);
+  if (childIds.length === 0) return [];
+
+  const nowIso = new Date().toISOString();
+  try {
+    const rows = (await directusServer().request(
+      readItems("child_update" as never, {
+        filter: {
+          _and: [
+            { child: { _in: childIds } },
+            // Donor-visible terminal state ONLY — never draft / submitted
+            // / under_review / approved / correction_requested.
+            { status: { _eq: "published" } },
+            { published_at: { _lte: nowIso } },
+          ],
+        },
+        fields: [
+          "id",
+          "child",
+          "title",
+          "content",
+          "donor_text",
+          "type",
+          "photo",
+          "published_at",
+        ],
+        sort: ["-published_at"],
+        limit,
+      } as never),
+    )) as unknown as Array<{
+      id: string;
+      child: string;
+      title: string | null;
+      content: string | null;
+      donor_text: string | null;
+      type: string | null;
+      photo: string | null;
+      published_at: string | null;
+    }>;
+    return (rows ?? []).map((r) => {
+      const cm = childMap.get(r.child);
+      const body = r.donor_text?.trim() || r.content || null;
+      return {
+        id: r.id,
+        child_id: r.child,
+        child_name: cm?.name ?? null,
+        child_photo: cm?.photo ?? null,
+        sponsorship_id: cm?.sponsorshipId ?? null,
+        title: r.title ?? null,
+        body,
+        photo: r.photo ?? null,
+        published_at: r.published_at ?? null,
+      };
+    });
+  } catch (err) {
+    console.warn(
+      "[dashboard-data] getRecentReportsForDonor failed",
       err instanceof Error ? err.message : err,
     );
     return [];
