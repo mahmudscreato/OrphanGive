@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
+  AlertTriangle,
   Edit3,
   Loader2,
   PlayCircle,
@@ -34,16 +35,27 @@ interface ApiError {
 
 export function AdminChildActionBar({
   childId,
+  childDisplayName,
   status,
+  canDelete,
+  deleteBlockedReason,
 }: {
   childId: string;
+  childDisplayName: string;
   // Raw child.status — we render distinct UI for 'withdrawn' (= our
   // archived bucket) so admin can flip back to active.
   status: string;
+  // Session 71 — hard-delete gate. Computed server-side via
+  // isChildSafeToDelete (no sponsorship/payment/report/etc. history).
+  // When false, Delete is disabled and `deleteBlockedReason` explains
+  // why (archive-only). The delete endpoint re-checks this regardless.
+  canDelete: boolean;
+  deleteBlockedReason: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
@@ -187,14 +199,51 @@ export function AdminChildActionBar({
             Archive
           </button>
         )}
+
+        {/* Session 71 — permanent delete. Only enabled for children with
+            NO downstream history (canDelete). Otherwise disabled with the
+            reason, so admin understands why it's archive-only. */}
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={() => {
+              clearAlerts();
+              setShowDeleteModal(true);
+            }}
+            disabled={pending}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-[#A02B2B] text-white font-medium text-[14px] hover:bg-[#8A2424] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            <AlertTriangle className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+            Delete permanently
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled
+            title={deleteBlockedReason ?? "Delete unavailable."}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full border border-stone-300 text-stone-400 bg-stone-50 font-medium text-[14px] cursor-not-allowed"
+          >
+            <AlertTriangle className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
+            Delete permanently
+          </button>
+        )}
       </div>
+
+      {!canDelete && deleteBlockedReason ? (
+        <p className="mt-3 text-[12.5px] text-amber-700 leading-relaxed">
+          Delete unavailable — {deleteBlockedReason}
+        </p>
+      ) : null}
 
       <p className="mt-4 text-[12.5px] text-ink-soft leading-relaxed">
         Archive sets the child&apos;s status to &quot;withdrawn&quot; (the
         existing terminal value). The data stays in Directus; donor-facing
         reads stop returning the row. Reactivate flips it back to active.
-        Re-upload requests for documents or intake photos live in the
-        corresponding panels above.
+        Delete <strong>permanently</strong> removes a child that has no
+        sponsorship/payment/report history (email-code confirmed, cannot be
+        undone) — children with any history are archive-only. Re-upload
+        requests for documents or intake photos live in the corresponding
+        panels above.
       </p>
 
       {showArchiveModal ? (
@@ -204,7 +253,239 @@ export function AdminChildActionBar({
           onSubmit={onArchiveSubmit}
         />
       ) : null}
+
+      {showDeleteModal ? (
+        <DeleteOtpModal
+          childId={childId}
+          childDisplayName={childDisplayName}
+          onCancel={() => setShowDeleteModal(false)}
+          onDeleted={() => {
+            // Child is gone — leave the (now-404) detail page.
+            router.push("/admin/children");
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+// ─── Delete OTP modal (Session 71) ─────────────────────────────────
+//
+// Two steps, self-contained:
+//   1. Warn + "Send delete code" → POST /delete/request-otp (emails the
+//      admin). On success advance to step 2.
+//   2. Enter the 6-digit code → POST /delete. On success show a brief
+//      "Deleted" state, then onDeleted() navigates away.
+//
+// The safe-delete predicate is enforced server-side in BOTH endpoints;
+// this modal is purely the confirmation UX.
+
+function DeleteOtpModal({
+  childId,
+  childDisplayName,
+  onCancel,
+  onDeleted,
+}: {
+  childId: string;
+  childDisplayName: string;
+  onCancel: () => void;
+  onDeleted: () => void;
+}) {
+  const [step, setStep] = useState<"confirm" | "code" | "done">("confirm");
+  const [code, setCode] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const codeValid = /^\d{6}$/.test(code.trim());
+
+  async function sendCode() {
+    setError(null);
+    setPending(true);
+    try {
+      const res = await fetch(
+        `/api/admin/children/${childId}/delete/request-otp`,
+        { method: "POST" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok) {
+        if (data.error === "invalid_state") {
+          setError(
+            data.message ??
+              "This child now has history and can't be deleted. Archive instead.",
+          );
+        } else if (data.error === "unauthorized") {
+          setError("Your admin session expired. Sign in again.");
+        } else if (data.error === "not_found") {
+          setError("This child no longer exists.");
+        } else {
+          setError("Couldn't send the code. Try again.");
+        }
+        return;
+      }
+      setStep("code");
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!codeValid) {
+      setError("Enter the 6-digit code.");
+      return;
+    }
+    setError(null);
+    setPending(true);
+    try {
+      const res = await fetch(`/api/admin/children/${childId}/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok) {
+        if (data.error === "invalid_code" || data.error === "bad_request") {
+          setError(data.message ?? "Invalid or expired code.");
+        } else if (data.error === "invalid_state") {
+          setError(
+            data.message ??
+              "This child now has history and can't be deleted. Archive instead.",
+          );
+        } else if (data.error === "not_found") {
+          setError("This child no longer exists.");
+        } else {
+          setError("Couldn't delete the child. Try again.");
+        }
+        return;
+      }
+      setStep("done");
+      window.setTimeout(onDeleted, 800);
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delete this child permanently"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !pending) onCancel();
+      }}
+    >
+      <div className="bg-white rounded-2xl shadow-lg w-full max-w-md overflow-hidden">
+        <div className="px-5 py-4 border-b border-stone-200 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-[#A02B2B]/[0.08] text-[#A02B2B] inline-flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-display text-[18px] text-ink">
+              Delete {childDisplayName || "this child"}
+            </h3>
+            <p className="mt-1 text-[13px] text-[#A02B2B] leading-relaxed font-medium">
+              This permanently deletes the child. This cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-3">
+          {step === "confirm" ? (
+            <p className="text-[13.5px] text-ink-soft leading-relaxed">
+              We&apos;ll email a 6-digit confirmation code to your admin
+              address. Enter it on the next step to permanently remove this
+              child and their documents/intake photos. Sponsorship, payment
+              and report history would block this — those children can only
+              be archived.
+            </p>
+          ) : step === "code" ? (
+            <>
+              <label
+                htmlFor="delete-otp-code"
+                className="block font-mono text-[11px] tracking-[0.14em] uppercase text-slate font-medium"
+              >
+                6-digit code (sent to your email)
+              </label>
+              <input
+                id="delete-otp-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                  if (error) setError(null);
+                }}
+                disabled={pending}
+                placeholder="123456"
+                className="w-full rounded-xl border border-ink/[0.12] bg-white px-4 py-3 text-[18px] tracking-[0.3em] text-ink placeholder:text-slate-soft placeholder:tracking-normal focus:outline-none focus:border-[#A02B2B] focus:ring-2 focus:ring-[#A02B2B]/20 transition-all duration-150 disabled:opacity-60"
+              />
+              <p className="text-[12px] text-ink-soft">
+                Code expires in 10 minutes.
+              </p>
+            </>
+          ) : (
+            <p className="text-[13.5px] text-moss-deep leading-relaxed" role="status">
+              Deleted. Returning to the children list…
+            </p>
+          )}
+
+          {error ? (
+            <p className="text-[12.5px] text-[#A02B2B]" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        {step !== "done" ? (
+          <div className="px-5 py-4 border-t border-stone-200 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={pending}
+              className="text-[14px] text-slate hover:text-tangerine-deeper transition-colors disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            {step === "confirm" ? (
+              <button
+                type="button"
+                onClick={sendCode}
+                disabled={pending}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#A02B2B] hover:bg-[#8A2424] text-white font-medium text-[14px] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {pending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                ) : null}
+                Send delete code
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={pending || !codeValid}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#A02B2B] hover:bg-[#8A2424] text-white font-medium text-[14px] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {pending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                ) : null}
+                Delete permanently
+              </button>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
