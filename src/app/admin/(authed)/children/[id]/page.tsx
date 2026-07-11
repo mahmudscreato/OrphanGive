@@ -43,6 +43,7 @@ import {
 } from "@/lib/admin-children";
 import { getDocumentsForChild } from "@/lib/admin-documents";
 import { getIntakePhotosForChild } from "@/lib/admin-intake-photos";
+import { isChildSafeToDelete } from "@/lib/admin-child-actions";
 import { getQueueForChild } from "@/lib/queue";
 import {
   formatDonorAmount,
@@ -124,12 +125,16 @@ export default async function AdminChildDetailPage({
   if (!detail) notFound();
 
   // Parallel fetches for panels.
-  const [documents, intakePhotos, queue, auditEvents] = await Promise.all([
-    getDocumentsForChild(detail.id),
-    getIntakePhotosForChild(detail.id),
-    getQueueForChild(detail.id),
-    listAdminAuditEventsForChild(detail.id, 30),
-  ]);
+  const [documents, intakePhotos, queue, auditEvents, deleteSafety] =
+    await Promise.all([
+      getDocumentsForChild(detail.id),
+      getIntakePhotosForChild(detail.id),
+      getQueueForChild(detail.id),
+      listAdminAuditEventsForChild(detail.id, 30),
+      // Load-bearing safety check #1 (the button gate). Re-checked
+      // inside the delete transaction as #2.
+      isChildSafeToDelete(detail.id),
+    ]);
 
   // Audit the view — fires AFTER the data fetch so a Directus
   // failure on data load doesn't generate a misleading "admin
@@ -190,7 +195,10 @@ export default async function AdminChildDetailPage({
       <div className="mt-5">
         <AdminChildActionBar
           childId={detail.id}
+          childDisplayName={detail.display_name}
           status={detail.status}
+          canDelete={deleteSafety.safe}
+          deleteBlockedReason={deleteSafety.reason}
         />
       </div>
     </div>

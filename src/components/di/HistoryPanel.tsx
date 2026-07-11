@@ -111,6 +111,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   admin_created_child: Edit3,
   admin_edited_child: Edit3,
   admin_archived_child: Trash2,
+  admin_deleted_child: Trash2,
   admin_reactivated_child: CheckCircle2,
   admin_requested_document_reupload: Edit3,
   admin_requested_intake_reupload: Edit3,

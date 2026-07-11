@@ -157,6 +157,11 @@ export type AuditAction =
   | "admin_created_child"
   | "admin_edited_child"
   | "admin_archived_child"
+  // Session 71 — hard delete (OTP-gated, safe-deletes-only: child had
+  // NO sponsorship/payment/report/etc. history). Distinct from
+  // admin_archived_child (reversible status flip) — this row records an
+  // IRREVERSIBLE removal.
+  | "admin_deleted_child"
   | "admin_reactivated_child"
   | "admin_requested_document_reupload"
   | "admin_requested_intake_reupload"
@@ -582,6 +587,7 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   admin_created_child: () => `Admin created a new child profile`,
   admin_edited_child: () => `Admin edited the child profile`,
   admin_archived_child: () => `Admin archived this child`,
+  admin_deleted_child: () => `Admin permanently deleted this child`,
   admin_reactivated_child: () => `Admin reactivated this child`,
   admin_requested_document_reupload: () =>
     `Admin asked for a document re-upload`,

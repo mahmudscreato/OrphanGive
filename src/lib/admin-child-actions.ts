@@ -44,7 +44,13 @@
 import "server-only";
 
 import { z } from "zod";
-import { createItem, readItem, updateItem } from "@directus/sdk";
+import {
+  createItem,
+  deleteItem,
+  readItem,
+  readItems,
+  updateItem,
+} from "@directus/sdk";
 import { directusServer } from "./directus";
 import { recordAuditEvent } from "./di-audit";
 import { notify } from "./di-notifications";
@@ -644,6 +650,336 @@ export async function reactivateChildAsAdmin(
   });
 
   return { childId, reactivatedAt: nowIso };
+}
+
+// ─── Safe-delete predicate + hard delete (Session 71) ──────────────
+//
+// Hard delete is IRREVERSIBLE, so it is restricted to children with
+// NO downstream history. A child that has ever been sponsored / paid
+// for / reported on / had aid delivered / etc. is ARCHIVE-ONLY (see
+// archiveChildAsAdmin) — never hard-deletable. The predicate below is
+// the load-bearing safety check; it is enforced in TWO places:
+//   1. the detail page (to show/hide/disable the Delete button), and
+//   2. inside deleteChildAsAdmin itself, re-checked immediately before
+//      any row is removed (guards against a sponsorship created
+//      between the OTP request and the confirm).
+//
+// Blocking collections (ANY non-empty row → NOT safe):
+//   sponsorship        (child)                  — direct FK
+//   payment            (sponsorship → child)    — via sponsorship
+//   donation           (child)                  — direct FK (Stripe
+//                                                 donation ledger; live
+//                                                 collection with a direct
+//                                                 child FK, even though no
+//                                                 app-code path writes it
+//                                                 yet — money history that
+//                                                 must block deletion)
+//   task               (sponsorship → child)    — via sponsorship
+//   child_update       (child)                  — this IS the "report"
+//                                                 table; DI reports are
+//                                                 child_update rows with
+//                                                 a report_type, there is
+//                                                 no separate `report`
+//                                                 collection in this
+//                                                 schema
+//   aid_delivery       (child)                  — direct FK
+//   reveal_request     (child)                  — direct FK
+//   child_moment       (child)                  — direct FK
+//
+// NOT in the list on purpose:
+//   - The child's OWN artifacts (child_document, child_intake_photo,
+//     child_proposal(target_child), the Photo file) do NOT block —
+//     they are deleted WITH the child in deleteChildAsAdmin.
+//
+// FAIL-CLOSED: if any check throws (Directus error, unexpected shape),
+// the child is treated as NOT safe. The safe path requires every
+// check to succeed AND return zero rows.
+
+export interface ChildDeleteSafety {
+  safe: boolean;
+  // Human reason shown in the UI when not safe. null iff safe.
+  reason: string | null;
+}
+
+// One blocking check. `filter` is a Directus filter object. On success
+// returns whether a row exists; on ANY error returns `errored: true`
+// (caller fails closed).
+async function anyRowExists(
+  collection: string,
+  filter: Record<string, unknown>,
+): Promise<{ exists: boolean; errored: boolean }> {
+  try {
+    const rows = (await directusServer().request(
+      readItems(collection as never, {
+        filter: filter as never,
+        fields: ["id"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<unknown> | undefined;
+    return { exists: Array.isArray(rows) && rows.length > 0, errored: false };
+  } catch (err) {
+    console.warn(
+      `[admin-child-actions] safe-delete check failed for ${collection} (failing closed)`,
+      err instanceof Error ? err.message : err,
+    );
+    return { exists: false, errored: true };
+  }
+}
+
+/**
+ * TRUE only if the child has zero rows in every blocking collection.
+ * See the section comment for the exact list + fail-closed contract.
+ */
+export async function isChildSafeToDelete(
+  childId: string,
+): Promise<ChildDeleteSafety> {
+  if (!childId) return { safe: false, reason: "Missing child id." };
+
+  // Ordered so the most meaningful reason surfaces first. Each entry is
+  // { collection, filter, reason-when-present }.
+  const byChild = { child: { _eq: childId } };
+  const viaSponsorship = { sponsorship: { child: { _eq: childId } } };
+  const checks: ReadonlyArray<{
+    collection: string;
+    filter: Record<string, unknown>;
+    reason: string;
+  }> = [
+    {
+      collection: "sponsorship",
+      filter: byChild,
+      reason: "Has sponsorship history — archive instead.",
+    },
+    {
+      collection: "payment",
+      filter: viaSponsorship,
+      reason: "Has payment history — archive instead.",
+    },
+    {
+      collection: "donation",
+      filter: byChild,
+      reason: "Has donation history — archive instead.",
+    },
+    {
+      collection: "task",
+      filter: viaSponsorship,
+      reason: "Has linked tasks — archive instead.",
+    },
+    {
+      collection: "child_update",
+      filter: byChild,
+      reason: "Has reports/updates on file — archive instead.",
+    },
+    {
+      collection: "aid_delivery",
+      filter: byChild,
+      reason: "Has aid-delivery records — archive instead.",
+    },
+    {
+      collection: "reveal_request",
+      filter: byChild,
+      reason: "Has reveal requests — archive instead.",
+    },
+    {
+      collection: "child_moment",
+      filter: byChild,
+      reason: "Has moments on file — archive instead.",
+    },
+  ];
+
+  // Run every check (do NOT early-return) so a later error can't be
+  // skipped after an earlier pass — fail-closed requires all to succeed.
+  const results = await Promise.all(
+    checks.map(async (c) => ({
+      ...c,
+      ...(await anyRowExists(c.collection, c.filter)),
+    })),
+  );
+
+  const errored = results.find((r) => r.errored);
+  if (errored) {
+    return {
+      safe: false,
+      reason: "Couldn't verify delete safety right now — try again.",
+    };
+  }
+  const blocking = results.find((r) => r.exists);
+  if (blocking) {
+    return { safe: false, reason: blocking.reason };
+  }
+  return { safe: true, reason: null };
+}
+
+export interface DeleteChildResult {
+  childId: string;
+  deletedAt: string;
+}
+
+/**
+ * Hard-delete a child + its own artifacts, leaves-first.
+ *
+ * NOTE ON "transaction": the Directus REST SDK has no cross-collection
+ * ACID transaction, so this is an ORDERED sequence of deletes, not a
+ * single atomic unit. The safety guarantee comes from re-checking
+ * isChildSafeToDelete at the top (immediately before any mutation): a
+ * child that reaches the delete loop provably has no blocking history,
+ * so there is nothing to cascade beyond its own artifacts. If a
+ * mid-sequence delete fails we throw ChildWriteFailedError; any
+ * already-removed artifacts belong solely to this child, and re-running
+ * delete cleans up the remainder (the predicate still passes).
+ *
+ * Removes, in order:
+ *   1. child_document rows (child = X)
+ *   2. child_intake_photo rows (child = X)
+ *   3. child_proposal rows (target_child = X), if any
+ *   4. the child row
+ *   5. best-effort: the attachment files (document files, intake photo
+ *      files) + the child's Photo directus_files row. Best-effort
+ *      because directus_files FKs are ON DELETE RESTRICT while the
+ *      referencing row exists; once the rows above are gone the files
+ *      are unreferenced and deletable, but any failure is non-fatal
+ *      (the existing orphan-file sweep is the backstop — same posture
+ *      as removeIntakePhoto).
+ */
+export async function deleteChildAsAdmin(
+  childId: string,
+  adminUserId: string,
+  request?: Request,
+): Promise<DeleteChildResult> {
+  if (!childId) throw new ChildNotFoundError();
+
+  // Existence + Photo uuid. Throws ChildNotFoundError if gone.
+  let photoUuid: string | null = null;
+  let childStatus: string | null = null;
+  try {
+    const row = (await directusServer().request(
+      readItem("child" as never, childId as never, {
+        fields: ["id", "status", "Photo"],
+      } as never),
+    )) as unknown as { id?: string; status?: string | null; Photo?: string | null } | undefined;
+    if (!row?.id) throw new ChildNotFoundError();
+    photoUuid = row.Photo ?? null;
+    childStatus = row.status ?? null;
+  } catch (err) {
+    if (err instanceof ChildNotFoundError) throw err;
+    if (looksLikeNotFound(err)) throw new ChildNotFoundError();
+    throw new ChildWriteFailedError(err);
+  }
+
+  // LOAD-BEARING re-check: refuse if any blocking history appeared since
+  // the OTP was requested. This is the transaction-side guard.
+  const safety = await isChildSafeToDelete(childId);
+  if (!safety.safe) {
+    throw new InvalidChildStateError(
+      safety.reason ?? "Child has history and can't be deleted.",
+    );
+  }
+
+  // Collect the child's own artifact rows (ids + attachment file uuids).
+  const attachmentFileUuids: string[] = [];
+  async function collectIds(
+    collection: string,
+    filter: Record<string, unknown>,
+    fileField?: string,
+  ): Promise<string[]> {
+    try {
+      const rows = (await directusServer().request(
+        readItems(collection as never, {
+          filter: filter as never,
+          fields: fileField ? ["id", fileField] : ["id"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<Record<string, unknown>> | undefined;
+      if (!Array.isArray(rows)) return [];
+      if (fileField) {
+        for (const r of rows) {
+          const f = r[fileField];
+          if (typeof f === "string" && f) attachmentFileUuids.push(f);
+        }
+      }
+      return rows
+        .map((r) => (typeof r.id === "string" ? r.id : String(r.id)))
+        .filter((s) => s && s !== "undefined");
+    } catch (err) {
+      throw new ChildWriteFailedError(err);
+    }
+  }
+
+  const documentIds = await collectIds(
+    "child_document",
+    { child: { _eq: childId } },
+    "file",
+  );
+  const intakePhotoIds = await collectIds(
+    "child_intake_photo",
+    { child: { _eq: childId } },
+    "photo",
+  );
+  const proposalIds = await collectIds("child_proposal", {
+    target_child: { _eq: childId },
+  });
+
+  // Leaves-first deletes. A failure here throws ChildWriteFailedError.
+  try {
+    for (const id of documentIds) {
+      await directusServer().request(
+        deleteItem("child_document" as never, id as never),
+      );
+    }
+    for (const id of intakePhotoIds) {
+      await directusServer().request(
+        deleteItem("child_intake_photo" as never, id as never),
+      );
+    }
+    for (const id of proposalIds) {
+      await directusServer().request(
+        deleteItem("child_proposal" as never, id as never),
+      );
+    }
+    // The child row itself.
+    await directusServer().request(
+      deleteItem("child" as never, childId as never),
+    );
+  } catch (err) {
+    throw new ChildWriteFailedError(err);
+  }
+
+  // Best-effort file cleanup — now unreferenced. Non-fatal; the orphan
+  // sweep is the backstop. Photo first, then attachment files.
+  const filesToDelete = [
+    ...(photoUuid ? [photoUuid] : []),
+    ...attachmentFileUuids,
+  ];
+  for (const fileUuid of filesToDelete) {
+    try {
+      await directusServer().request(
+        deleteItem("directus_files" as never, fileUuid as never),
+      );
+    } catch (err) {
+      console.warn(
+        "[admin-child-actions] best-effort file delete failed (orphan sweep will handle)",
+        fileUuid,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  const deletedAt = new Date().toISOString();
+  await recordAuditEvent({
+    actorUserId: adminUserId,
+    actorRole: "admin",
+    action: "admin_deleted_child",
+    collection: "child",
+    recordId: childId,
+    metadata: {
+      previous_status: childStatus,
+      deleted_documents: documentIds.length,
+      deleted_intake_photos: intakePhotoIds.length,
+      deleted_proposals: proposalIds.length,
+    },
+    request,
+  });
+
+  return { childId, deletedAt };
 }
 
 // ─── Re-upload request (audit + notify, no schema mutation) ────────
