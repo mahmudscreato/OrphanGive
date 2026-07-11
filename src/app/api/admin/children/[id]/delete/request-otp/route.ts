@@ -43,6 +43,12 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // fix/super-admin-route-gating — the delete-OTP request must be gated
+  // too, or a plain Admin could trigger the hard-delete flow. Super
+  // Admin only; a valid non-super session → 403.
+  if (!session.isSuperAdmin) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const { id } = await params;
   if (!id || typeof id !== "string") {
     return NextResponse.json({ error: "not_found" }, { status: 404 });

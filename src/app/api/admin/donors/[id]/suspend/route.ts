@@ -33,6 +33,11 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // fix/super-admin-route-gating — suspending disables a donor account:
+  // Super Admin only. A valid non-super session (plain Admin) → 403.
+  if (!session.isSuperAdmin) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const { id } = await params;
   if (!id || typeof id !== "string") {
     return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -56,6 +56,14 @@ export async function POST(
   if (!auth.ok) return auth.response;
   const { admin, sponsorship } = auth.ctx;
 
+  // fix/super-admin-route-gating — cancelling ends the sponsorship
+  // (Stripe cancel + queue promotion + reveal revocation): irreversible,
+  // Super Admin only. auth.ok already guaranteed a valid admin session,
+  // so a non-super here is a plain Admin → 403.
+  if (!admin.isSuperAdmin) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
   let json: unknown = undefined;
   try {
     json = await req.json();

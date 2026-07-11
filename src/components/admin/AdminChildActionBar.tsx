@@ -39,6 +39,7 @@ export function AdminChildActionBar({
   status,
   canDelete,
   deleteBlockedReason,
+  isSuperAdmin,
 }: {
   childId: string;
   childDisplayName: string;
@@ -51,6 +52,10 @@ export function AdminChildActionBar({
   // why (archive-only). The delete endpoint re-checks this regardless.
   canDelete: boolean;
   deleteBlockedReason: string | null;
+  // fix/super-admin-route-gating — hard delete is Super-Admin-only (both
+  // the delete + delete-OTP routes 403 a plain Admin). Hide the whole
+  // Delete affordance for plain Admins; Archive/Reactivate stay theirs.
+  isSuperAdmin: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -202,8 +207,10 @@ export function AdminChildActionBar({
 
         {/* Session 71 — permanent delete. Only enabled for children with
             NO downstream history (canDelete). Otherwise disabled with the
-            reason, so admin understands why it's archive-only. */}
-        {canDelete ? (
+            reason, so admin understands why it's archive-only.
+            fix/super-admin-route-gating — the whole affordance is
+            Super-Admin-only; plain Admins don't see it at all. */}
+        {isSuperAdmin && canDelete ? (
           <button
             type="button"
             onClick={() => {
@@ -216,7 +223,7 @@ export function AdminChildActionBar({
             <AlertTriangle className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
             Delete permanently
           </button>
-        ) : (
+        ) : isSuperAdmin ? (
           <button
             type="button"
             disabled
@@ -226,10 +233,10 @@ export function AdminChildActionBar({
             <AlertTriangle className="w-4 h-4 stroke-[1.75]" aria-hidden="true" />
             Delete permanently
           </button>
-        )}
+        ) : null}
       </div>
 
-      {!canDelete && deleteBlockedReason ? (
+      {isSuperAdmin && !canDelete && deleteBlockedReason ? (
         <p className="mt-3 text-[12.5px] text-amber-700 leading-relaxed">
           Delete unavailable — {deleteBlockedReason}
         </p>

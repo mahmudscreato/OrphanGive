@@ -167,6 +167,7 @@ export default async function AdminDonorDetailPage({
           donorId={detail.id}
           approvalStatus={detail.approval_status}
           accountStatus={detail.account_status}
+          isSuperAdmin={session.isSuperAdmin}
         />
       </div>
     </div>
