@@ -27,6 +27,7 @@ import {
   getAdminTaskById,
 } from "@/lib/admin-tasks";
 import { recordAuditEvent } from "@/lib/di-audit";
+import { notify } from "@/lib/di-notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,6 +106,21 @@ export async function POST(
       assigneeId: result.assigneeId,
     },
     request: req,
+  });
+
+  // fix/task-fulfillment-loop — tell the newly-assigned DI a task landed
+  // in their queue. Best-effort; assigneeId is always present here (the
+  // body schema requires it). `task` was loaded above for the existence
+  // check, so we can name the child (Tier-1 display_name) in the body.
+  await notify({
+    recipientUserId: result.assigneeId,
+    type: "admin_assigned_task",
+    title: "New task assigned to you",
+    body: task.child_display_name
+      ? `Admin assigned you a task for ${task.child_display_name}: ${task.title}`
+      : `Admin assigned you a task: ${task.title}`,
+    relatedCollection: "task",
+    relatedId: result.taskId,
   });
 
   return NextResponse.json({

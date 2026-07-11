@@ -52,6 +52,9 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   admin_removed_approved_intake_photo: XCircle,
   admin_assigned_child: HeartHandshake,
   admin_assigned_task: FileBarChart,
+  // fix/task-fulfillment-loop — task verified vs sent back to redo.
+  admin_verified_task: CheckCircle2,
+  admin_rejected_task: Edit3,
   admin_verified_delivery: Truck,
   // Session 66 — re-upload requests. Edit3 reads as "needs revision".
   admin_requested_document_reupload: Edit3,

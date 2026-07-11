@@ -30,6 +30,7 @@ import {
   rejectTask,
 } from "@/lib/admin-tasks";
 import { recordAuditEvent } from "@/lib/di-audit";
+import { notify } from "@/lib/di-notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,6 +88,20 @@ export async function POST(
     },
     request: req,
   });
+
+  // fix/task-fulfillment-loop — tell the DI the task was sent back so
+  // they redo it. Best-effort + gated on a non-null assignee; the DI's
+  // own transition logic lets them move it back to in_progress.
+  if (result.assigneeId) {
+    await notify({
+      recipientUserId: result.assigneeId,
+      type: "admin_rejected_task",
+      title: "Task sent back",
+      body: "Admin sent your delivery task back for another try. Open it, redo the delivery, and re-submit for verification.",
+      relatedCollection: "task",
+      relatedId: result.taskId,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

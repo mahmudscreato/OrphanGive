@@ -24,6 +24,7 @@ import {
   type TaskDiStatus,
 } from "@/lib/di-tasks";
 import { recordAuditEvent } from "@/lib/di-audit";
+import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,22 @@ export async function POST(
       metadata: childId ? { childId } : undefined,
       request: req,
     });
+
+    // fix/task-fulfillment-loop — when the DI COMPLETES a task (hands it
+    // to the admin for verification), email the admins so they know to
+    // verify. Reuses the existing ADMIN_NOTIFY_EMAILS path (best-effort;
+    // never throws into the transition). Only on the completion move —
+    // 'in_progress' is not admin-actionable.
+    if (di_status === "completed_pending_verification") {
+      await notifyAdminOfPendingSubmission({
+        collection: "task",
+        recordId: taskId,
+        submittedByUserId: session.userId,
+        childId: childId ?? undefined,
+        summary:
+          "A Data Inputter completed a delivery task and it's awaiting your verification.",
+      });
+    }
     return NextResponse.json({ taskId, di_status });
   } catch (err) {
     if (err instanceof TaskNotFoundError) {

@@ -27,7 +27,10 @@ export type SubmissionCollection =
   | "child_proposal"
   | "child_moment"
   | "child_update"
-  | "aid_delivery";
+  | "aid_delivery"
+  // fix/task-fulfillment-loop — the DI-completed-a-task event + the
+  // unassigned-auto-task alert both reach admins through this path.
+  | "task";
 
 export interface NotifyAdminInput {
   collection: SubmissionCollection;
@@ -66,6 +69,7 @@ const COLLECTION_LABEL: Record<SubmissionCollection, string> = {
   child_moment: "moment",
   child_update: "report",
   aid_delivery: "delivery",
+  task: "delivery task",
 };
 
 async function resolveSubmitterFirstName(

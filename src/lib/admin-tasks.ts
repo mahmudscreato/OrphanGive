@@ -906,6 +906,10 @@ export interface AdminTaskDecisionResult {
   adminStatus: Extract<TaskAdminStatus, "verified_complete" | "rejected_redo">;
   childId: string | null;
   sponsorshipId: string | null;
+  // fix/task-fulfillment-loop — the DI who owns the task, so the route
+  // can notify them of the verify/reject decision. Null on the (rare)
+  // unassigned task; the route gates notify on non-null.
+  assigneeId: string | null;
 }
 
 const TASK_DECISION_FIELDS = [
@@ -914,6 +918,7 @@ const TASK_DECISION_FIELDS = [
   "admin_status",
   "child",
   "sponsorship",
+  "assignee",
 ] as const;
 
 type TaskDecisionRow = {
@@ -922,6 +927,7 @@ type TaskDecisionRow = {
   admin_status: string | null;
   child: string | { id?: string } | null;
   sponsorship: string | null;
+  assignee: string | { id?: string } | null;
 };
 
 /**
@@ -999,11 +1005,16 @@ async function setTaskAdminStatus(
   }
 
   const childObj = row.child && typeof row.child === "object" ? row.child : null;
+  const assigneeObj =
+    row.assignee && typeof row.assignee === "object" ? row.assignee : null;
   return {
     taskId,
     adminStatus: newAdminStatus,
     childId: childObj?.id ?? (typeof row.child === "string" ? row.child : null),
     sponsorshipId: row.sponsorship,
+    assigneeId:
+      assigneeObj?.id ??
+      (typeof row.assignee === "string" ? row.assignee : null),
   };
 }
 
