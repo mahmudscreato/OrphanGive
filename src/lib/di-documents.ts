@@ -351,10 +351,12 @@ export async function updateDocument(
 }
 
 /**
- * Delete a pending document owned by this DI. Throws OutOfScopeError
- * on miss / not-owned / not-pending. Hard delete — pending rows have
- * no audit history beyond the audit_log row that records the
- * deletion.
+ * Delete a PENDING or REJECTED document owned by this DI. Throws
+ * OutOfScopeError on miss / not-owned / approved-or-archived. Hard
+ * delete — a pending or rejected row has no audit history beyond the
+ * audit_log row that records the deletion. Allowing rejected removal
+ * lets the DI clear a rejected document to re-upload a fresh version
+ * (fix/parked-p1-batch — mirror of the intake-photo fix).
  *
  * The underlying directus_files row is NOT deleted (FK is ON DELETE
  * RESTRICT to prevent stranding the file). Admin sweeps orphaned
@@ -366,7 +368,14 @@ export async function deleteDocument(
 ): Promise<{ ok: true; childId: string; documentType: DocumentType | null }> {
   const row = await getOwnDocument(userId, documentId);
   if (!row) throw new OutOfScopeError();
-  if (row.status !== "pending") throw new OutOfScopeError();
+  // fix/parked-p1-batch — allow the DI to remove their own PENDING or
+  // REJECTED document (approved/archived stay non-removable, admin-owned
+  // once accepted). Rejected removal clears the dead-end where a DI
+  // couldn't re-upload after a rejection. Exact mirror of
+  // deleteIntakePhoto's gate.
+  if (row.status !== "pending" && row.status !== "rejected") {
+    throw new OutOfScopeError();
+  }
 
   await directusServer().request(
     deleteItem("child_document" as never, documentId),
