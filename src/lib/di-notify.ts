@@ -30,7 +30,10 @@ export type SubmissionCollection =
   | "aid_delivery"
   // fix/task-fulfillment-loop — the DI-completed-a-task event + the
   // unassigned-auto-task alert both reach admins through this path.
-  | "task";
+  | "task"
+  // fix/reveal-decision-loop — a donor's Tier-3 information-access
+  // request notifies admins to review it in the reveal queue.
+  | "reveal_request";
 
 export interface NotifyAdminInput {
   collection: SubmissionCollection;
@@ -70,6 +73,7 @@ const COLLECTION_LABEL: Record<SubmissionCollection, string> = {
   child_update: "report",
   aid_delivery: "delivery",
   task: "delivery task",
+  reveal_request: "information-access request",
 };
 
 async function resolveSubmitterFirstName(

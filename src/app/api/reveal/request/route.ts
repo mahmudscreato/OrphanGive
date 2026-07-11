@@ -4,8 +4,10 @@ import {
   createRevealRequest,
   countRevealsToday,
   isAllowedRevealField,
+  REVEAL_FIELD_LABELS,
   RevealRequestError,
 } from "@/lib/reveal-data";
+import { notifyAdminOfPendingSubmission } from "@/lib/di-notify";
 
 export const runtime = "nodejs";
 
@@ -64,6 +66,29 @@ export async function POST(req: NextRequest) {
       fieldName,
       donorReason: typeof donorReason === "string" ? donorReason : null,
     });
+
+    // fix/reveal-decision-loop (R2) — tell admins a request is waiting.
+    // Best-effort: notifyAdminOfPendingSubmission swallows its own
+    // errors, but wrap anyway so a notify failure can NEVER fail the
+    // request creation the donor just succeeded at.
+    try {
+      const fieldLabel = isAllowedRevealField(fieldName)
+        ? REVEAL_FIELD_LABELS[fieldName]
+        : fieldName;
+      await notifyAdminOfPendingSubmission({
+        collection: "reveal_request",
+        recordId: created.id,
+        submittedByUserId: donor.id,
+        childId,
+        summary: `A donor requested access to "${fieldLabel}" — review it in the reveal queue.`,
+      });
+    } catch (err) {
+      console.warn(
+        "[api/reveal/request] admin notify failed (non-fatal)",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     return NextResponse.json({ request: created });
   } catch (err) {
     if (err instanceof RevealRequestError) {
