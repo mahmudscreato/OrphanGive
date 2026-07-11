@@ -3,6 +3,7 @@ import {
   deleteItem,
   readItem,
   readItems,
+  readUsers,
   updateItem,
 } from "@directus/sdk";
 import { directusServer } from "./directus";
@@ -528,4 +529,306 @@ export async function countRevealsToday(donorId: string): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+// ─── Admin decision layer (fix/reveal-decision-loop) ────────────────
+//
+// The in-app admin approve/deny surface. Previously admins had to edit
+// reveal_request rows by hand in Directus — and crucially, the read
+// path (getActiveReveals) requires `approved_until > now`, which nothing
+// auto-set, so even a manual approval granted nothing. approveReveal
+// now stamps approved_until = now + 90 days, matching the expire-reveals
+// cron window (which expires rows whose decided_at is > 90 days old), so
+// the read-side and cron notions of expiry agree.
+
+// 90-day access window — mirrors NINETY_DAYS_MS in
+// /api/cron/expire-reveals. Kept in sync by hand (the cron owns the
+// authoritative sweep; this sets the read-path bound to match).
+const REVEAL_APPROVAL_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+const MIN_DECISION_NOTE = 3;
+const MAX_DECISION_NOTE = 1000;
+
+export interface PendingRevealRequest {
+  id: string;
+  donorId: string;
+  donorName: string;
+  donorEmail: string;
+  childId: string;
+  childName: string;
+  fieldName: string;
+  fieldLabel: string;
+  donorReason: string | null;
+  requestedAt: string | null;
+}
+
+/**
+ * Admin queue reader — every reveal_request still `pending`, oldest
+ * first (FIFO triage), with donor + child resolved to display strings.
+ * Tier-1 safe: shows WHICH field was requested (the allowlist column
+ * name / label), never the child's actual private value.
+ */
+export async function listPendingRevealRequests(): Promise<
+  PendingRevealRequest[]
+> {
+  let rows: RevealRequest[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("reveal_request" as never, {
+        filter: { status: { _eq: "pending" } },
+        fields: [...REVEAL_FIELDS],
+        sort: ["date_created"],
+        limit: -1,
+      } as never),
+    )) as unknown as RevealRequest[];
+    rows = Array.isArray(result) ? result : [];
+  } catch (err) {
+    console.warn(
+      "[reveal-data] listPendingRevealRequests failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  if (rows.length === 0) return [];
+
+  // Resolve donor + child display strings in two batched reads.
+  const donorIds = Array.from(new Set(rows.map((r) => r.donor).filter(Boolean)));
+  const childIds = Array.from(new Set(rows.map((r) => r.child).filter(Boolean)));
+  const donorById = new Map<string, { name: string; email: string }>();
+  const childNameById = new Map<string, string>();
+  try {
+    if (donorIds.length > 0) {
+      const users = (await directusServer().request(
+        readUsers({
+          filter: { id: { _in: donorIds } },
+          fields: ["id", "first_name", "last_name", "email"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+      }>;
+      for (const u of users ?? []) {
+        const name =
+          [u.first_name, u.last_name].filter((s) => s && s.trim()).join(" ").trim() ||
+          u.email;
+        donorById.set(u.id, { name, email: u.email });
+      }
+    }
+    if (childIds.length > 0) {
+      const kids = (await directusServer().request(
+        readItems("child" as never, {
+          filter: { id: { _in: childIds } },
+          fields: ["id", "display_name"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{ id: string; display_name: string | null }>;
+      for (const c of kids ?? []) {
+        if (c.display_name?.trim()) childNameById.set(c.id, c.display_name.trim());
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[reveal-data] listPendingRevealRequests resolve failed",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return rows.map((r) => {
+    const donor = donorById.get(r.donor);
+    return {
+      id: r.id,
+      donorId: r.donor,
+      donorName: donor?.name ?? r.donor,
+      donorEmail: donor?.email ?? "",
+      childId: r.child,
+      childName: childNameById.get(r.child) ?? "Unknown child",
+      fieldName: r.field_name,
+      fieldLabel: isAllowedRevealField(r.field_name)
+        ? REVEAL_FIELD_LABELS[r.field_name]
+        : String(r.field_name),
+      donorReason: r.donor_reason?.trim() || null,
+      requestedAt: r.date_created,
+    };
+  });
+}
+
+/** Count of pending reveal requests — for the reviews-hub badge. */
+export async function countPendingRevealRequests(): Promise<number> {
+  try {
+    const rows = (await directusServer().request(
+      readItems("reveal_request" as never, {
+        filter: { status: { _eq: "pending" } },
+        fields: ["id"],
+        limit: -1,
+      } as never),
+    )) as unknown as Array<unknown>;
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch (err) {
+    console.warn(
+      "[reveal-data] countPendingRevealRequests failed",
+      err instanceof Error ? err.message : err,
+    );
+    return 0;
+  }
+}
+
+export interface RevealDecisionResult {
+  id: string;
+  donorId: string;
+  childId: string;
+  fieldName: string;
+}
+
+// Shared read+guard for a decision: the row must exist and be pending.
+async function loadPendingRevealForDecision(
+  requestId: string,
+): Promise<RevealRequest> {
+  let row: RevealRequest | null = null;
+  try {
+    row = (await directusServer().request(
+      readItem("reveal_request" as never, requestId as never, {
+        fields: [...REVEAL_FIELDS],
+      } as never),
+    )) as unknown as RevealRequest;
+  } catch {
+    throw new RevealRequestError(404, "Reveal request not found.");
+  }
+  if (!row || !row.id) throw new RevealRequestError(404, "Reveal request not found.");
+  if (row.status !== "pending") {
+    throw new RevealRequestError(
+      409,
+      `This request is already ${row.status}.`,
+    );
+  }
+  return row;
+}
+
+function normalizeDecisionNote(note: string | null | undefined): string {
+  const trimmed = (note ?? "").trim();
+  if (trimmed.length < MIN_DECISION_NOTE) {
+    throw new RevealRequestError(
+      400,
+      "A reason is required (at least 3 characters).",
+    );
+  }
+  return trimmed.slice(0, MAX_DECISION_NOTE);
+}
+
+/**
+ * APPROVE — status='approved', decided_by/at stamped, admin note
+ * recorded, AND approved_until = now + 90d (the read-path bound). Only
+ * a pending request can be approved. Requires a non-empty reason.
+ */
+export async function approveRevealRequest(opts: {
+  requestId: string;
+  adminUserId: string;
+  note: string;
+}): Promise<RevealDecisionResult> {
+  if (!UUID_RE.test(opts.requestId) || !UUID_RE.test(opts.adminUserId)) {
+    throw new RevealRequestError(400, "Invalid id.");
+  }
+  const note = normalizeDecisionNote(opts.note);
+  const row = await loadPendingRevealForDecision(opts.requestId);
+
+  const nowIso = new Date().toISOString();
+  const approvedUntil = new Date(
+    Date.now() + REVEAL_APPROVAL_WINDOW_MS,
+  ).toISOString();
+  try {
+    await directusServer().request(
+      updateItem("reveal_request" as never, opts.requestId as never, {
+        status: "approved",
+        decided_by: opts.adminUserId,
+        decided_at: nowIso,
+        admin_decision_note: note,
+        approved_until: approvedUntil,
+      } as never),
+    );
+  } catch (err) {
+    console.error(
+      "[reveal-data] approveRevealRequest update failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new RevealRequestError(500, "Could not approve the request.");
+  }
+
+  await recordAuditEvent({
+    actorUserId: opts.adminUserId,
+    actorRole: "admin",
+    action: "admin_approved_reveal",
+    collection: "reveal_request",
+    recordId: opts.requestId,
+    metadata: {
+      donor: row.donor,
+      childId: row.child,
+      field_name: row.field_name,
+      approved_until: approvedUntil,
+    },
+  });
+
+  return {
+    id: opts.requestId,
+    donorId: row.donor,
+    childId: row.child,
+    fieldName: row.field_name,
+  };
+}
+
+/**
+ * DENY — status='denied' (the value the read-path, donor UI, and
+ * reveal-denied email all key off), decided_by/at stamped, admin note
+ * recorded. Grants nothing (no approved_until). Only a pending request
+ * can be denied. Requires a non-empty reason.
+ */
+export async function denyRevealRequest(opts: {
+  requestId: string;
+  adminUserId: string;
+  note: string;
+}): Promise<RevealDecisionResult> {
+  if (!UUID_RE.test(opts.requestId) || !UUID_RE.test(opts.adminUserId)) {
+    throw new RevealRequestError(400, "Invalid id.");
+  }
+  const note = normalizeDecisionNote(opts.note);
+  const row = await loadPendingRevealForDecision(opts.requestId);
+
+  const nowIso = new Date().toISOString();
+  try {
+    await directusServer().request(
+      updateItem("reveal_request" as never, opts.requestId as never, {
+        status: "denied",
+        decided_by: opts.adminUserId,
+        decided_at: nowIso,
+        admin_decision_note: note,
+      } as never),
+    );
+  } catch (err) {
+    console.error(
+      "[reveal-data] denyRevealRequest update failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new RevealRequestError(500, "Could not deny the request.");
+  }
+
+  await recordAuditEvent({
+    actorUserId: opts.adminUserId,
+    actorRole: "admin",
+    action: "admin_denied_reveal",
+    collection: "reveal_request",
+    recordId: opts.requestId,
+    metadata: {
+      donor: row.donor,
+      childId: row.child,
+      field_name: row.field_name,
+    },
+  });
+
+  return {
+    id: opts.requestId,
+    donorId: row.donor,
+    childId: row.child,
+    fieldName: row.field_name,
+  };
 }

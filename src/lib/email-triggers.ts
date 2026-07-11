@@ -176,3 +176,28 @@ export async function fireRefundEmail(opts: {
     },
   );
 }
+
+// fix/reveal-decision-loop — wire the previously-orphaned reveal
+// decision emails. The internal routes (/api/internal/email/reveal-*)
+// already assemble donor + child + field label and re-check the row's
+// status; we just fire them best-effort AFTER the decision row is
+// written (the routes reject if status isn't yet approved/denied, so
+// order matters: update the row first, then call these). A failure
+// here never unwinds the admin's decision.
+export async function fireRevealApprovedEmail(
+  revealRequestId: string,
+): Promise<void> {
+  if (!revealRequestId) return;
+  await callInternalEmailRoute("/api/internal/email/reveal-approved", {
+    revealRequestId,
+  });
+}
+
+export async function fireRevealDeniedEmail(
+  revealRequestId: string,
+): Promise<void> {
+  if (!revealRequestId) return;
+  await callInternalEmailRoute("/api/internal/email/reveal-denied", {
+    revealRequestId,
+  });
+}

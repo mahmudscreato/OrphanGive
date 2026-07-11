@@ -160,6 +160,8 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // the DI feed (no di_ prefix). Type-safety placeholders only.
   donor_requested_reveal: Eye,
   donor_withdrew_reveal: EyeOff,
+  admin_approved_reveal: CheckCircle2,
+  admin_denied_reveal: XCircle,
   system_revoked_reveal: Lock,
   system_expired_reveal: Lock,
   // P5 — safeguarding triage (admin-only; never on DI feeds).

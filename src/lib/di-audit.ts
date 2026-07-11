@@ -303,19 +303,19 @@ export type AuditAction =
   | "admin_assigned_task"
   // ─── P2 — reveal lifecycle audit ───
   //
-  // Donor / system actions on `reveal_request` (Tier-3 access grant
-  // for sponsoring donors). The admin approve/deny path is NOT here
-  // because there's no API route for it today — admins decide via
-  // the Directus admin UI directly. If/when an /api/admin/reveals/
-  // [id]/{approve,reject} route ships, add admin_approved_reveal +
-  // admin_rejected_reveal alongside.
+  // Donor / system / admin actions on `reveal_request` (Tier-3 access
+  // grant). fix/reveal-decision-loop shipped the in-app admin decision
+  // route (/api/admin/reveal/[id]/{approve,deny}), so the admin actions
+  // now live here (previously admins decided in raw Directus).
   //
   // Metadata contract: IDs + field_name (the column name, which is
   // public allowlist) + reason. NEVER the decrypted Tier-3 value;
-  // that lives encrypted on the child row and only reaches the
-  // viewer through fetchRevealedFieldValues at render time.
+  // that lives on the child row and only reaches the viewer through
+  // fetchRevealedFieldValues at render time.
   | "donor_requested_reveal"
   | "donor_withdrew_reveal"
+  | "admin_approved_reveal"
+  | "admin_denied_reveal"
   | "system_revoked_reveal"
   // Cron-driven expiry (90 days after admin approval). Distinct from
   // system_revoked_reveal so the timeline reader shows the closure
@@ -653,6 +653,8 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   // P2 — reveal lifecycle.
   donor_requested_reveal: () => `Donor requested a reveal`,
   donor_withdrew_reveal: () => `Donor withdrew a reveal request`,
+  admin_approved_reveal: () => `Admin approved a reveal request`,
+  admin_denied_reveal: () => `Admin denied a reveal request`,
   system_revoked_reveal: () => `Reveal revoked (sponsorship ended)`,
   system_expired_reveal: () => `Reveal expired (90 days elapsed)`,
   // P5 — safeguarding report triage (lead-only). Phrased for an admin-side

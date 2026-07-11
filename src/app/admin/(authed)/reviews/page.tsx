@@ -8,6 +8,7 @@ import Link from "next/link";
 import {
   ChevronRight,
   Camera,
+  Eye,
   FileBarChart,
   FileText,
   ImagePlus,
@@ -16,6 +17,7 @@ import { directusServer } from "@/lib/directus";
 import { readItems } from "@directus/sdk";
 import { countPendingDocuments } from "@/lib/admin-documents";
 import { countPendingReports } from "@/lib/admin-reports";
+import { countPendingRevealRequests } from "@/lib/reveal-data";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 export const dynamic = "force-dynamic";
@@ -43,19 +45,26 @@ async function safeCount(
 }
 
 export default async function AdminReviewsIndexPage() {
-  const [pendingDocs, pendingIntake, pendingMoments, pendingReports] =
-    await Promise.all([
-      // Documents — Session 52d delegates to the single
-      // countPendingDocuments function in admin-documents so home
-      // tile + queue list + this index page all return the same N.
-      countPendingDocuments(),
-      safeCount("child_intake_photo", { status: { _eq: "pending" } }),
-      safeCount("child_moment", { status: { _eq: "pending" } }),
-      // Spine 1.2 — report queue covers submitted_by_di +
-      // under_admin_review + legacy 'pending'. The helper handles the
-      // _or filter so home tile and this page stay in sync.
-      countPendingReports(),
-    ]);
+  const [
+    pendingDocs,
+    pendingIntake,
+    pendingMoments,
+    pendingReports,
+    pendingReveals,
+  ] = await Promise.all([
+    // Documents — Session 52d delegates to the single
+    // countPendingDocuments function in admin-documents so home
+    // tile + queue list + this index page all return the same N.
+    countPendingDocuments(),
+    safeCount("child_intake_photo", { status: { _eq: "pending" } }),
+    safeCount("child_moment", { status: { _eq: "pending" } }),
+    // Spine 1.2 — report queue covers submitted_by_di +
+    // under_admin_review + legacy 'pending'. The helper handles the
+    // _or filter so home tile and this page stay in sync.
+    countPendingReports(),
+    // fix/reveal-decision-loop — donor Tier-3 information-access requests.
+    countPendingRevealRequests(),
+  ]);
 
   const queues = [
     {
@@ -89,6 +98,14 @@ export default async function AdminReviewsIndexPage() {
       description:
         "DI-filed progress reports + deployment confirmations. Edit donor copy or send back for correction.",
       count: pendingReports,
+    },
+    {
+      href: "/admin/reviews/reveal-requests",
+      label: "Information-access requests",
+      icon: Eye,
+      description:
+        "Donors requesting a child's private detail (address, guardian contact…). Approve grants 90-day scoped access; deny needs a reason.",
+      count: pendingReveals,
     },
   ];
 
