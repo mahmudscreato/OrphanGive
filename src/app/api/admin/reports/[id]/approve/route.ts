@@ -13,6 +13,7 @@ import {
   InvalidReportStatusTransitionError,
   ReportNotFoundError,
 } from "@/lib/admin-reports";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,25 @@ export async function POST(
   }
   try {
     const result = await approveReport(id, adminSession.userId);
+
+    // fix/parked-p1-batch (audit finding 9) — notify the DI author their
+    // report was approved. Recipient = report author (created_by), with
+    // the child.assigned_di fallback for legacy rows whose created_by is
+    // null (same pattern as the document/intake fixes). Best-effort:
+    // notify() swallows its own errors and skips a null recipient, so
+    // this can never break the approve transition.
+    const recipient = await resolveDiRecipient(result.uploaderId, result.childId);
+    if (recipient) {
+      await notify({
+        recipientUserId: recipient,
+        type: "admin_approved_report",
+        title: "Report approved",
+        body: "Admin approved your report. It's ready to be published to the donor.",
+        relatedCollection: "child_update",
+        relatedId: result.id,
+      });
+    }
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof ReportNotFoundError) {

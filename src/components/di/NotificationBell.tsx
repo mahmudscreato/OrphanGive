@@ -59,6 +59,10 @@ const TYPE_ICON: Record<NotificationType, LucideIcon> = {
   // Session 66 — re-upload requests. Edit3 reads as "needs revision".
   admin_requested_document_reupload: Edit3,
   admin_requested_intake_reupload: Edit3,
+  // fix/parked-p1-batch — report review notifications.
+  admin_approved_report: CheckCircle2,
+  admin_requested_report_correction: FileEdit,
+  admin_published_report: FileBarChart,
 };
 
 function relativeTime(iso: string | null): string {

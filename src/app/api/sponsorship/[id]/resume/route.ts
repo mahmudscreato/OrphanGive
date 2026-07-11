@@ -4,6 +4,13 @@ import { authedSponsorship } from "@/lib/sponsorship-actions";
 import { updateSponsorship } from "@/lib/sponsorship-data";
 // Phase 0 — donor lifecycle audit. See cancel/route.ts header for why.
 import { recordAuditEvent } from "@/lib/di-audit";
+// fix/parked-p1-batch (audit finding 10) — resume was the only donor
+// lifecycle action that sent no email (pause/modify/cancel all do).
+// Mirror the pause route's best-effort email with the existing
+// SponsorshipResumedEmail template (byAdmin:false = donor self-resume).
+import { sendEmail, siteUrl } from "@/lib/email";
+import { fetchChildById, formatTo } from "@/lib/email-data";
+import { SponsorshipResumedEmail } from "@/emails/SponsorshipResumedEmail";
 
 export const runtime = "nodejs";
 
@@ -78,6 +85,35 @@ export async function POST(
     },
     request: req,
   });
+
+  // Best-effort email — don't fail the action if email fails (mirrors
+  // the pause route exactly). Recipient = the donor.
+  try {
+    // sponsorship.child is the expanded object when fetched via the
+    // donor path; unwrap the id (a bare String() cast yields
+    // "[object Object]" which fetchChildById rejects).
+    const childId =
+      typeof sponsorship.child === "string"
+        ? sponsorship.child
+        : sponsorship.child.id;
+    const child = await fetchChildById(childId);
+    const firstName = donor.first_name?.trim() || donor.email.split("@")[0]!;
+    await sendEmail({
+      to: formatTo(donor.email, firstName),
+      subject: `Your sponsorship of ${child?.display_name ?? "your sponsored child"} has resumed`,
+      template: SponsorshipResumedEmail({
+        firstName,
+        childName: child?.display_name ?? "your sponsored child",
+        dashboardUrl: siteUrl(`/dashboard/sponsorship/${sponsorship.id}`),
+        byAdmin: false,
+      }),
+    });
+  } catch (err) {
+    console.warn(
+      "[sponsorship/resume] email failed (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   return NextResponse.json({ success: true });
 }

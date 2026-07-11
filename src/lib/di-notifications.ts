@@ -98,7 +98,15 @@ export type NotificationType =
   // just needs to upload a fresh version. The body carries
   // admin's reason verbatim so the DI knows what to fix.
   | "admin_requested_document_reupload"
-  | "admin_requested_intake_reupload";
+  | "admin_requested_intake_reupload"
+  // fix/parked-p1-batch (audit finding 9) — the admin report review
+  // loop now notifies the DI author, same shape as the task loop:
+  //   approved            → their report was accepted
+  //   correction requested → they MUST revise + resubmit (highest priority)
+  //   published            → their report went out to the donor
+  | "admin_approved_report"
+  | "admin_requested_report_correction"
+  | "admin_published_report";
 
 export interface NotificationPayload {
   title: string;
@@ -162,6 +170,10 @@ const VALID_TYPES = new Set<string>([
   // Session 66
   "admin_requested_document_reupload",
   "admin_requested_intake_reupload",
+  // fix/parked-p1-batch — report review notifications.
+  "admin_approved_report",
+  "admin_requested_report_correction",
+  "admin_published_report",
 ]);
 
 function isNotificationType(s: string | null | undefined): s is NotificationType {
