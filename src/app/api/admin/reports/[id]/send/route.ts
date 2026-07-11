@@ -31,6 +31,7 @@ import {
 import { sendEmail, siteUrl } from "@/lib/email";
 import { fetchChildById, formatTo } from "@/lib/email-data";
 import { ReportPublishedEmail } from "@/emails/ReportPublishedEmail";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 
 // Donor fetch — uses readUsers (the SDK's helper for the core
 // directus_users collection). The shared fetchDonorForEmail helper
@@ -156,6 +157,24 @@ export async function POST(
       err instanceof Error ? err.message : err,
     );
     return NextResponse.json({ error: "server_error" }, { status: 500 });
+  }
+
+  // ─── 1b. Notify the DI author their report went out — best effort ───
+  // fix/parked-p1-batch (audit finding 9). Recipient = report author
+  // (created_by) with the child.assigned_di fallback. Independent of the
+  // donor email below; a failure never reverses the publish.
+  {
+    const recipient = await resolveDiRecipient(result.uploaderId, result.childId);
+    if (recipient) {
+      await notify({
+        recipientUserId: recipient,
+        type: "admin_published_report",
+        title: "Report published",
+        body: "Your report has been published — the donor can now see it on their dashboard.",
+        relatedCollection: "child_update",
+        relatedId: result.id,
+      });
+    }
   }
 
   // ─── 2. Donor email — best effort ───

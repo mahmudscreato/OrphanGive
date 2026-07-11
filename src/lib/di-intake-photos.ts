@@ -321,10 +321,11 @@ export async function updateIntakePhoto(
 }
 
 /**
- * Delete a pending intake photo owned by this DI. Throws
- * OutOfScopeError on miss / not-owned / not-pending. Hard delete —
- * intake photos in the pending state have no audit history to preserve
- * beyond the audit_log row that records the deletion.
+ * Delete a PENDING or REJECTED intake photo owned by this DI. Throws
+ * OutOfScopeError on miss / not-owned / approved-or-archived. Hard
+ * delete — a pending or rejected row has no audit history to preserve
+ * beyond the audit_log row that records the deletion. Allowing rejected
+ * removal lets the DI free a full slot to re-upload (fix/parked-p1-batch).
  *
  * Note: the underlying directus_files row is NOT deleted. Admin
  * cleanup sweeps orphaned files separately; the FK to directus_files
@@ -336,7 +337,14 @@ export async function deleteIntakePhoto(
 ): Promise<{ ok: true; childId: string }> {
   const row = await getOwnIntakePhoto(userId, photoId);
   if (!row) throw new OutOfScopeError();
-  if (row.status !== "pending") throw new OutOfScopeError();
+  // fix/parked-p1-batch — the DI can remove their own PENDING or
+  // REJECTED photo. Rejected is now removable so a DI can free a slot
+  // and re-upload when all MAX_INTAKE_PHOTOS (5) slots are full and one
+  // was rejected (previously a dead-end — rejected wasn't DI-removable).
+  // approved/archived stay non-removable (admin-owned once accepted).
+  if (row.status !== "pending" && row.status !== "rejected") {
+    throw new OutOfScopeError();
+  }
 
   await directusServer().request(
     deleteItem("child_intake_photo" as never, photoId),

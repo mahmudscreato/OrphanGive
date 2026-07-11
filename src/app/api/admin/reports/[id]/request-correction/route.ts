@@ -19,6 +19,7 @@ import {
   ReportNotFoundError,
   requestReportCorrection,
 } from "@/lib/admin-reports";
+import { notify, resolveDiRecipient } from "@/lib/di-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,24 @@ export async function POST(
       adminSession.userId,
       reason,
     );
+
+    // fix/parked-p1-batch (audit finding 9) — the DI MUST act on this
+    // (revise + resubmit), so it's the highest-priority report notify.
+    // Recipient = author (created_by) with the child.assigned_di
+    // fallback. Best-effort; never breaks the transition. The admin's
+    // correction reason is carried verbatim so the DI knows what to fix.
+    const recipient = await resolveDiRecipient(result.uploaderId, result.childId);
+    if (recipient) {
+      await notify({
+        recipientUserId: recipient,
+        type: "admin_requested_report_correction",
+        title: "Report needs changes",
+        body: `Admin asked for a correction on your report: ${result.reason}`,
+        relatedCollection: "child_update",
+        relatedId: result.id,
+      });
+    }
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof ReportNotFoundError) {
