@@ -357,7 +357,7 @@ function PmActions({
               setOpen(false);
               onRemove();
             }}
-            className="block w-full text-left px-4 py-2.5 text-[13.5px] text-[#A02B2B] hover:bg-[#FEEFEF] disabled:text-slate-soft disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            className="block w-full text-left px-4 py-2.5 text-[13.5px] text-danger hover:bg-danger-mist disabled:text-slate-soft disabled:hover:bg-transparent disabled:cursor-not-allowed"
           >
             Remove
           </button>
@@ -438,7 +438,7 @@ function AddPaymentMethodForm({
   const promise = getStripePromise();
   if (!promise) {
     return (
-      <div className="rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-3 text-[14px] text-[#A02B2B]">
+      <div className="rounded-xl bg-danger-mist border border-danger-soft px-4 py-3 text-[14px] text-danger">
         Stripe is not configured. Set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY in
         .env.local.
       </div>
@@ -527,7 +527,7 @@ function AddPaymentMethodInner({
         />
       </div>
       {localError ? (
-        <div className="mt-3 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-3.5 py-2.5 text-[13px] text-[#A02B2B]">
+        <div className="mt-3 rounded-xl bg-danger-mist border border-danger-soft px-3.5 py-2.5 text-[13px] text-danger">
           {localError}
         </div>
       ) : null}

@@ -14,7 +14,7 @@ const inputClass =
   "w-full rounded-xl border border-ink/[0.12] bg-white px-4 py-3 text-[15px] text-ink placeholder:text-slate-soft focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft transition-all duration-150 disabled:opacity-60";
 const labelClass =
   "block font-mono text-[11px] tracking-[0.14em] uppercase text-slate font-medium";
-const errorClass = "mt-1.5 text-[12px] text-[#D04848]";
+const errorClass = "mt-1.5 text-[12px] text-danger";
 const cardClass =
   "rounded-[20px] bg-white border border-ink/[0.06] px-7 py-6 max-md:px-5 max-md:py-5";
 const sectionLabelClass =
@@ -230,7 +230,7 @@ function PersonalSection({ donor }: { donor: ProfileSectionsDonor }) {
       </div>
 
       {serverError ? (
-        <div className="mt-5 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-3 text-[14px] text-[#A02B2B]">
+        <div className="mt-5 rounded-xl bg-danger-mist border border-danger-soft px-4 py-3 text-[14px] text-danger">
           {serverError}
         </div>
       ) : null}
@@ -415,7 +415,7 @@ function ProfilePhotoControl({
               type="button"
               onClick={onRemove}
               disabled={busy}
-              className="font-body text-[12.5px] text-slate hover:text-[#D04848] disabled:opacity-50"
+              className="font-body text-[12.5px] text-slate hover:text-danger disabled:opacity-50"
             >
               Remove
             </button>
@@ -556,7 +556,7 @@ function SecuritySection() {
         </Field>
 
         {serverError ? (
-          <div className="col-span-2 max-md:col-span-1 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-3 text-[14px] text-[#A02B2B]">
+          <div className="col-span-2 max-md:col-span-1 rounded-xl bg-danger-mist border border-danger-soft px-4 py-3 text-[14px] text-danger">
             {serverError}
           </div>
         ) : null}

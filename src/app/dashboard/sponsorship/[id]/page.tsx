@@ -491,7 +491,7 @@ function PaymentRowItem({ p }: { p: PaymentRow }) {
   const statusClass = isSucceeded
     ? "bg-moss-soft text-moss-deep border-moss/30"
     : isFailed
-      ? "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]"
+      ? "bg-danger-mist text-danger border-danger-soft"
       : "bg-tangerine-mist text-tangerine-deep border-tangerine-soft";
   const receiptHref = p.stripe_charge_id
     ? `https://dashboard.stripe.com/payments/${p.stripe_charge_id}`

@@ -78,7 +78,7 @@ export function PendingCardActions({ sponsorshipId }: Props) {
         {pending ? "Cancelling…" : "Cancel attempt"}
       </button>
       {error ? (
-        <span className="basis-full text-[12px] text-[#A02B2B]" role="alert">
+        <span className="basis-full text-[12px] text-danger" role="alert">
           {error}
         </span>
       ) : null}

@@ -91,7 +91,7 @@ export function QueuedActions({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center justify-center font-body font-semibold rounded-full border-[1.5px] border-[#A02B2B] text-[#A02B2B] px-5 py-[10px] text-[13.5px] transition-colors hover:bg-[#A02B2B] hover:text-cream"
+        className="inline-flex items-center justify-center font-body font-semibold rounded-full border-[1.5px] border-danger text-danger px-5 py-[10px] text-[13.5px] transition-colors hover:bg-danger hover:text-cream"
       >
         Cancel &amp; refund
       </button>
@@ -110,7 +110,7 @@ export function QueuedActions({
         {error ? (
           <div
             role="alert"
-            className="mt-3 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-3 text-[13px] text-[#A02B2B]"
+            className="mt-3 rounded-xl bg-danger-mist border border-danger-soft px-4 py-3 text-[13px] text-danger"
           >
             {error}
           </div>
@@ -128,7 +128,7 @@ export function QueuedActions({
             type="button"
             onClick={confirm}
             disabled={pending}
-            className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-[#A02B2B] text-cream px-6 py-[12px] text-[14px] transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full bg-danger text-cream px-6 py-[12px] text-[14px] transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {pending ? (
               <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
