@@ -32,6 +32,15 @@
    * falling back to inherited color. This finally makes it real.
    */
   --moss-deep: #3F5736;
+  /* fix/donor-ui-consistency — the destructive/error red, formalized
+   * from the values already hardcoded across the donor panel (previously
+   * #A02B2B / #8A2424 / #F4C7C7 / #FEEFEF with no token). Structured like
+   * tangerine/moss: base + deep (hover) + soft (border) + mist (bg).
+   * `danger` (#A02B2B) on cream is ~6.9:1 — AA for body text. */
+  --danger: #A02B2B;
+  --danger-deep: #8A2424;
+  --danger-soft: #F4C7C7;
+  --danger-mist: #FEEFEF;
   --sky: #9FBFD9;
   --sky-deep: #075985;
   --white: #FFFFFF;
@@ -105,6 +114,10 @@
   --color-moss: var(--moss);
   --color-moss-soft: var(--moss-soft);
   --color-moss-deep: var(--moss-deep);
+  --color-danger: var(--danger);
+  --color-danger-deep: var(--danger-deep);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-mist: var(--danger-mist);
   --color-sky: var(--sky);
   --color-sky-deep: var(--sky-deep);
 

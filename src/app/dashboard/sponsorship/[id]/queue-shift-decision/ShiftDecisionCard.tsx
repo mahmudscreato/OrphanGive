@@ -248,7 +248,7 @@ export function ShiftDecisionCard({
       {error ? (
         <div
           role="alert"
-          className="mt-4 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-3 text-[13px] text-[#A02B2B]"
+          className="mt-4 rounded-xl bg-danger-mist border border-danger-soft px-4 py-3 text-[13px] text-danger"
         >
           {error}
         </div>
@@ -323,7 +323,7 @@ function RadioCard({
       ? "border-moss bg-moss-soft/60"
       : tone === "tangerine"
         ? "border-tangerine bg-tangerine-mist"
-        : "border-[#F4C7C7] bg-[#FEF1F1]";
+        : "border-danger-soft bg-danger-mist";
   return (
     <button
       type="button"

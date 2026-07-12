@@ -79,7 +79,7 @@ export function Modal({
 
   if (!open) return null;
 
-  const titleColor = tone === "danger" ? "#A02B2B" : undefined;
+  const titleColor = tone === "danger" ? "var(--danger)" : undefined;
 
   return (
     <div

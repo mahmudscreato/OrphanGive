@@ -29,16 +29,16 @@ const STATUS_LABEL: Record<string, string> = {
 const STATUS_PILL: Record<string, string> = {
   pending: "bg-tangerine-mist text-tangerine-deep border-tangerine-soft",
   approved: "bg-moss-soft text-moss-deep border-moss/30",
-  denied: "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]",
-  revoked: "bg-[#FEEFEF] text-[#A02B2B] border-[#F4C7C7]",
+  denied: "bg-danger-mist text-danger border-danger-soft",
+  revoked: "bg-danger-mist text-danger border-danger-soft",
   expired: "bg-ink/[0.04] text-slate-soft border-ink/[0.08]",
 };
 
 const STATUS_DOT: Record<string, string> = {
   pending: "bg-tangerine",
   approved: "bg-moss",
-  denied: "bg-[#D04848]",
-  revoked: "bg-[#D04848]",
+  denied: "bg-danger",
+  revoked: "bg-danger",
   expired: "bg-slate-soft",
 };
 

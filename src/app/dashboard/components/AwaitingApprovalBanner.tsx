@@ -3,7 +3,7 @@ export function AwaitingApprovalBanner() {
     <section
       role="status"
       aria-live="polite"
-      className="rounded-[20px] bg-[#FEF6EC] border border-tangerine-soft border-l-[4px] border-l-tangerine px-6 py-5 flex items-start gap-4 max-md:px-5 max-md:py-4"
+      className="rounded-[20px] bg-tangerine-mist border border-tangerine-soft border-l-[4px] border-l-tangerine px-6 py-5 flex items-start gap-4 max-md:px-5 max-md:py-4"
     >
       <div className="w-10 h-10 rounded-xl bg-tangerine-soft text-tangerine-deep flex items-center justify-center shrink-0">
         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">

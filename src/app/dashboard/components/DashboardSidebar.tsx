@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -90,20 +89,17 @@ export function DashboardSidebar({ donor }: { donor: Donor }) {
         }
       >
         <div className="px-6 pt-6 pb-2 flex items-center justify-between">
-          <Link
-            href="/dashboard"
-            onClick={closeMobile}
-            className="inline-flex items-center gap-2 font-display text-[22px] text-ink tracking-[-0.01em]"
-          >
-            <Image
-              src="/logo-mark.png"
-              alt=""
-              width={28}
-              height={28}
-              priority
-              className="w-7 h-7"
+          <Link href="/dashboard" onClick={closeMobile} className="inline-flex">
+            {/* fix/donor-ui-consistency — the real OG logo lockup used by
+                the public SiteNav (mark + wordmark SVG), replacing the
+                bespoke mark-png + text wordmark. Plain <img> like SiteNav
+                (external SVG; avoids next/image remote config). */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://res.cloudinary.com/dh9w1apsk/image/upload/v1778388529/OG_Logo_L_SVG_h9uduq.svg"
+              alt="OrphanGive"
+              className="h-9 w-auto"
             />
-            OrphanGive
           </Link>
           <button
             type="button"
@@ -126,10 +122,13 @@ export function DashboardSidebar({ donor }: { donor: Donor }) {
                     href={item.href}
                     onClick={closeMobile}
                     className={
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[14px] transition-colors " +
+                      // fix/donor-ui-consistency — match SiteNav's nav-item
+                      // vocabulary: rounded-full pill, tangerine-mist +
+                      // text-ink active, text-slate + tangerine-mist hover.
+                      "flex items-center gap-3 px-3 py-2.5 rounded-full text-[14px] transition-colors " +
                       (active
-                        ? "bg-tangerine-mist text-tangerine-deep font-medium"
-                        : "text-ink/80 hover:bg-cream hover:text-ink")
+                        ? "bg-tangerine-mist text-ink font-medium"
+                        : "text-slate hover:bg-tangerine-mist hover:text-ink")
                     }
                     aria-current={active ? "page" : undefined}
                   >

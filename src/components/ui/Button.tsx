@@ -24,7 +24,19 @@ import type {
 //     (same 2.33:1 fail). Added hover:text-ink so hover becomes
 //     ink-on-tangerine. Resting state (cream-on-ink) was already
 //     fine.
-type Variant = "primary" | "tangerine" | "outline" | "white" | "outline-white";
+type Variant =
+  | "primary"
+  | "tangerine"
+  | "outline"
+  | "white"
+  | "outline-white"
+  // fix/donor-ui-consistency — destructive actions (Cancel / Remove /
+  // Deny). `danger` is the solid red pill; `outline-danger` its ghost
+  // twin (mirrors `outline`). Uses the new danger token.
+  | "danger"
+  | "outline-danger"
+  // fix/donor-ui-consistency — tangerine ghost pill (public ghost CTA).
+  | "outline-tangerine";
 type Size = "default" | "lg";
 
 const variantClasses: Record<Variant, string> = {
@@ -35,6 +47,15 @@ const variantClasses: Record<Variant, string> = {
   white: "bg-white text-ink hover:bg-cream",
   "outline-white":
     "bg-transparent text-white border-[1.5px] border-white hover:bg-white hover:text-ink",
+  danger: "bg-danger text-cream hover:bg-danger-deep",
+  "outline-danger":
+    "bg-transparent text-danger border-[1.5px] border-danger hover:bg-danger hover:text-cream",
+  // fix/donor-ui-consistency — the tangerine ghost pill (the public
+  // site's canonical outline CTA: BrowseEmptyState / FeaturedChildren).
+  // Formalized here so the dashboard's outline CTAs use the shared
+  // component instead of a bespoke class string.
+  "outline-tangerine":
+    "bg-transparent text-tangerine-deep border-[1.5px] border-tangerine hover:bg-tangerine hover:text-ink",
 };
 
 const sizeClasses: Record<Size, string> = {

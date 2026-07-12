@@ -93,7 +93,7 @@ export function TransferTargetPicker({
       ) : error ? (
         <div
           role="alert"
-          className="mt-3 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-2 text-[12.5px] text-[#A02B2B]"
+          className="mt-3 rounded-xl bg-danger-mist border border-danger-soft px-4 py-2 text-[12.5px] text-danger"
         >
           {error}
         </div>

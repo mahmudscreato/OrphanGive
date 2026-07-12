@@ -11,6 +11,7 @@ import {
   useStripe,
 } from "@stripe/react-stripe-js";
 import { Modal } from "./Modal";
+import { Button } from "@/components/ui/Button";
 import {
   CUSTOM_DURATION_MAX,
   CUSTOM_DURATION_MIN,
@@ -257,6 +258,11 @@ export function SponsorshipActions({
 }
 
 // ─── Buttons ────────────────────────────────────────────────────────────────
+// fix/donor-ui-consistency — these two are now thin adapters over the
+// shared ui/Button (tone → variant). The bespoke class strings are gone;
+// the prop API is preserved verbatim so every call site (and its
+// onClick / disabled / type / children / visibility conditions) is
+// unchanged — this is a styling swap only.
 function ButtonOutline({
   tone,
   children,
@@ -266,20 +272,16 @@ function ButtonOutline({
   children: React.ReactNode;
   onClick: () => void;
 }) {
-  const colors =
+  const variant =
     tone === "danger"
-      ? "border-[#A02B2B] text-[#A02B2B] hover:bg-[#A02B2B] hover:text-cream"
+      ? "outline-danger"
       : tone === "tangerine"
-        ? "border-tangerine text-tangerine-deep hover:bg-tangerine hover:text-ink"
-        : "border-ink/[0.16] text-ink hover:bg-ink hover:text-cream";
+        ? "outline-tangerine"
+        : "outline";
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center justify-center font-body font-semibold rounded-full border-[1.5px] px-5 py-[10px] text-[13.5px] transition-colors ${colors}`}
-    >
+    <Button variant={variant} onClick={onClick}>
       {children}
-    </button>
+    </Button>
   );
 }
 function ButtonFilled({
@@ -295,19 +297,16 @@ function ButtonFilled({
   type?: "button" | "submit";
   disabled?: boolean;
 }) {
-  const colors =
-    tone === "danger"
-      ? "bg-[#A02B2B] text-cream hover:opacity-90"
-      : "bg-tangerine text-ink hover:bg-tangerine-deep";
   return (
-    <button
+    <Button
+      variant={tone === "danger" ? "danger" : "tangerine"}
       type={type}
-      disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 font-body font-semibold rounded-full px-6 py-[12px] text-[14px] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${colors}`}
+      disabled={disabled}
+      className="disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -315,7 +314,7 @@ function ErrorBox({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="mt-3 rounded-xl bg-[#FEEFEF] border border-[#F4C7C7] px-4 py-3 text-[13px] text-[#A02B2B]"
+      className="mt-3 rounded-xl bg-danger-mist border border-danger-soft px-4 py-3 text-[13px] text-danger"
     >
       {message}
     </div>
@@ -490,7 +489,7 @@ function ModifyModal({
               {" · "}
               <span
                 className={
-                  delta > 0 ? "text-moss-deep font-medium" : "text-[#A02B2B] font-medium"
+                  delta > 0 ? "text-moss-deep font-medium" : "text-danger font-medium"
                 }
               >
                 {delta > 0 ? "+" : ""}
@@ -500,7 +499,7 @@ function ModifyModal({
           ) : null}
         </div>
         {tooLow ? (
-          <p className="mt-2 text-[13px] text-[#A02B2B]">
+          <p className="mt-2 text-[13px] text-danger">
             Minimum monthly amount is {formatUsd(MIN_AMOUNTS.monthly)}.
           </p>
         ) : null}
