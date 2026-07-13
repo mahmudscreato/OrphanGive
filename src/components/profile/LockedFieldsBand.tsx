@@ -119,6 +119,9 @@ export function LockedFieldsBand({
                 signInHref={signInHref}
                 revealedValues={values}
                 approvedAt={revealedApprovedAt[primary] ?? null}
+                // fix/reveal-data-population — pass the approved flag so the
+                // card can show "approved but not on file" vs the locked pill.
+                approved={isActive}
               />
             );
           })}
