@@ -121,7 +121,17 @@ export function LockedFieldsBand({
                 approvedAt={revealedApprovedAt[primary] ?? null}
                 // fix/reveal-data-population — pass the approved flag so the
                 // card can show "approved but not on file" vs the locked pill.
-                approved={isActive}
+                // fix/reveal-admin-empty-label — `approved` is the DONOR reveal
+                // set ONLY (activeReveals.has), NOT the `tier === "admin"`
+                // override that drives `isActive`/`values`. So the
+                // "Approved — not on file yet" state is donor-only. Admins
+                // still SEE every value (the card's `revealed` branch keys off
+                // the value being present, which `isActive` still populates);
+                // an EMPTY Tier-3 field just renders the neutral/locked state
+                // for admins instead of a pointless "Approved" label. For
+                // donors this is identical to `isActive` (the admin clause is
+                // false), so donor behaviour is unchanged.
+                approved={activeReveals.has(primary as AllowedRevealField)}
               />
             );
           })}
