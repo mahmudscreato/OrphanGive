@@ -32,6 +32,11 @@ type Props = {
   revealedValues: Partial<Record<AllowedRevealField, string | null>>;
   // ISO timestamp of when this category's primary reveal was approved.
   approvedAt?: string | null;
+  // fix/reveal-data-population — whether this category's reveal is APPROVED
+  // (in the active-reveal set), independent of whether a value exists. Lets
+  // the card distinguish "approved but no data on file" from "not approved"
+  // (both previously rendered as the locked/request pill).
+  approved?: boolean;
 };
 
 const ICONS: Record<RevealCategory["iconKey"], React.ReactNode> = {
@@ -101,6 +106,7 @@ export function RevealCategoryCard({
   signInHref,
   revealedValues,
   approvedAt,
+  approved,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitState, setSubmitState] = useState<"idle" | "submitting" | "success">("idle");
@@ -116,6 +122,11 @@ export function RevealCategoryCard({
     primaryValue !== undefined &&
     primaryValue !== null &&
     primaryValue !== "";
+  // fix/reveal-data-population — the reveal is APPROVED but the (post-
+  // fallback) value is empty: this detail simply isn't on file. Distinct
+  // from "not approved" so we don't show the request pill for something
+  // the donor already has access to.
+  const approvedButEmpty = (approved ?? false) && !revealed;
 
   async function submit() {
     setError(null);
@@ -149,7 +160,7 @@ export function RevealCategoryCard({
     <>
       <div
         className={
-          revealed
+          revealed || approvedButEmpty
             ? "rounded-[20px] p-7 transition-all duration-[400ms] ease-soft bg-tangerine-mist border-[1.5px] border-moss/40"
             : "rounded-[20px] p-7 transition-all duration-[400ms] ease-soft bg-white border-[1.5px] border-dashed border-tangerine/40 hover:bg-tangerine-mist hover:-translate-y-0.5"
         }
@@ -175,6 +186,19 @@ export function RevealCategoryCard({
                 </div>
               );
             })}
+            <div className="mt-3 text-[11px] text-moss-deep font-mono tracking-[0.08em] uppercase">
+              {approvedAgo(approvedAt) ?? "Approved"}
+            </div>
+          </div>
+        ) : approvedButEmpty ? (
+          // fix/reveal-data-population — access is granted, but this detail
+          // simply isn't recorded for this child. Show it as approved (not
+          // as a locked "request access" pill).
+          <div className="mt-4">
+            <p className="text-[14px] text-ink/85 leading-snug">
+              Approved — but this detail isn&apos;t on file for{" "}
+              {childFirstName} yet.
+            </p>
             <div className="mt-3 text-[11px] text-moss-deep font-mono tracking-[0.08em] uppercase">
               {approvedAgo(approvedAt) ?? "Approved"}
             </div>

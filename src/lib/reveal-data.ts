@@ -184,28 +184,86 @@ export async function getAllDonorReveals(
   }
 }
 
-// Fetch the actual encrypted values for a list of revealed fields on a child.
-// Server-token only — never exposed to the browser. Returns a Map of
-// field_name → value (or null if the column is empty).
+// fix/reveal-data-population — each reveal target column (`*_encrypted`)
+// maps to the EXISTING plaintext column(s) where the real data currently
+// lives. The read path prefers the `_encrypted` value when present, else
+// falls back to the source — so existing children (data in plaintext)
+// reveal correctly, and any future `_encrypted` writes take precedence.
+// (This adds NO encryption; the `_encrypted` columns hold plaintext.)
+// guardian_full_name has no plaintext source — it stays null until
+// captured; the card UX renders that as "approved, not on file yet".
+// A dotted source (educational_organization.name) is a relational path.
+const REVEAL_FALLBACK_COLUMNS: Record<AllowedRevealField, readonly string[]> = {
+  school_name_encrypted: ["educational_organization.name", "school_name_raw"],
+  full_address_encrypted: ["permanent_address"],
+  guardian_full_name_encrypted: [],
+  guardian_contact_encrypted: ["guardian_phone"],
+  exact_birthdate_encrypted: ["date_of_birth"],
+  family_circumstances_encrypted: ["guardian_summary_internal"],
+};
+
+// First non-empty string across the candidates (encrypted first, then
+// its fallback sources in order). Trims; treats "" / null / whitespace as
+// empty; stringifies non-object scalars (e.g. a date).
+function firstNonEmptyString(vals: readonly unknown[]): string | null {
+  for (const v of vals) {
+    if (typeof v === "string") {
+      if (v.trim() !== "") return v;
+      continue;
+    }
+    if (v != null && typeof v !== "object") {
+      const s = String(v);
+      if (s.trim() !== "") return s;
+    }
+  }
+  return null;
+}
+
+// Read a possibly-relational field path off the row (e.g. "a.b" → row.a.b).
+function readPath(row: Record<string, unknown>, path: string): unknown {
+  if (!path.includes(".")) return row[path];
+  const [rel, sub] = path.split(".");
+  const obj = row[rel!];
+  return obj && typeof obj === "object"
+    ? (obj as Record<string, unknown>)[sub!]
+    : undefined;
+}
+
+// Fetch the revealed values for a list of approved fields on a child.
+// Server-token only — never exposed to the browser. Prefers the
+// `_encrypted` column, falls back to the mapped plaintext source. Returns
+// a Map of field_name → value (null if neither has a value).
 export async function fetchRevealedFieldValues(
   childId: string,
   fields: ReadonlyArray<AllowedRevealField>,
 ): Promise<Map<AllowedRevealField, string | null>> {
   const out = new Map<AllowedRevealField, string | null>();
   if (!UUID_RE.test(childId) || fields.length === 0) return out;
+
+  // Build the read set: id + each requested `_encrypted` column + its
+  // fallback source column(s).
+  const needed = new Set<string>(["id"]);
+  for (const f of fields) {
+    needed.add(f);
+    for (const src of REVEAL_FALLBACK_COLUMNS[f]) needed.add(src);
+  }
+
   try {
     const rows = (await directusServer().request(
       readItems("child" as never, {
         filter: { id: { _eq: childId } },
-        fields: ["id", ...fields],
+        fields: [...needed],
         limit: 1,
       } as never),
     )) as unknown as Array<Record<string, unknown>>;
     const row = Array.isArray(rows) && rows[0] ? rows[0] : null;
     if (!row) return out;
     for (const f of fields) {
-      const v = row[f];
-      out.set(f, typeof v === "string" ? v : v == null ? null : String(v));
+      const candidates: unknown[] = [row[f]]; // `_encrypted` value first
+      for (const src of REVEAL_FALLBACK_COLUMNS[f]) {
+        candidates.push(readPath(row, src)); // then fallback source(s)
+      }
+      out.set(f, firstNonEmptyString(candidates));
     }
   } catch (err) {
     console.warn(
