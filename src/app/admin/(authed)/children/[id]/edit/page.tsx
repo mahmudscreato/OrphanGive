@@ -73,6 +73,7 @@ export default async function AdminChildEditPage({
       household_size: toNumStr(detail.household_size),
       household_income_source: detail.household_income_source ?? "",
       monthly_household_income_bdt: toNumStr(detail.monthly_household_income_bdt),
+      guardian_full_name_encrypted: detail.guardian_full_name_encrypted ?? "",
       guardian_relationship: detail.guardian_relationship ?? "",
       guardian_employment_type: detail.guardian_employment_type ?? "",
       guardian_employment: detail.guardian_employment ?? "",

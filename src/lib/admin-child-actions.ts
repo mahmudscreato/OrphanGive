@@ -146,6 +146,12 @@ export interface AdminChildEditableFields {
   household_income_source?: string | null;
   monthly_household_income_bdt?: number | null;
   // Guardian
+  // fix/reveal-data-population — the ONLY *_encrypted column opened to the
+  // form. It has no plaintext twin (unlike the other 5 reveal targets), so
+  // capturing it here does NOT duplicate a secret. The other 5 stay out of
+  // this schema (their data lives in permanent_address / date_of_birth /
+  // guardian_phone / school_name_raw / guardian_summary_internal).
+  guardian_full_name_encrypted?: string | null;
   guardian_relationship?: string | null;
   guardian_employment_type?: string | null;
   guardian_employment?: string | null;
@@ -196,6 +202,10 @@ export const adminChildFieldsSchema = z
     household_size: z.number().int().min(0).max(30).nullable().optional(),
     household_income_source: z.string().max(40).nullable().optional(),
     monthly_household_income_bdt: z.number().int().min(0).max(10_000_000).nullable().optional(),
+    // fix/reveal-data-population — ONLY this _encrypted column is form-
+    // writable (no plaintext twin → no duplication). The other 5 remain
+    // absent from the schema and are stripped (.strip()) if ever sent.
+    guardian_full_name_encrypted: z.string().max(200).nullable().optional(),
     guardian_relationship: z.string().max(40).nullable().optional(),
     guardian_employment_type: z.string().max(40).nullable().optional(),
     guardian_employment: z.string().max(200).nullable().optional(),

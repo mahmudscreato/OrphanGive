@@ -725,6 +725,7 @@ export interface AdminChildDetail {
   household_income_source: string | null;
   monthly_household_income_bdt: number | null;
   // Guardian
+  guardian_full_name_encrypted: string | null;
   guardian_relationship: string | null;
   guardian_employment_type: string | null;
   guardian_employment: string | null;
@@ -776,6 +777,7 @@ const CHILD_DETAIL_FIELDS = [
   "household_size",
   "household_income_source",
   "monthly_household_income_bdt",
+  "guardian_full_name_encrypted",
   "guardian_relationship",
   "guardian_employment_type",
   "guardian_employment",
@@ -815,6 +817,7 @@ type ChildDetailRowRaw = ChildPageRowRaw & {
   household_size: number | null;
   household_income_source: string | null;
   monthly_household_income_bdt: number | null;
+  guardian_full_name_encrypted: string | null;
   guardian_relationship: string | null;
   guardian_employment_type: string | null;
   guardian_employment: string | null;
@@ -909,6 +912,7 @@ export async function getAdminChildDetail(
     household_size: row.household_size,
     household_income_source: row.household_income_source,
     monthly_household_income_bdt: row.monthly_household_income_bdt,
+    guardian_full_name_encrypted: row.guardian_full_name_encrypted,
     guardian_relationship: row.guardian_relationship,
     guardian_employment_type: row.guardian_employment_type,
     guardian_employment: row.guardian_employment,

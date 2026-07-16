@@ -73,6 +73,7 @@ const EMPTY: FormState = {
   household_size: "",
   household_income_source: "",
   monthly_household_income_bdt: "",
+  guardian_full_name_encrypted: "",
   guardian_relationship: "",
   guardian_employment_type: "",
   guardian_employment: "",
@@ -362,6 +363,7 @@ export function ChildFieldSet({
       </Section>
 
       <Section title="Guardian">
+        <Text label="Guardian's full name (private — reveal-gated)" k="guardian_full_name_encrypted" form={form} set={set} placeholder="Only shown to donors via an approved reveal" />
         <SelectField label="Relationship to child" k="guardian_relationship" form={form} set={set} opts={GUARDIAN_RELATIONSHIP_OPTIONS} />
         <SelectField label="Guardian's work type" k="guardian_employment_type" form={form} set={set} opts={GUARDIAN_EMPLOYMENT_TYPE_OPTIONS} />
         <Text label="Work detail" k="guardian_employment" form={form} set={set} placeholder="e.g. tea stall" />

@@ -199,7 +199,7 @@ const REVEAL_FALLBACK_COLUMNS: Record<AllowedRevealField, readonly string[]> = {
   guardian_full_name_encrypted: [],
   guardian_contact_encrypted: ["guardian_phone"],
   exact_birthdate_encrypted: ["date_of_birth"],
-  family_circumstances_encrypted: ["additional_family_notes"],
+  family_circumstances_encrypted: ["guardian_summary_internal"],
 };
 
 // First non-empty string across the candidates (encrypted first, then
