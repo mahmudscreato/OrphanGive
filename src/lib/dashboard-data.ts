@@ -126,7 +126,11 @@ function childIdOf(s: Sponsorship): string | null {
 
 // "1 month", "8 months", "1 year", "2 years 3 months". Empty string if
 // no anchor date or it's in the future.
-function formatDurationSince(iso: string | null): string {
+// feat/donor-dashboard-home — exported so the dashboard home's sponsored-
+// child cards can render the relationship line ("You've supported X for
+// 8 months") from each sponsorship's started_at, without duplicating the
+// formatting logic.
+export function formatDurationSince(iso: string | null): string {
   if (!iso) return "";
   const start = new Date(iso);
   if (Number.isNaN(start.getTime())) return "";

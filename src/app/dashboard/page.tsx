@@ -11,21 +11,22 @@ import {
 } from "@/lib/children-data";
 import {
   getDonorSponsorships,
-  isOngoingSponsorship,
+  isQueuedSponsorship,
   sortSponsorshipsByPriority,
   type Sponsorship,
 } from "@/lib/sponsorship-data";
 import {
-  calculateDonorImpact,
   getRecentMomentsForDonor,
+  getRecentReportsForDonor,
 } from "@/lib/dashboard-data";
-import { ImpactHero } from "./components/ImpactHero";
+import { Button } from "@/components/ui/Button";
+import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { AwaitingApprovalBanner } from "./components/AwaitingApprovalBanner";
 import { RecommendedChildren } from "./components/RecommendedChildren";
 import { AccountSummary } from "./components/AccountSummary";
 import { RecentUpdatesPreview } from "./components/RecentUpdatesPreview";
-import { VertSponsorshipCard } from "./components/VertSponsorshipCard";
-import { isDisplaySponsorship } from "./components/sponsorshipCardHelpers";
+import { SponsoredChildCard } from "./components/SponsoredChildCard";
+import { childOf } from "./components/sponsorshipCardHelpers";
 
 export const dynamic = "force-dynamic";
 
@@ -63,55 +64,51 @@ function PendingApprovalDashboard({ donor }: { donor: Donor }) {
   );
 }
 
+// feat/donor-dashboard-home — the RETURNING-DONOR home.
+//
+// Order is deliberate: greeting → the children they support → what's new
+// from those children → discovery last. No impact numbers, stats, or
+// progress bars anywhere: this is a relationship, not a scoreboard.
+//
+// Both states are handled: a donor with children gets the returning-home;
+// a donor with none gets a gentle first-visit greeting that leads into
+// discovery (the same RecommendedChildren section, expanded).
 async function ApprovedDashboard({ donor }: { donor: Donor }) {
   const [
-    impact,
     sponsorships,
     moments,
+    reports,
     recommendedNormal,
     recommendedExpanded,
     awaitingTotal,
   ] = await Promise.all([
-    calculateDonorImpact(donor.id),
     getDonorSponsorships(donor.id, { limit: 50 }),
-    getRecentMomentsForDonor(donor.id, 4),
+    getRecentMomentsForDonor(donor.id, 6),
+    getRecentReportsForDonor(donor.id, 6),
     getRandomActiveChildren("", 3),
     getRandomActiveChildren("", 6),
     getAwaitingChildrenCount(),
   ]);
 
-  const activeChildBubbles = uniqueActiveChildren(sponsorships);
-  // The home preview surfaces ONLY ongoing sponsorships — active
-  // monthly + prepaid. One-time gifts live in "Past gifts and
-  // sponsorships" on /dashboard/sponsorships, never in the preview.
-  // (Same predicate used by Section 1 there, via shared helper.)
-  const ongoingSponsorships = sortSponsorshipsByPriority(
-    sponsorships.filter(isOngoingSponsorship),
-  );
-  const previewSponsorships = ongoingSponsorships.slice(0, 3);
-  const hasDisplayable = sponsorships.some(isDisplaySponsorship);
-  const isFirstTime = !hasDisplayable;
+  const supported = supportedChildren(sponsorships);
+  const isFirstTime = supported.length === 0;
+  const firstName =
+    donor.first_name?.trim() || donor.email.split("@")[0] || "friend";
+  const primaryChildName = supported[0] ? childOf(supported[0].s).name : null;
 
   return (
     <div className="space-y-16 max-md:space-y-12">
-      <ImpactHero
-        donor={donor}
-        impact={impact}
-        activeChildren={activeChildBubbles}
-      />
+      <Greeting firstName={firstName} isFirstTime={isFirstTime} />
 
-      {previewSponsorships.length > 0 ? (
-        <ChildrenPreview
-          previewSponsorships={previewSponsorships}
-          totalActive={ongoingSponsorships.length}
-        />
-      ) : null}
-
-      {impact.hasAnyActive ? (
-        <RecentUpdatesPreview
-          moments={moments}
-          primaryChildName={impact.primaryActiveChildName}
-        />
+      {!isFirstTime ? (
+        <>
+          <SupportedChildren supported={supported} />
+          <RecentUpdatesPreview
+            moments={moments}
+            reports={reports}
+            primaryChildName={primaryChildName}
+          />
+        </>
       ) : null}
 
       <RecommendedChildren
@@ -123,57 +120,130 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
   );
 }
 
-function ChildrenPreview({
-  previewSponsorships,
-  totalActive,
+// ─── Greeting ───────────────────────────────────────────────────────────────
+
+function Greeting({
+  firstName,
+  isFirstTime,
 }: {
-  previewSponsorships: Sponsorship[];
-  totalActive: number;
+  firstName: string;
+  isFirstTime: boolean;
 }) {
+  if (isFirstTime) {
+    // No sponsored children yet — a gentle first visit that leads into
+    // the discovery section below.
+    return (
+      <header>
+        <div className="inline-flex items-center text-script-md text-tangerine-deep">
+          <EyebrowIcon />
+          Welcome
+        </div>
+        <h1 className="mt-3 font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
+          Hello, {firstName}.
+        </h1>
+        <p className="mt-3 text-[15px] text-slate leading-[1.65] max-w-[560px]">
+          When you&apos;re ready, meet the children waiting for a sponsor.
+          There&apos;s no rush — take your time finding the right one.
+        </p>
+        <div className="mt-5">
+          <Button href="/children" variant="primary">
+            Meet the children
+          </Button>
+        </div>
+      </header>
+    );
+  }
+
+  return (
+    <header>
+      <div className="inline-flex items-center text-script-md text-tangerine-deep">
+        <EyebrowIcon />
+        Welcome back
+      </div>
+      <h1 className="mt-3 font-display text-[32px] text-ink leading-tight tracking-[-0.02em] m-0">
+        Hello again, {firstName}.
+      </h1>
+      <p className="mt-3 text-[15px] text-slate leading-[1.65] max-w-[560px] italic">
+        Here&apos;s how the children you support are doing.
+      </p>
+    </header>
+  );
+}
+
+// ─── The children you support ───────────────────────────────────────────────
+
+function SupportedChildren({ supported }: { supported: Supported[] }) {
   return (
     <section>
       <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
-            Children you support
-          </h2>
-          {totalActive > 1 ? (
-            <p className="mt-2 text-[14px] text-slate italic">
-              {totalActive} active sponsorships
-            </p>
-          ) : null}
-        </div>
+        <h2 className="font-display text-[24px] text-ink leading-tight tracking-[-0.01em] m-0">
+          {supported.length === 1
+            ? "The child you support"
+            : "The children you support"}
+        </h2>
         <Link
           href="/dashboard/sponsorships"
           className="text-[13px] text-tangerine-deeper hover:opacity-80 underline-offset-4 hover:underline whitespace-nowrap"
         >
-          {totalActive > previewSponsorships.length
-            ? `See all (${totalActive}) →`
-            : "Manage →"}
+          Manage →
         </Link>
       </div>
-      <ul className="mt-6 grid grid-cols-3 gap-5 max-lg:grid-cols-2 max-md:grid-cols-1">
-        {previewSponsorships.map((s) => (
-          <VertSponsorshipCard key={s.id} s={s} />
+      <ul className="mt-6 grid grid-cols-3 gap-6 max-lg:grid-cols-2 max-md:grid-cols-1">
+        {supported.map((x) => (
+          <SponsoredChildCard key={x.s.id} s={x.s} startedAt={x.startedAt} />
         ))}
       </ul>
     </section>
   );
 }
 
-type ChildBubble = { id: string; name: string; photoId: string | null };
+// ─── Selection ──────────────────────────────────────────────────────────────
 
-function uniqueActiveChildren(sponsorships: Sponsorship[]): ChildBubble[] {
-  const map = new Map<string, ChildBubble>();
-  for (const s of sponsorships) {
-    if (s.status !== "active") continue;
+type Supported = {
+  /** The sponsorship the card links to (priority-ordered pick). */
+  s: Sponsorship;
+  /** Earliest start across this child's sponsorships. */
+  startedAt: string | null;
+};
+
+function startsEarlier(a: string | null, b: string | null): boolean {
+  if (!a) return false;
+  if (!b) return true;
+  return new Date(a).getTime() < new Date(b).getTime();
+}
+
+/**
+ * The donor's currently-supported children: ACTIVE or PAUSED sponsorships
+ * (a paused relationship is still theirs), excluding queued rows (a future
+ * slot isn't support yet) and campaign/child-less rows.
+ *
+ * Deduped BY CHILD — a donor may hold more than one sponsorship for the
+ * same child; the home is about children, not contracts. We keep the
+ * priority-ordered sponsorship for the link, but carry the EARLIEST start
+ * so "you've supported X for N months" reflects the whole relationship.
+ */
+function supportedChildren(sponsorships: Sponsorship[]): Supported[] {
+  const ordered = sortSponsorshipsByPriority(
+    sponsorships.filter(
+      (s) =>
+        (s.status === "active" || s.status === "paused") &&
+        !isQueuedSponsorship(s) &&
+        !!s.child &&
+        typeof s.child !== "string",
+    ),
+  );
+  const byChild = new Map<string, Supported>();
+  for (const s of ordered) {
     if (!s.child || typeof s.child === "string") continue;
-    if (map.has(s.child.id)) continue;
-    map.set(s.child.id, {
-      id: s.child.id,
-      name: s.child.display_name?.trim() || "Child",
-      photoId: s.child.Photo ?? null,
-    });
+    const id = s.child.id;
+    const existing = byChild.get(id);
+    if (!existing) {
+      byChild.set(id, { s, startedAt: s.started_at });
+      continue;
+    }
+    if (startsEarlier(s.started_at, existing.startedAt)) {
+      existing.startedAt = s.started_at;
+    }
   }
-  return Array.from(map.values());
+  return Array.from(byChild.values());
 }
