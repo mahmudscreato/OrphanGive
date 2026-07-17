@@ -1,6 +1,6 @@
 // Aggregation helpers for the dashboard. Pure read-side: no mutations,
-// no Stripe calls. The shape is tuned for the ImpactHero stats and
-// the RecentUpdatesSection.
+// no Stripe calls. Powers the sponsored-child cards + the recent-updates
+// readers on the donor home.
 
 import { readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
@@ -11,113 +11,6 @@ import {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// ─── Donor impact ───────────────────────────────────────────────────────────
-export type DonorImpact = {
-  uniqueChildCount: number;
-  durationLabel: string;
-  totalContributedUsd: number;
-  paymentCount: number;
-  // Sum of amount_usd for currently-active monthly sponsorships that
-  // bill recurringly (i.e. NOT prepaid — those are already paid).
-  monthlyCommitmentUsd: number;
-  totalActiveSponsorships: number;
-  // Sum of prepaid_months_remaining across all sponsorships.
-  prepaidMonthsRemaining: number;
-  hasAnyActive: boolean;
-  hasOnlyCompletedOrCancelled: boolean;
-  // Pulled out for the hero subline ("$child and N-1 others are…").
-  primaryActiveChildName: string | null;
-  // First name for the greeting; nullable so callers can fall back.
-  earliestStartedAt: string | null;
-};
-
-export async function calculateDonorImpact(
-  donorId: string,
-): Promise<DonorImpact> {
-  const empty: DonorImpact = {
-    uniqueChildCount: 0,
-    durationLabel: "",
-    totalContributedUsd: 0,
-    paymentCount: 0,
-    monthlyCommitmentUsd: 0,
-    totalActiveSponsorships: 0,
-    prepaidMonthsRemaining: 0,
-    hasAnyActive: false,
-    hasOnlyCompletedOrCancelled: false,
-    primaryActiveChildName: null,
-    earliestStartedAt: null,
-  };
-  if (!UUID_RE.test(donorId)) return empty;
-
-  const sponsorships = await getDonorSponsorships(donorId, { limit: 200 });
-
-  const childIdsSupported = new Set<string>();
-  let totalContributed = 0;
-  let payments = 0;
-  let monthlyCommitment = 0;
-  let activeCount = 0;
-  let prepaidRemaining = 0;
-  let earliestStartedAt: string | null = null;
-  let primaryActiveChildName: string | null = null;
-  let anyActive = false;
-  let anyCompletedOrCancelled = false;
-
-  for (const s of sponsorships) {
-    totalContributed += Number(s.total_paid_usd ?? 0);
-    payments += Number(s.payment_count ?? 0);
-
-    // "uniqueChildCount" counts active + completed only — pending and
-    // cancelled don't represent ongoing support.
-    if (s.status === "active" || s.status === "completed") {
-      const cid = childIdOf(s);
-      if (cid) childIdsSupported.add(cid);
-    }
-
-    if (s.status === "active") {
-      anyActive = true;
-      activeCount++;
-      // Recurring monthly counts toward "ongoing monthly commitment".
-      // Prepaid is excluded — that money's already paid. Indefinite +
-      // fixed-term recurring both count.
-      if (
-        s.payment_mode === "monthly" &&
-        s.payment_schedule === "monthly"
-      ) {
-        monthlyCommitment += Number(s.amount_usd ?? 0);
-      }
-      prepaidRemaining += Number(s.prepaid_months_remaining ?? 0);
-      if (!primaryActiveChildName) {
-        const c = s.child;
-        const name =
-          typeof c === "string" ? null : c?.display_name?.trim() || null;
-        if (name) primaryActiveChildName = name;
-      }
-    } else if (s.status === "completed" || s.status === "cancelled") {
-      anyCompletedOrCancelled = true;
-    }
-
-    if (s.started_at) {
-      if (!earliestStartedAt || s.started_at < earliestStartedAt) {
-        earliestStartedAt = s.started_at;
-      }
-    }
-  }
-
-  return {
-    uniqueChildCount: childIdsSupported.size,
-    durationLabel: formatDurationSince(earliestStartedAt),
-    totalContributedUsd: totalContributed,
-    paymentCount: payments,
-    monthlyCommitmentUsd: monthlyCommitment,
-    totalActiveSponsorships: activeCount,
-    prepaidMonthsRemaining: prepaidRemaining,
-    hasAnyActive: anyActive,
-    hasOnlyCompletedOrCancelled: !anyActive && anyCompletedOrCancelled,
-    primaryActiveChildName,
-    earliestStartedAt,
-  };
-}
 
 function childIdOf(s: Sponsorship): string | null {
   if (!s.child) return null;
