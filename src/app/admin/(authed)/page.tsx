@@ -143,14 +143,6 @@ export default async function AdminHomePage() {
             icon={CalendarClock}
             hint="children whose paid term ends"
           />
-          <AdminStatTile
-            label="Reports to review"
-            value={formatCount(base.pendingReportCount)}
-            href="/admin/reviews/reports"
-            icon={FileBarChart}
-            hint="awaiting review (no due-date cycle)"
-            tooltip="This system has no scheduled reporting cycle, so this shows reports currently awaiting review rather than 'due this month'."
-          />
         </div>
       </DashboardSection>
 
