@@ -1,14 +1,27 @@
 // Session 52b — Admin moment review list.
 
 import Link from "next/link";
-import { Camera, ChevronRight, Clock, Video } from "lucide-react";
 import {
   listAdminMoments,
   type AdminMomentSummary,
   type MomentReviewFilter,
 } from "@/lib/admin-moments";
+import {
+  BulkReviewList,
+  type BulkReviewRow,
+} from "@/components/admin/bulk/BulkReviewList";
 
 export const dynamic = "force-dynamic";
+
+const MOMENT_STATUS: Record<
+  AdminMomentSummary["status"],
+  { label: string; tone: BulkReviewRow["statusTone"] }
+> = {
+  draft: { label: "Draft", tone: "neutral" },
+  pending: { label: "Pending", tone: "pending" },
+  published: { label: "Published", tone: "published" },
+  rejected: { label: "Rejected", tone: "rejected" },
+};
 
 const TABS: ReadonlyArray<{ value: MomentReviewFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -50,6 +63,24 @@ export default async function AdminMomentsListPage({
   const sp = await searchParams;
   const activeFilter = parseFilter(sp.filter);
   const moments = await listAdminMoments({ filter: activeFilter });
+
+  // feat/admin-bulk-approve — normalize into the shared bulk row model.
+  // Only PENDING moments are selectable; approve POSTs the same per-item
+  // route the detail page uses (→ status=published + DI notification).
+  const rows: BulkReviewRow[] = moments.map((m) => ({
+    id: m.id,
+    href: `/admin/reviews/moments/${m.id}`,
+    approveEndpoint: `/api/admin/moments/${m.id}/approve`,
+    selectable: m.status === "pending",
+    thumbUrl: m.mediaType === "image" ? m.fileUrl : null,
+    thumbIcon: m.mediaType === "video" ? "video" : "image",
+    title: m.childDisplayName,
+    statusLabel: MOMENT_STATUS[m.status].label,
+    statusTone: MOMENT_STATUS[m.status].tone,
+    typeLabel: null,
+    subtitle: m.caption ?? null,
+    meta: `${m.uploadedByName} · ${formatRelative(m.uploadedAt)}`,
+  }));
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-4xl mx-auto">
@@ -104,92 +135,8 @@ export default async function AdminMomentsListPage({
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {moments.map((m) => (
-            <MomentRow key={m.id} moment={m} />
-          ))}
-        </ul>
+        <BulkReviewList rows={rows} itemNoun="moment" />
       )}
     </div>
-  );
-}
-
-function MomentRow({ moment }: { moment: AdminMomentSummary }) {
-  return (
-    <li>
-      <Link
-        href={`/admin/reviews/moments/${moment.id}`}
-        className="group flex items-start gap-3 rounded-2xl bg-white border border-stone-200 shadow-sm px-4 py-3.5 md:px-5 md:py-4 transition-colors hover:border-tangerine-soft"
-      >
-        <div className="shrink-0 w-14 h-14 rounded-lg bg-stone-100 overflow-hidden flex items-center justify-center">
-          {moment.mediaType === "image" && moment.fileUrl ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={moment.fileUrl}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : moment.mediaType === "video" ? (
-            <Video
-              className="w-5 h-5 text-stone-500 stroke-[1.75]"
-              aria-hidden="true"
-            />
-          ) : (
-            <Camera
-              className="w-5 h-5 text-stone-500 stroke-[1.75]"
-              aria-hidden="true"
-            />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <p className="font-display text-[16px] text-ink leading-snug truncate">
-              {moment.childDisplayName}
-            </p>
-            <StatusPill status={moment.status} />
-          </div>
-          {moment.caption ? (
-            <p className="mt-0.5 text-[13px] text-ink-soft leading-snug line-clamp-1">
-              {moment.caption}
-            </p>
-          ) : (
-            <p className="mt-0.5 text-[13px] italic text-ink-soft">
-              No caption
-            </p>
-          )}
-          <p className="mt-1 text-[12px] text-ink-soft leading-relaxed">
-            {moment.uploadedByName} ·{" "}
-            <span className="inline-flex items-center gap-1">
-              <Clock className="w-3 h-3 stroke-[1.75]" aria-hidden="true" />
-              {formatRelative(moment.uploadedAt)}
-            </span>
-          </p>
-        </div>
-        <ChevronRight
-          className="w-4 h-4 mt-2 text-stone-400 stroke-[1.75] group-hover:text-tangerine-deeper transition-colors shrink-0"
-          aria-hidden="true"
-        />
-      </Link>
-    </li>
-  );
-}
-
-function StatusPill({ status }: { status: AdminMomentSummary["status"] }) {
-  const styles: Record<
-    AdminMomentSummary["status"],
-    { bg: string; text: string; label: string }
-  > = {
-    draft: { bg: "bg-stone-100", text: "text-stone-700", label: "Draft" },
-    pending: { bg: "bg-amber-50", text: "text-amber-800", label: "Pending" },
-    published: { bg: "bg-moss-soft", text: "text-moss-deep", label: "Published" },
-    rejected: { bg: "bg-[#FCE9E9]", text: "text-[#A02020]", label: "Rejected" },
-  };
-  const s = styles[status];
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold ${s.bg} ${s.text}`}
-    >
-      {s.label}
-    </span>
   );
 }

@@ -14,6 +14,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Eye, Loader2, XCircle } from "lucide-react";
+import { useBulkApprove } from "./bulk/useBulkApprove";
+import { BulkApproveBar } from "./bulk/BulkApproveBar";
+import { BulkConfirmDialog } from "./bulk/BulkConfirmDialog";
 
 export interface RevealQueueItem {
   id: string;
@@ -48,6 +51,33 @@ export function RevealRequestQueue({ requests }: { requests: RevealQueueItem[] }
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // feat/admin-bulk-approve — CHILD-SAFETY SENSITIVE queue. Bulk approve
+  // POSTs the SAME per-item route the inline Approve uses
+  // (/api/admin/reveal/[id]/approve) once per selected request, with a
+  // single shared reason — so approved_until, decided_by, the audit row,
+  // and the donor email all fire per item exactly as a single approve.
+  // An EXTRA confirmation step is required before it runs.
+  const bulk = useBulkApprove();
+  const [bulkConfirm, setBulkConfirm] = useState<{ ids: string[] } | null>(null);
+
+  const allIds = requests.map((r) => r.id);
+  const selectedIds = allIds.filter((id) => bulk.isSelected(id));
+  const allSelected = allIds.length > 0 && selectedIds.length === allIds.length;
+
+  function toggleAll() {
+    if (allSelected) bulk.clear();
+    else bulk.selectMany(allIds);
+  }
+
+  async function runBulk(reasonText?: string) {
+    if (!bulkConfirm) return;
+    const units = bulkConfirm.ids.map((id) => ({
+      endpoints: [`/api/admin/reveal/${id}/approve`],
+    }));
+    setBulkConfirm(null);
+    await bulk.run(units, { reason: reasonText ?? "" });
+  }
 
   function begin(id: string, kind: DecisionKind) {
     setActive({ id, kind });
@@ -112,18 +142,46 @@ export function RevealRequestQueue({ requests }: { requests: RevealQueueItem[] }
   }
 
   return (
-    <ul className="space-y-3">
-      {requests.map((r) => {
-        const isActive = active?.id === r.id;
-        return (
-          <li
-            key={r.id}
-            className="rounded-2xl bg-white border border-stone-200 shadow-sm p-5"
-          >
-            <div className="flex items-start gap-4">
-              <div className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl bg-tangerine-mist text-tangerine-deeper">
-                <Eye className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
-              </div>
+    <>
+      <BulkApproveBar
+        approvableCount={allIds.length}
+        selectedCount={selectedIds.length}
+        allSelected={allSelected}
+        onToggleAll={toggleAll}
+        onApproveSelected={() =>
+          selectedIds.length > 0 && setBulkConfirm({ ids: selectedIds })
+        }
+        onApproveAll={() =>
+          allIds.length > 0 && setBulkConfirm({ ids: allIds })
+        }
+        running={bulk.running}
+        progress={bulk.progress}
+        result={bulk.result}
+        onDismissResult={bulk.dismissResult}
+      />
+
+      <ul className="space-y-3">
+        {requests.map((r) => {
+          const isActive = active?.id === r.id;
+          return (
+            <li
+              key={r.id}
+              className="rounded-2xl bg-white border border-stone-200 shadow-sm p-5"
+            >
+              <div className="flex items-start gap-4">
+                <label className="flex items-center pt-0.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bulk.isSelected(r.id)}
+                    onChange={() => bulk.toggle(r.id)}
+                    disabled={bulk.running}
+                    className="w-4 h-4 rounded border-stone-300 text-tangerine focus:ring-tangerine-soft"
+                    aria-label={`Select reveal request from ${r.donorName}`}
+                  />
+                </label>
+                <div className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl bg-tangerine-mist text-tangerine-deeper">
+                  <Eye className="w-5 h-5 stroke-[1.75]" aria-hidden="true" />
+                </div>
               <div className="flex-1 min-w-0">
                 <p className="font-display text-[16px] text-ink leading-snug">
                   {r.fieldLabel}
@@ -229,6 +287,26 @@ export function RevealRequestQueue({ requests }: { requests: RevealQueueItem[] }
           </li>
         );
       })}
-    </ul>
+      </ul>
+
+      <BulkConfirmDialog
+        open={bulkConfirm !== null}
+        sensitive
+        title="Grant Tier-3 access in bulk"
+        message={
+          bulkConfirm
+            ? `You're about to grant ${bulkConfirm.ids.length} Tier-3 information-access request${bulkConfirm.ids.length === 1 ? "" : "s"} — each gives a donor 90-day access to a private child field — WITHOUT reviewing each individually. The reason below is recorded on every one and emailed to each donor. Confirm.`
+            : ""
+        }
+        confirmLabel={
+          bulkConfirm ? `Grant ${bulkConfirm.ids.length}` : "Grant"
+        }
+        needsReason
+        reasonPlaceholder="e.g. Long-term sponsors; standard address/guardian grants."
+        pending={bulk.running}
+        onConfirm={(reasonText) => runBulk(reasonText)}
+        onCancel={() => setBulkConfirm(null)}
+      />
+    </>
   );
 }

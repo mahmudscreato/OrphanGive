@@ -17,12 +17,11 @@
 // bd_division.name). NO district, NO Tier-3.
 
 import Link from "next/link";
-import { ChevronRight, Clock, FileBarChart } from "lucide-react";
+import { listAdminReports } from "@/lib/admin-reports";
 import {
-  listAdminReports,
-  type AdminReportSummary,
-} from "@/lib/admin-reports";
-import { StatusPill, type StatusPillKind } from "@/components/di/StatusPill";
+  BulkReviewList,
+  type BulkReviewRow,
+} from "@/components/admin/bulk/BulkReviewList";
 
 export const dynamic = "force-dynamic";
 
@@ -39,22 +38,18 @@ function parseFilter(s: string | undefined): ReportTypeFilter {
   return "all";
 }
 
-function statusToPillKind(status: string): StatusPillKind {
-  if (
-    status === "submitted_by_di" ||
-    status === "under_admin_review" ||
-    status === "approved" ||
-    status === "correction_requested" ||
-    status === "rejected" ||
-    status === "published" ||
-    status === "verified" ||
-    status === "pending" ||
-    status === "draft"
-  ) {
-    return status as StatusPillKind;
-  }
-  return "draft";
-}
+// Every status the report queue surfaces is admin-approvable (approveReport's
+// approvable set = submitted_by_di / under_admin_review / correction_requested
+// / legacy pending) — so all shown rows are selectable.
+const REPORT_STATUS: Record<
+  string,
+  { label: string; tone: BulkReviewRow["statusTone"] }
+> = {
+  submitted_by_di: { label: "Awaiting review", tone: "pending" },
+  under_admin_review: { label: "In review", tone: "pending" },
+  pending: { label: "Pending", tone: "pending" },
+  correction_requested: { label: "Correction requested", tone: "neutral" },
+};
 
 export default async function AdminReportsListPage({
   searchParams,
@@ -64,6 +59,35 @@ export default async function AdminReportsListPage({
   const sp = await searchParams;
   const activeFilter = parseFilter(sp.filter);
   const reports = await listAdminReports({ reportType: activeFilter });
+
+  // feat/admin-bulk-approve — normalize into the shared bulk row model.
+  // All queued reports are approvable; approve POSTs the same per-item
+  // route the detail page uses (→ status=approved + DI notification).
+  const rows: BulkReviewRow[] = reports.map((r) => {
+    const s = REPORT_STATUS[r.status] ?? {
+      label: r.status,
+      tone: "neutral" as const,
+    };
+    const division = r.child_division_name;
+    return {
+      id: r.id,
+      href: `/admin/reviews/reports/${r.id}`,
+      approveEndpoint: `/api/admin/reports/${r.id}/approve`,
+      selectable: true,
+      thumbUrl: null,
+      thumbIcon: "report" as const,
+      title: r.title,
+      statusLabel: s.label,
+      statusTone: s.tone,
+      typeLabel: r.report_type
+        ? r.report_type === "progress"
+          ? "Progress"
+          : "Deployment"
+        : null,
+      subtitle: `${r.child_display_name ?? "Unknown child"}${division ? ` · ${division}` : ""}`,
+      meta: `${r.submitter_display_name ?? "Unknown DI"} · filed`,
+    };
+  });
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-4xl mx-auto">
@@ -114,62 +138,8 @@ export default async function AdminReportsListPage({
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {reports.map((r) => (
-            <ReportRow key={r.id} report={r} />
-          ))}
-        </ul>
+        <BulkReviewList rows={rows} itemNoun="report" />
       )}
     </div>
-  );
-}
-
-function ReportRow({ report }: { report: AdminReportSummary }) {
-  const childLabel = report.child_display_name ?? "Unknown child";
-  const division = report.child_division_name;
-  return (
-    <li>
-      <Link
-        href={`/admin/reviews/reports/${report.id}`}
-        className="group flex items-start gap-3 rounded-2xl bg-white border border-stone-200 shadow-sm px-4 py-3.5 md:px-5 md:py-4 transition-colors hover:border-tangerine-soft"
-      >
-        <div className="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl bg-tangerine-mist text-tangerine-deeper">
-          <FileBarChart
-            className="w-5 h-5 stroke-[1.75]"
-            aria-hidden="true"
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <p className="font-display text-[16px] text-ink leading-snug truncate">
-              {report.title}
-            </p>
-            <StatusPill kind={statusToPillKind(report.status)} />
-            {report.report_type ? (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-stone-100 text-stone-700">
-                {report.report_type === "progress"
-                  ? "Progress"
-                  : "Deployment"}
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-0.5 text-[13px] text-ink-soft leading-snug">
-            {childLabel}
-            {division ? <span className="text-stone-400"> · {division}</span> : null}
-          </p>
-          <p className="mt-1 text-[12px] text-ink-soft leading-relaxed">
-            {report.submitter_display_name ?? "Unknown DI"} ·{" "}
-            <span className="inline-flex items-center gap-1">
-              <Clock className="w-3 h-3 stroke-[1.75]" aria-hidden="true" />
-              filed
-            </span>
-          </p>
-        </div>
-        <ChevronRight
-          className="w-4 h-4 mt-2 text-stone-400 stroke-[1.75] group-hover:text-tangerine-deeper transition-colors shrink-0"
-          aria-hidden="true"
-        />
-      </Link>
-    </li>
   );
 }
