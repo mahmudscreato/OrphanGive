@@ -1,15 +1,25 @@
 // Session 52b — Admin document review list.
 
 import Link from "next/link";
-import { ChevronRight, Clock, FileText, ImageIcon } from "lucide-react";
 import {
   countPendingDocuments,
   listAdminDocuments,
   type AdminDocumentSummary,
   type DocumentReviewFilter,
 } from "@/lib/admin-documents";
+import {
+  BulkReviewList,
+  type BulkReviewRow,
+} from "@/components/admin/bulk/BulkReviewList";
 
 export const dynamic = "force-dynamic";
+
+const DOC_STATUS_LABEL: Record<AdminDocumentSummary["status"], string> = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+  archived: "Archived",
+};
 
 const TABS: ReadonlyArray<{ value: DocumentReviewFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -59,6 +69,25 @@ export default async function AdminDocumentsListPage({
     listAdminDocuments({ filter: activeFilter }),
     countPendingDocuments(),
   ]);
+
+  // feat/admin-bulk-approve — normalize into the shared bulk row model.
+  // Only PENDING rows are selectable/approvable; the approve endpoint is
+  // the SAME per-item route the detail page uses.
+  const rows: BulkReviewRow[] = documents.map((d) => ({
+    id: d.id,
+    href: `/admin/reviews/documents/${d.id}`,
+    approveEndpoint: `/api/admin/documents/${d.id}/approve`,
+    selectable: d.status === "pending",
+    thumbUrl: d.mimeHint === "image" ? d.fileUrl : null,
+    thumbIcon: "file",
+    title: d.childDisplayName,
+    statusLabel: DOC_STATUS_LABEL[d.status],
+    statusTone: d.status === "archived" ? "neutral" : d.status,
+    typeLabel: d.documentTypeLabel,
+    subtitle:
+      d.status === "rejected" && d.rejectionReason ? d.rejectionReason : null,
+    meta: `${d.uploadedByName} · ${formatRelative(d.uploadedAt)}`,
+  }));
 
   return (
     <div className="px-5 md:px-10 lg:px-12 py-6 md:py-10 max-w-4xl mx-auto">
@@ -122,87 +151,8 @@ export default async function AdminDocumentsListPage({
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {documents.map((d) => (
-            <DocumentRow key={d.id} doc={d} />
-          ))}
-        </ul>
+        <BulkReviewList rows={rows} itemNoun="document" />
       )}
     </div>
-  );
-}
-
-function DocumentRow({ doc }: { doc: AdminDocumentSummary }) {
-  const ThumbIcon = doc.mimeHint === "pdf" ? FileText : ImageIcon;
-  return (
-    <li>
-      <Link
-        href={`/admin/reviews/documents/${doc.id}`}
-        className="group flex items-start gap-3 rounded-2xl bg-white border border-stone-200 shadow-sm px-4 py-3.5 md:px-5 md:py-4 transition-colors hover:border-tangerine-soft"
-      >
-        <div className="shrink-0 w-12 h-12 rounded-lg bg-stone-100 overflow-hidden flex items-center justify-center">
-          {doc.mimeHint === "image" && doc.fileUrl ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={doc.fileUrl}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <ThumbIcon
-              className="w-5 h-5 text-stone-500 stroke-[1.75]"
-              aria-hidden="true"
-            />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <p className="font-display text-[16px] text-ink leading-snug truncate">
-              {doc.childDisplayName}
-            </p>
-            <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-ink-soft">
-              {doc.documentTypeLabel}
-            </span>
-            <StatusPill status={doc.status} />
-          </div>
-          <p className="mt-1 text-[12.5px] text-ink-soft leading-relaxed">
-            {doc.uploadedByName} ·{" "}
-            <span className="inline-flex items-center gap-1">
-              <Clock className="w-3 h-3 stroke-[1.75]" aria-hidden="true" />
-              {formatRelative(doc.uploadedAt)}
-            </span>
-          </p>
-          {doc.status === "rejected" && doc.rejectionReason ? (
-            <p className="mt-1 text-[12px] text-[#9A2424] italic line-clamp-2">
-              {doc.rejectionReason}
-            </p>
-          ) : null}
-        </div>
-        <ChevronRight
-          className="w-4 h-4 mt-2 text-stone-400 stroke-[1.75] group-hover:text-tangerine-deeper transition-colors shrink-0"
-          aria-hidden="true"
-        />
-      </Link>
-    </li>
-  );
-}
-
-function StatusPill({ status }: { status: AdminDocumentSummary["status"] }) {
-  const styles: Record<
-    AdminDocumentSummary["status"],
-    { bg: string; text: string; label: string }
-  > = {
-    pending: { bg: "bg-amber-50", text: "text-amber-800", label: "Pending" },
-    approved: { bg: "bg-moss-soft", text: "text-moss-deep", label: "Approved" },
-    rejected: { bg: "bg-[#FCE9E9]", text: "text-[#A02020]", label: "Rejected" },
-    archived: { bg: "bg-stone-100", text: "text-stone-700", label: "Archived" },
-  };
-  const s = styles[status];
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold ${s.bg} ${s.text}`}
-    >
-      {s.label}
-    </span>
   );
 }

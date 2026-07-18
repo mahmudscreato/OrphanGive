@@ -47,6 +47,10 @@ export interface AdminIntakePhotoGroup {
   totalCount: number;
   // First few photos for the thumbnail strip on the list page.
   thumbnails: ReadonlyArray<{ id: string; photoUrl: string; status: IntakePhotoStatus }>;
+  // feat/admin-bulk-approve — ids of THIS group's pending photos, so the
+  // list-page bulk approve can POST the per-photo approve route for each
+  // (the same route the per-child review page uses).
+  pendingPhotoIds: string[];
 }
 
 export class NotFoundError extends Error {
@@ -245,6 +249,7 @@ export async function listIntakePhotoGroups(): Promise<AdminIntakePhotoGroup[]> 
         photoUrl: p.photo ? `/api/assets/${p.photo}` : "",
         status: isStatus(p.status) ? p.status : "pending",
       })),
+      pendingPhotoIds: pending.map((p) => p.id),
     };
   });
 }
