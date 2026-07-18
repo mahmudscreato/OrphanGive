@@ -666,8 +666,7 @@ function DecidedPhotoCard({ photo }: { photo: AdminIntakePhotoSummary }) {
       {/* Session 52d — admin can remove an already-approved photo
           for ongoing curation. Uses the AdminRemoveButton's
           approved mode (modal + reason). Only on approved (the
-          common reversal); archived = terminal, rejected = already
-          retracted via reject. */}
+          common reversal); archived = terminal. */}
       {photo.status === "approved" ? (
         <div className="px-2 pt-1.5 pb-2 border-t border-stone-200">
           <AdminRemoveButton
@@ -675,6 +674,25 @@ function DecidedPhotoCard({ photo }: { photo: AdminIntakePhotoSummary }) {
             redirectTo="/admin/reviews/intake-photos"
             entityNoun="intake photo"
             wasApproved
+          />
+        </div>
+      ) : null}
+      {/* fix/admin-quick-batch — admin can delete a REJECTED intake
+          photo to free its slot (mirrors the DI's own removal power,
+          which allows pending OR rejected — see
+          di-intake-photos.ts:deleteIntakePhoto). Two-tap confirm, no
+          DI notification (the DI already saw the rejection). The
+          route + removeIntakePhoto already accept any status; this
+          just surfaces the control that was previously missing on
+          decided rows. Approved uses the modal path above; archived
+          stays terminal. */}
+      {photo.status === "rejected" ? (
+        <div className="px-2 pt-1.5 pb-2 border-t border-stone-200">
+          <AdminRemoveButton
+            endpoint={`/api/admin/intake-photos/${photo.id}`}
+            redirectTo="/admin/reviews/intake-photos"
+            entityNoun="intake photo"
+            helperText="Deletes this rejected photo and frees its slot for a re-upload. The DI already saw the rejection, so they aren't notified again."
           />
         </div>
       ) : null}

@@ -28,6 +28,11 @@ import { countPendingDocuments } from "./admin-documents";
 // + `under_admin_review` + legacy `pending` — `correction_requested`
 // is awaiting the DI, NOT admin, so it's deliberately excluded.
 import { countPendingReports } from "./admin-reports";
+// fix/admin-quick-batch — pending donor information-access (reveal)
+// requests. Same single-helper pattern: the /admin/reviews index tile
+// already calls countPendingRevealRequests(), so surfacing the count
+// here lets the sidebar Reviews badge include it without diverging.
+import { countPendingRevealRequests } from "./reveal-data";
 
 async function safeCount(
   collection: string,
@@ -64,6 +69,12 @@ export interface AdminHomeStats {
   // calls countPendingReports() directly for its tile; this field
   // exists so the badge can use the SAME helper without re-fetching.
   pendingReportCount: number | null;
+  // fix/admin-quick-batch — pending donor information-access (reveal)
+  // requests. Same rationale as pendingReportCount: the Reviews badge
+  // needs this to bump when a new reveal request lands. The helper
+  // returns 0 (not null) on failure, so this is effectively always a
+  // number, but typed nullable to match the interface's other counts.
+  pendingRevealCount: number | null;
 }
 
 export async function getAdminHomeStats(): Promise<AdminHomeStats> {
@@ -73,6 +84,7 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     pendingIntakePhotoCount,
     pendingDocumentCount,
     pendingReportCount,
+    pendingRevealCount,
   ] = await Promise.all([
     safeCount("child_proposal", { status: { _eq: "pending" } }),
     safeCount("child_moment", { status: { _eq: "pending" } }),
@@ -89,6 +101,10 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     // + legacy 'pending'. Excludes correction_requested (those are
     // DI-blocked rows, not admin-blocked).
     countPendingReports(),
+    // Reveal requests: fix/admin-quick-batch — same single-helper
+    // pattern (the /admin/reviews index tile uses this exact call).
+    // Counts reveal_request rows in 'pending' status.
+    countPendingRevealRequests(),
   ]);
 
   return {
@@ -97,5 +113,6 @@ export async function getAdminHomeStats(): Promise<AdminHomeStats> {
     pendingIntakePhotoCount,
     pendingDocumentCount,
     pendingReportCount,
+    pendingRevealCount,
   };
 }

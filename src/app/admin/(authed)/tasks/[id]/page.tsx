@@ -27,6 +27,7 @@ import {
 } from "@/components/admin/TaskQuickAssign";
 import { TaskCommentThread } from "@/components/tasks/TaskCommentThread";
 import { TaskCommentComposer } from "@/components/tasks/TaskCommentComposer";
+import { TaskDeleteButton } from "@/components/admin/TaskDeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -302,6 +303,20 @@ export default async function AdminTaskDetailPage({
         <TaskCommentComposer
           postUrl={`/api/admin/tasks/${task.id}/comments`}
           uploadUrl="/api/admin/uploads/document"
+        />
+      </section>
+
+      {/* DANGER ZONE — hard-delete (fix/admin-quick-batch). Two-tap
+          confirm lives in the button; deleting cascades the comment
+          thread and the donor's fulfillment view re-derives from the
+          remaining updates (never stranded). */}
+      <section className="mb-6 rounded-2xl bg-white border border-red-200/70 shadow-sm p-5 md:p-6">
+        <h2 className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-[#A02B2B] font-medium mb-3">
+          Danger zone
+        </h2>
+        <TaskDeleteButton
+          taskId={task.id}
+          hasSponsorship={!!task.sponsorship_id}
         />
       </section>
     </div>

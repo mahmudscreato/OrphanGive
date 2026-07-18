@@ -156,6 +156,10 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Task quick-assign (admin → DI). No childId metadata, so it never
   // surfaces on the DI feed; type-safety placeholder.
   admin_assigned_task: ListChecks,
+  // fix/admin-quick-batch — admin hard-deleted a task. Carries childId
+  // in metadata, so it CAN surface on the DI's Recent Activity feed
+  // when the deleted task's child was in the DI's scope.
+  admin_deleted_task: Trash2,
   // P2 — reveal lifecycle. Donor + system actions; never surface on
   // the DI feed (no di_ prefix). Type-safety placeholders only.
   donor_requested_reveal: Eye,
