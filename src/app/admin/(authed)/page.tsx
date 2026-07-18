@@ -14,23 +14,31 @@
 
 import {
   AlertTriangle,
+  CalendarClock,
   Camera,
   ClipboardCheck,
   CreditCard,
+  Eye,
   FileBarChart,
   FileText,
+  Gift,
   HeartHandshake,
+  Hourglass,
   ImagePlus,
+  Inbox,
   ListChecks,
   PauseCircle,
   Plus,
   ShieldAlert,
+  Sparkles,
+  UserCheck,
   UserPlus,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { requireAdminUser } from "@/lib/admin-auth";
 import { getAdminDashboardData } from "@/lib/admin-dashboard";
+import { getAdminOverviewStats } from "@/lib/admin-overview-stats";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminStatTile } from "@/components/admin/AdminStatTile";
 import { AttentionCard } from "@/components/admin/AttentionCard";
@@ -41,6 +49,13 @@ export const dynamic = "force-dynamic";
 function formatCount(n: number | null): string {
   if (n === null) return "—";
   return new Intl.NumberFormat("en-US").format(n);
+}
+
+// Null-aware sum: "—" only when EVERY input failed to load; otherwise a
+// failed count is treated as 0 so the total still reflects what loaded.
+function sumCounts(...vals: Array<number | null>): number | null {
+  if (vals.every((v) => v === null)) return null;
+  return vals.reduce<number>((a, v) => a + (v ?? 0), 0);
 }
 
 // Deep-link to the "DI marked complete, awaiting admin verification"
@@ -66,8 +81,22 @@ export default async function AdminHomePage() {
       ? `Good day, ${session.firstName.trim()}.`
       : "Good day.";
 
-  const data = await getAdminDashboardData();
+  // Existing dashboard data + the new overview stats, in parallel.
+  const [data, overview] = await Promise.all([
+    getAdminDashboardData(),
+    getAdminOverviewStats(),
+  ]);
   const { base } = data;
+
+  // Pending review total = the 5 review queues (4 from getAdminHomeStats +
+  // reveal). NOT proposals (a separate surface).
+  const pendingReviewTotal = sumCounts(
+    base.pendingMomentCount,
+    base.pendingIntakePhotoCount,
+    base.pendingDocumentCount,
+    base.pendingReportCount,
+    overview.pendingRevealCount,
+  );
 
   // Surface attention items only when any > 0 — avoid four amber
   // cards on a quiet day. fulfillment_exception columns are on main
@@ -85,6 +114,113 @@ export default async function AdminHomePage() {
         subtitle="Today's queues and the state of the platform."
         flourish="Approve thoughtfully, reject with kindness."
       />
+
+      {/* ─── Needs attention (actionable rollups) ─────────────────── */}
+      <DashboardSection
+        eyebrow="Act on these"
+        title="Needs attention"
+        viewAllHref="/admin/reviews"
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <AdminStatTile
+            label="Pending review"
+            value={formatCount(pendingReviewTotal)}
+            href="/admin/reviews"
+            icon={Inbox}
+            hint="across all 5 review queues"
+          />
+          <AdminStatTile
+            label="Reveal requests"
+            value={formatCount(overview.pendingRevealCount)}
+            href="/admin/reviews/reveal-requests"
+            icon={Eye}
+            hint="Tier-3 information-access asks"
+          />
+          <AdminStatTile
+            label="Ending this month"
+            value={formatCount(overview.childrenEndingThisMonth)}
+            href="/admin/sponsorships?filter=active"
+            icon={CalendarClock}
+            hint="children whose paid term ends"
+          />
+        </div>
+      </DashboardSection>
+
+      {/* ─── Overview (state of the platform) ─────────────────────── */}
+      <DashboardSection eyebrow="At a glance" title="Overview">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <AdminStatTile
+            label="Children listed"
+            value={formatCount(overview.childrenListed)}
+            href="/admin/children"
+            icon={Users}
+            hint="active in the program"
+          />
+          <AdminStatTile
+            label="Children sponsored"
+            value={formatCount(overview.childrenSponsored)}
+            href="/admin/children?has=yes"
+            icon={HeartHandshake}
+            hint="have an active sponsor"
+          />
+          <AdminStatTile
+            label="Children waiting"
+            value={formatCount(overview.childrenWaiting)}
+            href="/admin/children?has=no"
+            icon={Hourglass}
+            hint="awaiting a sponsor"
+          />
+          <AdminStatTile
+            label="Active sponsorships"
+            value={formatCount(data.activeSponsorships)}
+            href="/admin/sponsorships?filter=active"
+            icon={HeartHandshake}
+            hint="currently funding a child"
+          />
+          <AdminStatTile
+            label="Paused sponsorships"
+            value={formatCount(overview.pausedSponsorships)}
+            href="/admin/sponsorships?filter=paused"
+            icon={PauseCircle}
+            hint="temporarily paused"
+          />
+          <AdminStatTile
+            label="One-time gifts"
+            value={formatCount(overview.oneTimeGifts)}
+            href="/admin/sponsorships?type=one_time"
+            icon={Gift}
+            hint="single-payment gifts"
+          />
+          <AdminStatTile
+            label="Donors registered"
+            value={formatCount(overview.donorsRegistered)}
+            href="/admin/donors"
+            icon={Users}
+            hint="Donor + Org Donor accounts"
+          />
+          <AdminStatTile
+            label="Donors active"
+            value={formatCount(overview.donorsActive)}
+            href="/admin/donors"
+            icon={UserCheck}
+            hint="≥1 active or paused sponsorship"
+          />
+          <AdminStatTile
+            label="New donors"
+            value={formatCount(overview.newDonorsThisMonth)}
+            href="/admin/donors"
+            icon={UserPlus}
+            hint="signed up this month"
+          />
+          <AdminStatTile
+            label="New sponsorships"
+            value={formatCount(overview.newSponsorshipsThisMonth)}
+            href="/admin/sponsorships"
+            icon={Sparkles}
+            hint="started this month"
+          />
+        </div>
+      </DashboardSection>
 
       {/* ─── Quick actions ────────────────────────────────────────── */}
       <DashboardSection eyebrow="Jump straight in" title="Quick actions">
