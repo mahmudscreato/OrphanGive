@@ -169,6 +169,9 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   // Task quick-assign (admin → DI). Never surfaces on the per-child
   // History tab (di_* filter); type-safety placeholder.
   admin_assigned_task: ListChecks,
+  // fix/admin-quick-batch — admin hard-deleted a task. Type-safety
+  // placeholder (di_* filter keeps it off the per-child tab).
+  admin_deleted_task: Trash2,
   // P2 — reveal lifecycle. These don't surface on the DI History
   // tab (donor + system actions; no di_ prefix) but the map must
   // stay exhaustive over AuditAction for type-safety.

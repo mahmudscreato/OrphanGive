@@ -301,6 +301,17 @@ export type AuditAction =
   // a DI without a full edit flow. Metadata is IDs only:
   // { taskId, assigneeId }. No PII. Actor is the admin.
   | "admin_assigned_task"
+  // ─── fix/admin-quick-batch — admin hard-deletes a task ───
+  //
+  // IRREVERSIBLE removal (distinct from the admin verify/reject axis,
+  // which only flips admin_status). The task's task_comment thread +
+  // attachment junction rows cascade-delete at the DB level
+  // (task_comment.task → task is ON DELETE CASCADE). Metadata is IDs
+  // only — { taskId, sponsorshipId, childId }. No Tier-3 child fields,
+  // no reason text. childId lets the DI's Recent Activity feed surface
+  // the removal when the child was in the DI's scope. Mirrors the
+  // admin_deleted_child precedent (Session 71).
+  | "admin_deleted_task"
   // ─── P2 — reveal lifecycle audit ───
   //
   // Donor / system / admin actions on `reveal_request` (Tier-3 access
@@ -650,6 +661,9 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
   system_created_task: () => `A paid donation auto-created a delivery task`,
   // Task quick-assign — admin assigned a task to a DI.
   admin_assigned_task: (a) => `${a} assigned a task to a Data Inputter`,
+  // fix/admin-quick-batch — admin hard-deleted a task (irreversible; the
+  // task's comment thread cascades away with it).
+  admin_deleted_task: () => `Admin deleted a task`,
   // P2 — reveal lifecycle.
   donor_requested_reveal: () => `Donor requested a reveal`,
   donor_withdrew_reveal: () => `Donor withdrew a reveal request`,

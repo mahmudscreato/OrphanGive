@@ -24,6 +24,7 @@ import "server-only";
 
 import {
   createItem,
+  deleteItem,
   readItem,
   readItems,
   readRoles,
@@ -1097,4 +1098,96 @@ export async function assignTask(
   }
 
   return { taskId, assigneeId };
+}
+
+// ─── Public API: admin hard-delete (fix/admin-quick-batch) ───────────
+
+export interface AdminTaskDeleteResult {
+  taskId: string;
+  childId: string | null;
+  sponsorshipId: string | null;
+}
+
+/**
+ * HARD-DELETE a task (admin-only). Distinct from the verify/reject axis
+ * (which only flips admin_status) — this removes the row entirely, for
+ * mistakenly-created or duplicate tasks.
+ *
+ * CASCADE: the task's `task_comment` thread + its
+ * `task_comment_attachment` junction rows cascade-delete at the DB
+ * level (task_comment.task → task is ON DELETE CASCADE; the junction
+ * cascades from task_comment — see
+ * migrations/task-detail-comments-1/001-create-task-comment.mjs). So no
+ * manual child-row cleanup is needed here. The uploaded attachment
+ * FILES in `directus_files` are NOT deleted — same accepted orphan
+ * pattern as intake-photo removal (an orphan-file sweep handles those).
+ *
+ * FULFILLMENT: donor fulfillment is DERIVED read-time from the LATEST
+ * task per sponsorship (sponsorship-fulfillment-fetch.ts:fetchLatestTask),
+ * never stored on the sponsorship. Deleting a task therefore never
+ * leaves fulfillment "stuck" — the next read recomputes from the
+ * remaining tasks/reports. Deleting the task currently driving a
+ * "delivered" view reverts it to whatever the remaining signals say
+ * (accurate, not corrupt). The confirmation step lives in the UI.
+ *
+ * Reads via readItems+filter (NOT readItem) so a genuinely-missing id
+ * resolves to [] (→ AdminTaskNotFoundError) rather than throwing. Does
+ * NOT write the audit row — the route does that AFTER this returns so
+ * it can attach the request IP / user-agent.
+ *
+ * Throws AdminTaskNotFoundError (bad/unknown id) or a generic Error on
+ * a transport failure (→ route 500).
+ */
+export async function deleteTaskAsAdmin(
+  taskId: string,
+): Promise<AdminTaskDeleteResult> {
+  if (!UUID_RE.test(taskId)) {
+    throw new AdminTaskNotFoundError("invalid task id");
+  }
+
+  let row: {
+    id: string;
+    child: string | { id?: string } | null;
+    sponsorship: string | null;
+  } | null = null;
+  try {
+    const result = (await directusServer().request(
+      readItems("task" as never, {
+        filter: { id: { _eq: taskId } },
+        fields: ["id", "child", "sponsorship"],
+        limit: 1,
+      } as never),
+    )) as unknown as Array<{
+      id: string;
+      child: string | { id?: string } | null;
+      sponsorship: string | null;
+    }> | undefined;
+    row = Array.isArray(result) ? result[0] ?? null : null;
+  } catch (err) {
+    console.error(
+      "[admin-tasks] deleteTaskAsAdmin read failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("task read failed");
+  }
+  if (!row || !row.id) throw new AdminTaskNotFoundError();
+
+  try {
+    await directusServer().request(
+      deleteItem("task" as never, taskId as never),
+    );
+  } catch (err) {
+    console.error(
+      "[admin-tasks] deleteTaskAsAdmin delete failed",
+      err instanceof Error ? err.message : err,
+    );
+    throw new Error("task delete failed");
+  }
+
+  const childObj = row.child && typeof row.child === "object" ? row.child : null;
+  return {
+    taskId,
+    childId: childObj?.id ?? (typeof row.child === "string" ? row.child : null),
+    sponsorshipId: row.sponsorship,
+  };
 }

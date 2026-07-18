@@ -41,6 +41,11 @@ export interface AdminRemoveButtonProps {
   // state (e.g., archived) — admin can use Directus admin
   // directly if truly needed.
   disabled?: boolean;
+  // fix/admin-quick-batch — override the default helper caption. Used
+  // when the default "not as a rejection" copy doesn't fit (e.g.
+  // removing an ALREADY-rejected intake photo to free its slot). Only
+  // applies in the non-approved (two-tap) mode.
+  helperText?: string;
 }
 
 interface ApiResponse {
@@ -54,6 +59,7 @@ export function AdminRemoveButton({
   entityNoun,
   wasApproved = false,
   disabled = false,
+  helperText,
 }: AdminRemoveButtonProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -152,7 +158,8 @@ export function AdminRemoveButton({
       <p className="mt-1 text-[11.5px] text-ink-soft italic">
         {wasApproved
           ? `Removes a previously-approved ${entityNoun}. DI is notified with your reason. Use for ongoing curation (e.g., later-spotted identifying info).`
-          : `Removes the upload without recording a decision — use for DI mistakes, not as a rejection. Approve / Reject above records a decision the DI sees.`}
+          : helperText ??
+            `Removes the upload without recording a decision — use for DI mistakes, not as a rejection. Approve / Reject above records a decision the DI sees.`}
       </p>
 
       {showReasonModal ? (

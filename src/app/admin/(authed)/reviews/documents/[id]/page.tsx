@@ -221,16 +221,25 @@ export default async function AdminDocumentDetailPage({
 
       {/* Session 52c → 52d — Remove cleanup. Pending: two-tap
           confirm, silent. Approved: opens modal prompting for
-          required reason, DI notified. Archived rows are
-          terminal (admin uses Directus admin directly to undo);
-          rejected rows already have admin's reason in
-          rejection_reason, no further admin remove needed. */}
+          required reason, DI notified. Archived rows stay terminal
+          (admin uses Directus admin directly to undo).
+          fix/admin-quick-batch — REJECTED is now removable too, to
+          free the slot for a re-upload (mirrors the intake-photo
+          fix + the DI's own pending|rejected removal power). The
+          route + removeDocument already accept any status; this just
+          surfaces the control. Two-tap (wasApproved is false for
+          rejected), silent (the DI already saw the rejection). */}
       <AdminRemoveButton
         endpoint={`/api/admin/documents/${doc.id}`}
         redirectTo="/admin/reviews/documents?filter=pending"
         entityNoun="document"
         wasApproved={doc.status === "approved"}
-        disabled={doc.status === "archived" || doc.status === "rejected"}
+        disabled={doc.status === "archived"}
+        helperText={
+          doc.status === "rejected"
+            ? "Deletes this rejected document and frees its slot for a re-upload. The DI already saw the rejection, so they aren't notified again."
+            : undefined
+        }
       />
     </div>
   );
