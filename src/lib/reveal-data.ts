@@ -713,6 +713,148 @@ export async function listPendingRevealRequests(): Promise<
   });
 }
 
+// feat/reveal-request-history — admin decided-history view.
+//
+// The pending queue (listPendingRevealRequests) shows only status='pending'
+// rows; once decided, a request leaves that queue with no admin-side record
+// of who requested what and who approved/denied it. This reader surfaces the
+// DECIDED rows (status IN 'approved','denied') for the admin audit view.
+//
+// Admin-only (called from the admin /reviews area, which requireAdminUser
+// gates) + READ-ONLY. This shows decided requests across ALL donors — that
+// is the intended admin audit scope, NOT a donor-scoping change.
+export interface DecidedRevealRequest {
+  id: string;
+  donorId: string;
+  donorName: string;
+  donorEmail: string;
+  childId: string;
+  childName: string;
+  fieldName: string;
+  fieldLabel: string;
+  donorReason: string | null;
+  requestedAt: string | null;
+  decidedAt: string | null;
+  decision: "approved" | "denied";
+  // Resolved from decided_by (the admin who approved/denied). Null only
+  // if the id couldn't be resolved to a name (defensive).
+  decidedByName: string | null;
+  // The admin's recorded reason (admin_decision_note).
+  adminNote: string | null;
+}
+
+/**
+ * Admin decided-history reader — mirrors listPendingRevealRequests but
+ * filters status IN ('approved','denied') and sorts most-recently-decided
+ * first. Resolves donor + child display strings AND decided_by → admin name
+ * (donors and admins are both directus_users, so one batched users read
+ * covers both). Tier-1 safe: shows WHICH field was requested (the allowlist
+ * label), never the child's actual private value.
+ *
+ * Capped to the most recent `limit` decisions (default 100) — this list
+ * grows unbounded over time, unlike the pending queue. A future paginated
+ * view can lift the cap if the history outgrows a single page.
+ */
+export async function listDecidedRevealRequests(
+  limit = 100,
+): Promise<DecidedRevealRequest[]> {
+  let rows: RevealRequest[] = [];
+  try {
+    const result = (await directusServer().request(
+      readItems("reveal_request" as never, {
+        filter: { status: { _in: ["approved", "denied"] } },
+        fields: [...REVEAL_FIELDS],
+        // Most-recent decision first. decided_at is always stamped on
+        // approve/deny; date_created is the tiebreaker for safety.
+        sort: ["-decided_at", "-date_created"],
+        limit,
+      } as never),
+    )) as unknown as RevealRequest[];
+    rows = Array.isArray(result) ? result : [];
+  } catch (err) {
+    console.warn(
+      "[reveal-data] listDecidedRevealRequests failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+  if (rows.length === 0) return [];
+
+  // Resolve donor + admin (decided_by) names in ONE users read, and child
+  // display names in another — the same batched pattern the pending reader
+  // uses. donors and admins are both directus_users.
+  const donorIds = rows.map((r) => r.donor).filter(Boolean);
+  const adminIds = rows
+    .map((r) => r.decided_by)
+    .filter((x): x is string => !!x);
+  const userIds = Array.from(new Set([...donorIds, ...adminIds]));
+  const childIds = Array.from(new Set(rows.map((r) => r.child).filter(Boolean)));
+  const userById = new Map<string, { name: string; email: string }>();
+  const childNameById = new Map<string, string>();
+  try {
+    if (userIds.length > 0) {
+      const users = (await directusServer().request(
+        readUsers({
+          filter: { id: { _in: userIds } },
+          fields: ["id", "first_name", "last_name", "email"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+      }>;
+      for (const u of users ?? []) {
+        const name =
+          [u.first_name, u.last_name].filter((s) => s && s.trim()).join(" ").trim() ||
+          u.email;
+        userById.set(u.id, { name, email: u.email });
+      }
+    }
+    if (childIds.length > 0) {
+      const kids = (await directusServer().request(
+        readItems("child" as never, {
+          filter: { id: { _in: childIds } },
+          fields: ["id", "display_name"],
+          limit: -1,
+        } as never),
+      )) as unknown as Array<{ id: string; display_name: string | null }>;
+      for (const c of kids ?? []) {
+        if (c.display_name?.trim()) childNameById.set(c.id, c.display_name.trim());
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[reveal-data] listDecidedRevealRequests resolve failed",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return rows.map((r) => {
+    const donor = userById.get(r.donor);
+    const decidedBy = r.decided_by ? userById.get(r.decided_by) : undefined;
+    return {
+      id: r.id,
+      donorId: r.donor,
+      donorName: donor?.name ?? r.donor,
+      donorEmail: donor?.email ?? "",
+      childId: r.child,
+      childName: childNameById.get(r.child) ?? "Unknown child",
+      fieldName: r.field_name,
+      fieldLabel: isAllowedRevealField(r.field_name)
+        ? REVEAL_FIELD_LABELS[r.field_name]
+        : String(r.field_name),
+      donorReason: r.donor_reason?.trim() || null,
+      requestedAt: r.date_created,
+      decidedAt: r.decided_at,
+      decision: r.status === "approved" ? "approved" : "denied",
+      decidedByName: decidedBy?.name ?? null,
+      adminNote: r.admin_decision_note?.trim() || null,
+    };
+  });
+}
+
 /** Count of pending reveal requests — for the reviews-hub badge. */
 export async function countPendingRevealRequests(): Promise<number> {
   try {

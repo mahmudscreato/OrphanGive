@@ -8,16 +8,25 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { listPendingRevealRequests } from "@/lib/reveal-data";
+import {
+  listDecidedRevealRequests,
+  listPendingRevealRequests,
+} from "@/lib/reveal-data";
 import {
   RevealRequestQueue,
   type RevealQueueItem,
 } from "@/components/admin/RevealRequestQueue";
+import { RevealRequestHistory } from "@/components/admin/RevealRequestHistory";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRevealRequestsPage() {
-  const pending = await listPendingRevealRequests();
+  // feat/reveal-request-history — pending queue + decided history, in
+  // parallel. The history is read-only (decision actions live on the queue).
+  const [pending, decided] = await Promise.all([
+    listPendingRevealRequests(),
+    listDecidedRevealRequests(),
+  ]);
   const items: RevealQueueItem[] = pending.map((r) => ({
     id: r.id,
     donorName: r.donorName,
@@ -44,6 +53,21 @@ export default async function AdminRevealRequestsPage() {
       />
 
       <RevealRequestQueue requests={items} />
+
+      {/* feat/reveal-request-history — decided-request audit history below
+          the pending queue. Read-only; most-recently-decided first; capped
+          to the recent window listDecidedRevealRequests returns. Spans all
+          donors (the admin audit view), by design. */}
+      <section className="mt-10">
+        <h2 className="font-display text-[18px] text-ink mb-1">
+          Previous requests
+        </h2>
+        <p className="text-[13.5px] text-ink-soft mb-4">
+          Approved and denied requests, most recent first
+          {decided.length > 0 ? ` · showing ${decided.length}` : ""}.
+        </p>
+        <RevealRequestHistory requests={decided} />
+      </section>
     </div>
   );
 }
