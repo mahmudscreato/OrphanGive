@@ -177,6 +177,21 @@ export async function fireRefundEmail(opts: {
   );
 }
 
+// #2c (DonorApproved fallback) — app-side trigger for the donor-approval
+// welcome email. Previously this email fired ONLY from a Directus Flow
+// watching og_admin_approval_status → 'approved'; if that Flow is missing
+// or fails, the donor never gets it. approveDonor now also fires this
+// best-effort so the email is sent from app code like every other donor
+// email. The internal route dedups on approval_email_sent_at (6h window),
+// so firing from both the Flow and here never double-sends. Best-effort:
+// callInternalEmailRoute swallows all errors — never blocks the approval.
+export async function fireDonorApprovedEmail(donorId: string): Promise<void> {
+  if (!donorId) return;
+  await callInternalEmailRoute("/api/internal/email/donor-approved", {
+    donorId,
+  });
+}
+
 // fix/reveal-decision-loop — wire the previously-orphaned reveal
 // decision emails. The internal routes (/api/internal/email/reveal-*)
 // already assemble donor + child + field label and re-check the row's

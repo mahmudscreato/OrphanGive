@@ -7,6 +7,7 @@ import {
   formatTo,
 } from "@/lib/email-data";
 import { SponsorshipCancelledEmail } from "@/emails/SponsorshipCancelledEmail";
+import { SponsorshipRefundEmail } from "@/emails/SponsorshipRefundEmail";
 
 export const runtime = "nodejs";
 
@@ -68,14 +69,33 @@ export async function POST(req: NextRequest) {
         : `A refund is on its way for your sponsorship of ${childName}`
       : `Your sponsorship of ${childName} has ended — thank you`;
 
+  // #2b (refund-template convergence) — a REFUND shares this route but
+  // renders the dedicated SponsorshipRefundEmail (amount card + refund
+  // copy), the SAME template the admin refund route uses inline. Before,
+  // the webhook refund path fell back to the generic SponsorshipCancelledEmail
+  // here, so the two refund paths sent two different templates. Non-refund
+  // cancellations keep SponsorshipCancelledEmail. Email-only change — no
+  // refund logic touched.
+  const template =
+    reason === "refunded"
+      ? SponsorshipRefundEmail({
+          firstName,
+          childName,
+          amount: refundedAmountUsd ?? 0,
+          currency: "USD",
+          adminReason: null,
+          dashboardUrl: siteUrl(`/dashboard/sponsorship/${id}`),
+        })
+      : SponsorshipCancelledEmail({
+          firstName,
+          childName,
+          browseUrl: siteUrl("/children"),
+        });
+
   const result = await sendEmail({
     to: formatTo(donor.email, firstName),
     subject,
-    template: SponsorshipCancelledEmail({
-      firstName,
-      childName,
-      browseUrl: siteUrl("/children"),
-    }),
+    template,
   });
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: 502 });
