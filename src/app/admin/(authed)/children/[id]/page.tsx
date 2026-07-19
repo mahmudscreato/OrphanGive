@@ -54,6 +54,7 @@ import { recordAuditEvent } from "@/lib/di-audit";
 import { AdminChildActionBar } from "@/components/admin/AdminChildActionBar";
 import { AdminDocumentDirectUpload } from "@/components/admin/AdminDocumentDirectUpload";
 import { AdminIntakePhotoDirectUpload } from "@/components/admin/AdminIntakePhotoDirectUpload";
+import { AdminRemoveButton } from "@/components/admin/AdminRemoveButton";
 import { ReuploadRequestButton } from "@/components/admin/ReuploadRequestButton";
 // Session 69.1 hotfix — wire the standalone StripeLink helper into
 // the sponsorship row's Stripe subscription id render.
@@ -536,6 +537,12 @@ function IntakePhotosPanel({
   childDisplayName: string;
   photos: IntakeSummary[];
 }) {
+  // fix/admin-child-rejected-photo — the direct-upload slot cap counts only
+  // LIVE slots (pending + approved). Rejected / archived photos don't occupy
+  // a real slot, so they never block a replacement upload.
+  const liveSlotCount = photos.filter(
+    (p) => p.status === "pending" || p.status === "approved",
+  ).length;
   return (
     <section
       aria-label="Intake photos"
@@ -599,6 +606,23 @@ function IntakePhotosPanel({
                     compact
                   />
                 </div>
+                {/* fix/admin-child-rejected-photo — a REJECTED intake photo
+                    is always removable by an admin here, independent of the
+                    child's lifecycle state. Reuses the existing admin remove
+                    route (DELETE /api/admin/intake-photos/[id] →
+                    removeIntakePhoto, two-tap confirm + audit). Approved /
+                    pending / archived keep their current behaviour (no
+                    delete control on this page). */}
+                {p.status === "rejected" ? (
+                  <div className="mt-1 border-t border-stone-200/70 pt-1.5">
+                    <AdminRemoveButton
+                      endpoint={`/api/admin/intake-photos/${p.id}`}
+                      redirectTo={`/admin/children/${childId}`}
+                      entityNoun="intake photo"
+                      helperText="Deletes this rejected photo and frees its slot for a re-upload. The DI already saw the rejection, so they aren't notified again."
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -606,13 +630,16 @@ function IntakePhotosPanel({
       )}
       {/* Session 71 — admin direct intake-photo upload. Lands approved,
           attributed to admin; reuses the existing /api/admin/intake-
-          photos endpoint. Respects the same soft 5-photo cap the DI
-          grid enforces (currentCount = all photos on file). */}
+          photos endpoint. Respects the soft 5-photo cap.
+          fix/admin-child-rejected-photo — the cap now counts only LIVE
+          slots (pending + approved). Rejected and archived photos aren't
+          valid submissions occupying a slot, so they no longer block a
+          replacement upload. */}
       <div className="mt-5 pt-5 border-t border-stone-200">
         <AdminIntakePhotoDirectUpload
           childId={childId}
           childDisplayName={childDisplayName}
-          currentCount={photos.length}
+          currentCount={liveSlotCount}
         />
       </div>
     </section>
