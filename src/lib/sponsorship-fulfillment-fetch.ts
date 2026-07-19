@@ -78,7 +78,7 @@ const TASK_FIELDS = [
   "date_created",
 ] as const;
 
-const REPORT_FIELDS = ["id", "status", "published_at"] as const;
+const REPORT_FIELDS = ["id", "status", "published_at", "date_created"] as const;
 
 function toInputs(
   row: SponsorshipFulfillmentRow,
@@ -167,12 +167,14 @@ async function fetchLatestReport(
       readItems("child_update" as never, {
         filter: { sponsorship: { _eq: sponsorshipId } },
         fields: [...REPORT_FIELDS],
-        // Sort by id desc — child_update.date_created is not in
-        // REPORT_FIELDS today; uuid v4 ids don't sort by time, so
-        // this is "most recently inserted" only with sequential
-        // generation. Good enough for V1; if cycles get heavily
-        // interleaved, swap to date_created in REPORT_FIELDS.
-        sort: ["-id"],
+        // FF1/FF2 — sort by date_created desc (the actual most-recent
+        // report), NOT by id. child_update ids are uuid v4, which do
+        // NOT sort by time, so "-id" could pick the wrong report as
+        // latest when a sponsorship has multiple reports. date_created
+        // is always populated (unlike published_at, which is null for
+        // unpublished reports), so it's the robust chronological key —
+        // matching how fetchLatestTask sorts.
+        sort: ["-date_created"],
         limit: 1,
       } as never),
     )) as unknown as

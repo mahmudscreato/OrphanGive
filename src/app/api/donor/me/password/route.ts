@@ -3,8 +3,20 @@ import { updateUser } from "@directus/sdk";
 import { directusServer } from "@/lib/directus";
 import { signIn } from "@/lib/auth";
 import { authedDonor } from "@/lib/api-auth";
+import {
+  RATE_LIMITS,
+  countRecentRequests,
+  recordOtpRequest,
+} from "@/lib/donor-signup";
 
 export const runtime = "nodejs";
+
+function clientIp(req: NextRequest): string | null {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  const real = req.headers.get("x-real-ip");
+  return real ? real.trim() : null;
+}
 
 // POST /api/donor/me/password
 // Body: { currentPassword: string; newPassword: string }
@@ -58,6 +70,27 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  // #1 — throttle the change endpoint (reuses the og_otp_request rate-limit
+  // pattern the OTP endpoints use). Keyed by the donor's email; counts every
+  // genuine attempt so repeated current-password guesses are limited too.
+  const pwLimit = RATE_LIMITS.password_change_per_email;
+  const recentChanges = await countRecentRequests({
+    kind: pwLimit.kind,
+    email: donor.email,
+    windowMs: pwLimit.windowMs,
+  });
+  if (recentChanges >= pwLimit.max) {
+    return NextResponse.json(
+      { error: "Too many password-change attempts. Please wait and try again." },
+      { status: 429 },
+    );
+  }
+  await recordOtpRequest({
+    email: donor.email,
+    ip: clientIp(req),
+    kind: pwLimit.kind,
+  });
 
   // Verify the current password. We do this against the public Directus
   // login endpoint — a 200 response means the credentials are correct.

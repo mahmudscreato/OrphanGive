@@ -87,7 +87,10 @@ export function generateOtpCode(): string {
 // Rows are not auto-pruned — we just count rows in the relevant window.
 // A periodic admin task can prune rows older than 24h.
 
-type Kind = "send" | "verify";
+// "password_change" added for the donor password-change throttle (#1).
+// og_otp_request.kind is a free varchar (no CHECK/enum), so this is a new
+// data value, not a schema change.
+type Kind = "send" | "verify" | "password_change";
 
 export type RateLimitWindow = {
   kind: Kind;
@@ -101,6 +104,12 @@ export const RATE_LIMITS = {
   send_per_email: { kind: "send" as const, windowMs: 15 * 60 * 1000, max: 3 },
   verify_per_email: { kind: "verify" as const, windowMs: 15 * 60 * 1000, max: 5 },
   signup_per_ip: { kind: "send" as const, windowMs: 60 * 60 * 1000, max: 5 },
+  // #1 — donor password-change throttle (per email): 5 changes / 15 min.
+  password_change_per_email: {
+    kind: "password_change" as const,
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+  },
 };
 
 export async function recordOtpRequest({

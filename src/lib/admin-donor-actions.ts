@@ -39,6 +39,7 @@ import "server-only";
 import { updateUser, readUsers } from "@directus/sdk";
 import { directusServer } from "./directus";
 import { recordAuditEvent } from "./di-audit";
+import { fireDonorApprovedEmail } from "./email-triggers";
 // SECURITY: moderation actions (approve/reject/suspend/reactivate) resolve
 // the target through fetchDonorOrThrow, which is role-scoped so a non-donor
 // id (admin / Super Admin / DI / service account) resolves to "not found"
@@ -177,6 +178,18 @@ export async function approveDonor(
     },
     request,
   });
+
+  // #2c — best-effort app-side fallback for the approval welcome email
+  // (previously Flow-only). Never blocks the approval; the internal route
+  // dedups (6h) so this + any Directus Flow can't double-send.
+  try {
+    await fireDonorApprovedEmail(donorId);
+  } catch (err) {
+    console.warn(
+      "[admin-donor-actions] fireDonorApprovedEmail failed (non-fatal)",
+      err instanceof Error ? err.message : err,
+    );
+  }
 
   return { donorId, approvedAt: nowIso };
 }
