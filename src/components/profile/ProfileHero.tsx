@@ -176,12 +176,15 @@ export function ProfileHero({
               prototype, in OG tokens. Shows ONLY public-tier fields;
               gating is unchanged from the prior pills. */}
           <div className="mt-9 flex gap-3 flex-wrap">
-            {/* Hotfix R1 — Tier 1 (public) viewers see DIVISION only;
-                the district + division composite is Tier 2+. Defense-
-                in-depth: child-profile-data.ts already returns
-                district=null for public tier, so this render gate is
-                a backstop against a future data-layer regression. */}
-            {tier !== "public" && child.district ? (
+            {/* Hotfix R1 — public viewers see DIVISION only.
+                fix/donor-small-batch — DONORS now also see division
+                only: the district + division composite is ADMIN-only
+                (district is one level too specific for child safety
+                outside the org). Defense-in-depth: child-profile-data
+                returns district=null for public AND donor tiers, so
+                this render gate is a backstop against a data-layer
+                regression. */}
+            {tier === "admin" && child.district ? (
               <FactChip
                 icon="location"
                 label="Location"

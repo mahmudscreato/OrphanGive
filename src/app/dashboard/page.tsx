@@ -122,6 +122,33 @@ async function ApprovedDashboard({ donor }: { donor: Donor }) {
 
 // ─── Greeting ───────────────────────────────────────────────────────────────
 
+// fix/donor-small-batch — rotating welcome sub-lines. The page is a
+// force-dynamic SERVER component, so Math.random here runs per REQUEST:
+// each refresh/visit picks a fresh line. Name + structure (eyebrow +
+// "Hello…, {firstName}." heading) are unchanged; only the sub-line
+// rotates. Tone: dignified, about the children and the quiet meaning
+// of sponsorship — not saccharine.
+const RETURNING_SUBLINES = [
+  "Here’s how the children you support are doing.",
+  "Somewhere in Bangladesh, a child’s day is steadier because of you.",
+  "Quiet support, real childhoods — here’s the latest from yours.",
+  "You showed up again. That’s what changes a childhood.",
+  "The children you support are growing — come see.",
+  "Small updates, big lives. Here’s what’s new.",
+] as const;
+
+const FIRST_TIME_SUBLINES = [
+  "When you’re ready, meet the children waiting for a sponsor. There’s no rush — take your time finding the right one.",
+  "Every sponsorship here starts with one quiet decision. Meet the children when you’re ready.",
+  "A steady hand changes a childhood. The children below are waiting for theirs.",
+  "There’s a child here whose story will stay with you. Take your time.",
+  "No rush, no pressure — just children hoping someone shows up. Have a look when you’re ready.",
+] as const;
+
+function pickLine(lines: readonly string[]): string {
+  return lines[Math.floor(Math.random() * lines.length)] ?? lines[0]!;
+}
+
 function Greeting({
   firstName,
   isFirstTime,
@@ -142,8 +169,7 @@ function Greeting({
           Hello, {firstName}.
         </h1>
         <p className="mt-3 text-[15px] text-slate leading-[1.65] max-w-[560px]">
-          When you&apos;re ready, meet the children waiting for a sponsor.
-          There&apos;s no rush — take your time finding the right one.
+          {pickLine(FIRST_TIME_SUBLINES)}
         </p>
         <div className="mt-5">
           <Button href="/children" variant="primary">
@@ -164,7 +190,7 @@ function Greeting({
         Hello again, {firstName}.
       </h1>
       <p className="mt-3 text-[15px] text-slate leading-[1.65] max-w-[560px] italic">
-        Here&apos;s how the children you support are doing.
+        {pickLine(RETURNING_SUBLINES)}
       </p>
     </header>
   );

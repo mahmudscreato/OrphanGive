@@ -1,4 +1,4 @@
-import { aggregate, readItems } from "@directus/sdk";
+import { readItems } from "@directus/sdk";
 import { directusServer } from "./directus";
 import type { ChildQueueBadge } from "./sponsorship-data";
 
@@ -407,17 +407,23 @@ export type ChildrenListResult = {
 async function safeAggregateCount(
   filter: Record<string, unknown>,
 ): Promise<number> {
+  // fix/donor-small-batch — count via readItems + length, NOT the SDK's
+  // aggregate() helper. Session 47 discovery (documented in
+  // admin-home-stats.ts) established that this SDK's aggregate()
+  // SILENTLY IGNORES the filter — so every "count of active children"
+  // here was really a count of ALL children, leaking non-approved rows
+  // (awaiting_intake / withdrawn) into the public-facing counts
+  // ("N children awaiting sponsors" on the donor dashboard + the
+  // /children callouts). Same pattern as admin-home-stats.ts safeCount.
   try {
-    const result = (await directusServer().request(
-      aggregate("child" as never, {
-        aggregate: { count: "*" },
+    const rows = (await directusServer().request(
+      readItems("child" as never, {
         filter,
+        fields: ["id"],
+        limit: -1,
       } as never),
-    )) as unknown as Array<{ count: number | string | null }> | undefined;
-    const row = Array.isArray(result) ? result[0] : null;
-    if (!row || row.count === null || row.count === undefined) return 0;
-    const n = typeof row.count === "string" ? Number(row.count) : row.count;
-    return Number.isFinite(n) ? n : 0;
+    )) as unknown as Array<{ id: string }> | undefined;
+    return Array.isArray(rows) ? rows.length : 0;
   } catch (err) {
     console.warn(
       "[children-data] count failed",

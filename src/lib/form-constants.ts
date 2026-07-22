@@ -606,7 +606,11 @@ export function composeSchoolingLine(
   classGrade: string | null | undefined,
 ): string {
   const levelLabel = getEducationLevelShortLabel(educationLevel);
-  const grade = classGrade?.trim() || "";
+  // fix/donor-small-batch — some class_grade values already carry the
+  // word ("Class 5"), which doubled with the label below ("Class Class
+  // 5"). Strip a leading "class " from the VALUE so both stored shapes
+  // ("5" and "Class 5") render as "Class 5".
+  const grade = (classGrade?.trim() || "").replace(/^class\s+/i, "");
   if (levelLabel && grade) return `${levelLabel}, class ${grade}`;
   if (grade) return `Class ${grade}`;
   if (levelLabel) return levelLabel;

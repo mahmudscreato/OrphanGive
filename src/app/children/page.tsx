@@ -69,6 +69,18 @@ const CARD_PATH_KEYS: FramePathKey[] = [
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
+// Fisher–Yates copy-shuffle (pure — never mutates the input). Runs per
+// request; feeds the stable category sort so randomness lives WITHIN
+// tiers only.
+function shuffleArray<T>(items: ReadonlyArray<T>): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
 export default async function BrowseChildrenPage({
   searchParams,
 }: {
@@ -88,7 +100,20 @@ export default async function BrowseChildrenPage({
   // Sort first (Awaiting → Prepaid → Monthly), then filter. Order
   // matters: filtering preserves the input ordering, so the sort has
   // to be the input.
-  const sorted = sortChildrenByCategory(allChildren, queueStateByChild);
+  //
+  // fix/donor-small-batch — shuffle BEFORE the category sort. The sort
+  // is stable (ties keep input order), so shuffling the input
+  // randomizes the order WITHIN each tier while the tier order itself
+  // stays fixed. Server component + awaited searchParams → rendered
+  // per request, so each visit/refresh gets a fresh order. No
+  // pagination interaction: this page fetches the full list (limit -1)
+  // and renders it all — the LoadMore/getChildrenPage pair is unused
+  // by this route — so a per-request shuffle can't duplicate or skip
+  // cards across pages.
+  const sorted = sortChildrenByCategory(
+    shuffleArray(allChildren),
+    queueStateByChild,
+  );
   const visible = applyBrowseFilters(sorted, queueStateByChild, filters);
 
   // Awaiting total derived from the UNFILTERED sorted list so the
