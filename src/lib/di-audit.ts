@@ -214,6 +214,11 @@ export type AuditAction =
   | "donor_changed_sponsorship_visibility"
   | "donor_cancelled_queued_sponsorship"
   | "donor_resolved_queue_shift"
+  // feat/donor-account-deactivation — donor self-deactivated their account
+  // (reversible: directus_users.status → 'suspended', reactivated by
+  // support via admin_reactivated_donor). Actor is the donor themselves.
+  // The audit timestamp is the "deactivated at" record (no schema column).
+  | "donor_deactivated_account"
   // ─── Phase 0 follow-up — Stripe webhook (actor_role=system) ───
   //
   // Attribution: every row carries actor = the seeded SYSTEM user
@@ -634,6 +639,7 @@ const ACTION_DESCRIPTIONS: Record<AuditAction, (actor: string) => string> = {
     `Donor cancelled their queued sponsorship slot`,
   donor_resolved_queue_shift: () =>
     `Donor responded to a queue-shift decision`,
+  donor_deactivated_account: () => `Donor deactivated their account`,
   // Phase 0 follow-up — Stripe webhook events. Actor is the SYSTEM
   // user (see src/lib/webhook-audit.ts + migrations/phase-0/002).
   // Phrased from the timeline reader's POV.

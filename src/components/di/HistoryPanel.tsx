@@ -138,6 +138,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   donor_changed_sponsorship_visibility: Edit3,
   donor_cancelled_queued_sponsorship: XCircle,
   donor_resolved_queue_shift: ListChecks,
+  donor_deactivated_account: XCircle,
   // Phase 0 follow-up — Stripe webhook events. Never surface on the
   // per-child DI History tab (action prefix filter is di_*), but the
   // map must be exhaustive over AuditAction for type-safety.

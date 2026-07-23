@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
+import { getDonorSponsorships } from "@/lib/sponsorship-data";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
 import { ProfileSections } from "./ProfileSections";
 
@@ -18,6 +19,16 @@ export default async function DashboardProfilePage() {
   if (state !== "approved" && state !== "pending_approval") {
     redirect("/dashboard");
   }
+
+  // feat/donor-account-deactivation — the BLOCK flag for the deactivate
+  // section. Reuses the existing donor-scoped reader (active + paused).
+  // This drives only the UI; the deactivate route re-checks server-side
+  // (fail closed), so a stale value here can never wrongly deactivate.
+  const blocking = await getDonorSponsorships(donor.id, {
+    statuses: ["active", "paused"],
+    limit: 1,
+  });
+  const hasActiveSponsorships = blocking.length > 0;
 
   return (
     <div className="space-y-10">
@@ -45,6 +56,7 @@ export default async function DashboardProfilePage() {
           og_profile_photo_url: donor.og_profile_photo_url,
           og_agreed_to_terms_at: donor.og_agreed_to_terms_at,
         }}
+        hasActiveSponsorships={hasActiveSponsorships}
       />
     </div>
   );
