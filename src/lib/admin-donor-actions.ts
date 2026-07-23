@@ -353,7 +353,14 @@ export async function reactivateDonor(
 
   try {
     await directusServer().request(
-      updateUser(donorId, { status: "active" } as never),
+      // feat/donor-account-deactivation — also CLEAR og_deactivated_at so a
+      // reactivated (then possibly re-suspended) donor doesn't keep showing
+      // "Deactivated by donor". Harmless when it was already null (admin
+      // suspension never set it).
+      updateUser(donorId, {
+        status: "active",
+        og_deactivated_at: null,
+      } as never),
     );
   } catch (err) {
     throw new DonorWriteFailedError(err);

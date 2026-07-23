@@ -1,0 +1,49 @@
+-- ⚠ For Directus-managed collections, prefer adding fields via
+-- Directus Admin UI (Settings → Data Model). This SQL is kept
+-- as schema reference, not as the primary apply mechanism.
+-- See migrations/README.md.
+--
+-- feat/donor-account-deactivation — self-deactivation marker.
+--
+-- Adds one NULLABLE timestamp column to directus_users. It is set to
+-- now() when a DONOR deactivates their OWN account (alongside the
+-- existing status='suspended'), and left NULL when an ADMIN suspends a
+-- donor. That difference is the distinguishing signal the admin donor
+-- list + detail read to label the account "Deactivated by donor" vs
+-- "Suspended". Reactivation (admin reactivateDonor) clears it back to
+-- NULL alongside status='active'.
+--
+-- IMPORTANT — the status value is UNCHANGED. Both self-deactivation and
+-- admin suspension keep directus_users.status='suspended', so every
+-- existing 'suspended' gate (Directus native login block, getDonorState,
+-- proxy.ts mid-session redirect, the cart guard) keeps working exactly
+-- as before. This column is a read-only distinguishing MARKER, never a
+-- gate.
+--
+-- Naming follows the existing OrphanGive-custom field convention on
+-- directus_users (og_country, og_phone, og_admin_approved_at,
+-- og_agreed_to_terms_at, og_profile_photo_url, …). The app reads/writes
+-- it through the Directus admin/service token.
+--
+-- Idempotent — safe to re-run.
+--
+-- Apply with:
+--   psql "$DATABASE_URL" -f migrations/donor-deactivation-marker/001-add-og-deactivated-at.sql
+
+ALTER TABLE directus_users
+  ADD COLUMN IF NOT EXISTS og_deactivated_at TIMESTAMPTZ NULL;
+
+-- ⚠ DEPLOY ORDERING — RUN THIS (AND REGISTER THE FIELD) BEFORE THE BUILD.
+--
+-- After applying the ALTER, Directus does NOT auto-detect the new column.
+-- Register the field so the SDK/API expose it, EITHER:
+--   (a) Directus Admin → Settings → Data Model → Directus Users →
+--       Create Field: key=og_deactivated_at, type=timestamp, nullable; OR
+--   (b) restart / re-introspect the Directus container, then
+--       POST /utils/cache/clear.
+--
+-- WHY THIS ORDER MATTERS: the admin donor-list reader includes
+-- og_deactivated_at in fields[]. If the field is NOT registered when the
+-- new code runs, Directus returns 403 for the whole query → the donor
+-- list renders empty (the exact failure mode of the Session 65-66-61.2
+-- `date_created` hotfix). Register the field first, then deploy the code.

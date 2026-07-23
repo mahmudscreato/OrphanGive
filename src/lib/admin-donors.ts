@@ -80,6 +80,10 @@ export interface AdminDonorSummary {
   phone: string | null;
   approval_status: DonorApprovalStatus;
   account_status: DonorAccountStatus;
+  // feat/donor-account-deactivation — set when the donor self-deactivated
+  // (null for admin suspensions). When account_status==='suspended', a
+  // non-null value means "Deactivated by donor"; null means "Suspended".
+  deactivated_at: string | null;
   // ISO timestamps.
   date_created: string | null;
   last_access: string | null;
@@ -166,6 +170,9 @@ export interface AdminDonorDetail {
   display_name: string;
   approval_status: DonorApprovalStatus;
   account_status: DonorAccountStatus;
+  // feat/donor-account-deactivation — self-deactivation marker (see
+  // AdminDonorSummary.deactivated_at).
+  deactivated_at: string | null;
   approval_decided_at: string | null;
   agreed_to_terms_at: string | null;
   date_created: string | null;
@@ -200,6 +207,10 @@ type DonorRow = {
   last_access: string | null;
   og_profile_photo_url: string | null;
   og_stripe_customer_id: string | null;
+  // feat/donor-account-deactivation — set when a donor self-deactivated;
+  // null for admin suspensions. Distinguishing marker only (status is
+  // 'suspended' in both cases).
+  og_deactivated_at: string | null;
 };
 
 type SponsorshipRow = {
@@ -257,6 +268,12 @@ const DONOR_FIELDS: ReadonlyArray<keyof DonorRow> = [
   "last_access",
   "og_profile_photo_url",
   "og_stripe_customer_id",
+  // feat/donor-account-deactivation — the self-deactivation marker.
+  // NOTE: requires the og_deactivated_at Directus FIELD to be registered
+  // (see migrations/donor-deactivation-marker/001). If it isn't, including
+  // it here 403s the whole list (the date_created failure mode) — the
+  // migration MUST run before this code deploys.
+  "og_deactivated_at",
 ];
 
 const SPONSORSHIP_FIELDS = [
@@ -339,6 +356,7 @@ function summarise(row: DonorRow): AdminDonorSummary {
     phone: row.og_phone?.trim() || null,
     approval_status: normaliseApproval(row.og_admin_approval_status),
     account_status: normaliseAccountStatus(row.status),
+    deactivated_at: row.og_deactivated_at ?? null,
     // Session 65-66-61.2 hotfix — `row.date_created` is now
     // undefined at runtime because the field was dropped from
     // DONOR_FIELDS (403 on this Directus install). Coerce to null
@@ -746,6 +764,7 @@ export async function getAdminDonorDetail(
     display_name: summary.display_name,
     approval_status: summary.approval_status,
     account_status: summary.account_status,
+    deactivated_at: summary.deactivated_at,
     approval_decided_at: donorRow.og_admin_approved_at,
     agreed_to_terms_at: donorRow.og_agreed_to_terms_at,
     // Session 65-66-61.2 hotfix — see summarise() for the same fix.

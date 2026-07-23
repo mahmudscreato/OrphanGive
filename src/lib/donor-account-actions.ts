@@ -93,11 +93,19 @@ export async function deactivateOwnDonorAccount(
   }
   if (blocking > 0) throw new HasActiveSponsorshipsError(blocking);
 
-  // 2. Flip status → 'suspended' (reversible; Directus blocks login).
+  // 2. Flip status → 'suspended' (reversible; Directus blocks login) AND
+  //    stamp og_deactivated_at = now. The status is what gates login (kept
+  //    identical to admin suspension so every existing 'suspended' check
+  //    still fires); the timestamp is the read-only marker that lets admin
+  //    surfaces distinguish "deactivated by donor" from an admin suspend
+  //    (which leaves it null). Reactivation clears it.
   const nowIso = new Date().toISOString();
   try {
     await directusServer().request(
-      updateUser(donorId as never, { status: "suspended" } as never),
+      updateUser(donorId as never, {
+        status: "suspended",
+        og_deactivated_at: nowIso,
+      } as never),
     );
   } catch (err) {
     console.error(
