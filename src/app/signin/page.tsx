@@ -11,6 +11,8 @@ type SearchParams = Promise<{
   next?: string | string[];
   registered?: string | string[];
   verified?: string | string[];
+  deactivated?: string | string[];
+  error?: string | string[];
 }>;
 
 function asString(value: string | string[] | undefined): string | undefined {
@@ -32,6 +34,12 @@ export default async function SignInPage({
   const next = asString(params.next);
   const registered = asString(params.registered) === "1";
   const verified = asString(params.verified) === "1";
+  // feat/donor-account-deactivation — `deactivated=1` is the confirmation
+  // right after a donor deactivates; `error=suspended` is the proxy's
+  // mid-session redirect for any inactive (self-deactivated OR admin-
+  // suspended) account. Both point to support-driven reactivation.
+  const deactivated = asString(params.deactivated) === "1";
+  const suspended = asString(params.error) === "suspended";
 
   return (
     <main className="bg-cream min-h-screen">
@@ -58,6 +66,30 @@ export default async function SignInPage({
           {registered ? (
             <p className="mt-6 rounded-2xl bg-orange-pale/60 border border-tangerine-soft px-4 py-3 text-sm text-tangerine-deep">
               Account created. Check your inbox to verify your email.
+            </p>
+          ) : null}
+          {deactivated ? (
+            <p className="mt-6 rounded-2xl bg-danger-mist/60 border border-danger-soft px-4 py-3 text-sm text-danger">
+              Your account has been deactivated and you&rsquo;ve been signed
+              out. Nothing was deleted — to reactivate it, just email{" "}
+              <a
+                href="mailto:support@orphangive.org"
+                className="underline underline-offset-4"
+              >
+                support@orphangive.org
+              </a>
+              .
+            </p>
+          ) : suspended ? (
+            <p className="mt-6 rounded-2xl bg-danger-mist/60 border border-danger-soft px-4 py-3 text-sm text-danger">
+              This account is currently inactive. To reactivate it, contact{" "}
+              <a
+                href="mailto:support@orphangive.org"
+                className="underline underline-offset-4"
+              >
+                support@orphangive.org
+              </a>
+              .
             </p>
           ) : null}
 

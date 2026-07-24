@@ -38,12 +38,21 @@ export type ProfileSectionsDonor = {
   og_agreed_to_terms_at: string | null;
 };
 
-export function ProfileSections({ donor }: { donor: ProfileSectionsDonor }) {
+export function ProfileSections({
+  donor,
+  hasActiveSponsorships,
+}: {
+  donor: ProfileSectionsDonor;
+  // feat/donor-account-deactivation — drives the deactivate section's
+  // block message. The route re-checks server-side (fail closed).
+  hasActiveSponsorships: boolean;
+}) {
   return (
     <div className="space-y-6">
       <PersonalSection donor={donor} />
       <SecuritySection />
       <AccountSection />
+      <DeactivateAccountSection hasActiveSponsorships={hasActiveSponsorships} />
     </div>
   );
 }
@@ -688,4 +697,138 @@ function formatMemberSince(d: ProfileSectionsDonor): string {
     year: "numeric",
     month: "long",
   });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEACTIVATE ACCOUNT (feat/donor-account-deactivation)
+// ═══════════════════════════════════════════════════════════════
+//
+// Reversible deactivation. BLOCKED while the donor has any active/paused
+// sponsorship (`hasActiveSponsorships` from the server page). Two-step
+// confirm before the POST. The route re-checks the block server-side
+// (fail closed) + ends the session; on success we redirect to the
+// signed-out confirmation.
+
+function DeactivateAccountSection({
+  hasActiveSponsorships,
+}: {
+  hasActiveSponsorships: boolean;
+}) {
+  const router = useRouter();
+  const [confirming, setConfirming] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function deactivate() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/donor/me/deactivate", {
+          method: "POST",
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+          message?: string;
+          redirectTo?: string;
+        };
+        if (!res.ok || !body.success) {
+          setError(
+            body.message ??
+              "Couldn't deactivate right now. Please try again.",
+          );
+          setConfirming(false);
+          return;
+        }
+        // Session already ended server-side — send the donor to the
+        // signed-out confirmation.
+        window.location.href = body.redirectTo ?? "/signin?deactivated=1";
+      } catch {
+        setError("Network error. Please try again.");
+        setConfirming(false);
+      }
+    });
+  }
+
+  return (
+    <section className="rounded-[20px] bg-danger-mist/40 border border-danger-soft px-7 py-6 max-md:px-5 max-md:py-5">
+      <div className="flex items-baseline justify-between gap-4 flex-wrap mb-3">
+        <h2 className="font-display text-[20px] text-danger leading-tight m-0">
+          Deactivate account
+        </h2>
+        <span className="font-mono text-[10.5px] tracking-[0.14em] uppercase text-danger/70">
+          Danger zone
+        </span>
+      </div>
+
+      {hasActiveSponsorships ? (
+        <p className="text-[14px] text-ink leading-[1.6]">
+          You have active sponsorships. Please cancel or end them before
+          deactivating your account.{" "}
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/sponsorships")}
+            className="text-danger font-semibold underline-offset-4 hover:underline"
+          >
+            Manage your sponsorships →
+          </button>
+        </p>
+      ) : (
+        <>
+          <p className="text-[14px] text-ink leading-[1.6] mb-4">
+            Deactivating makes your account dormant and signs you out. Nothing
+            is deleted — it&rsquo;s fully reversible. To come back, just email{" "}
+            <a
+              href="mailto:support@orphangive.org"
+              className="text-danger underline-offset-4 hover:underline"
+            >
+              support@orphangive.org
+            </a>{" "}
+            and we&rsquo;ll reactivate it.
+          </p>
+
+          {error ? (
+            <p className="mb-3 text-[13px] text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {!confirming ? (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="inline-flex items-center gap-2 font-body font-semibold rounded-full border-[1.5px] border-danger text-danger px-5 py-2.5 text-[13.5px] transition-colors hover:bg-danger hover:text-cream"
+            >
+              Deactivate my account
+            </button>
+          ) : (
+            <div className="rounded-xl border border-danger-soft bg-white px-4 py-3">
+              <p className="text-[14px] text-ink font-medium mb-3">
+                Are you sure? You&rsquo;ll be signed out and won&rsquo;t be
+                able to sign back in until support reactivates your account.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={deactivate}
+                  disabled={pending}
+                  className="inline-flex items-center gap-2 font-body font-semibold rounded-full bg-danger text-cream px-5 py-2.5 text-[13.5px] transition-colors hover:bg-danger/90 disabled:opacity-60"
+                >
+                  {pending ? "Deactivating…" : "Yes, deactivate"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirming(false)}
+                  disabled={pending}
+                  className="font-body text-[13px] text-slate hover:text-ink disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
 }

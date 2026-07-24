@@ -204,7 +204,10 @@ function AccountHeader({ detail }: { detail: AdminDonorDetail }) {
               {detail.display_name}
             </h1>
             <ApprovalPill status={detail.approval_status} />
-            <AccountStatusPill status={detail.account_status} />
+            <AccountStatusPill
+              status={detail.account_status}
+              deactivatedByDonor={!!detail.deactivated_at}
+            />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-soft">
             <span className="inline-flex items-center gap-1 truncate">
@@ -598,7 +601,16 @@ function ApprovalPill({ status }: { status: DonorApprovalStatus }) {
   );
 }
 
-function AccountStatusPill({ status }: { status: DonorAccountStatus }) {
+function AccountStatusPill({
+  status,
+  deactivatedByDonor = false,
+}: {
+  status: DonorAccountStatus;
+  // feat/donor-account-deactivation — when the suspended state came from
+  // the donor deactivating their OWN account (og_deactivated_at set), show
+  // "Deactivated by donor" instead of "Suspended".
+  deactivatedByDonor?: boolean;
+}) {
   // Suspended is the only non-active status worth flagging at the
   // header level. 'active' is the happy path so we skip it; 'draft'
   // / 'pending_email_verification' get an amber tag.
@@ -629,11 +641,13 @@ function AccountStatusPill({ status }: { status: DonorAccountStatus }) {
     },
   };
   const s = styles[status];
+  const label =
+    status === "suspended" && deactivatedByDonor ? "Deactivated by donor" : s.label;
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold ${s.bg} ${s.text}`}
     >
-      {s.label}
+      {label}
     </span>
   );
 }

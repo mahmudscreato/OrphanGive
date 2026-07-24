@@ -124,6 +124,7 @@ const ACTION_ICON: Record<AuditAction, LucideIcon> = {
   donor_changed_sponsorship_visibility: Edit3,
   donor_cancelled_queued_sponsorship: XCircle,
   donor_resolved_queue_shift: ListChecks,
+  donor_deactivated_account: XCircle,
   // Phase 0 follow-up — Stripe webhook events. Type-safety
   // placeholders; the DI Recent Activity reader filters to the DI's
   // own actions + admin actions on scoped children, so webhook rows

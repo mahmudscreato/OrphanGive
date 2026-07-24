@@ -399,7 +399,7 @@ function DonorRowTable({ donor }: { donor: AdminDonorSummary }) {
         <ApprovalPill status={donor.approval_status} />
         {donor.account_status === "suspended" ? (
           <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-[#FCE9E9] text-[#A02020]">
-            Suspended
+            {donor.deactivated_at ? "Deactivated" : "Suspended"}
           </span>
         ) : null}
       </td>
@@ -444,7 +444,7 @@ function DonorRowCard({ donor }: { donor: AdminDonorSummary }) {
               <ApprovalPill status={donor.approval_status} />
               {donor.account_status === "suspended" ? (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold bg-[#FCE9E9] text-[#A02020]">
-                  Suspended
+                  {donor.deactivated_at ? "Deactivated" : "Suspended"}
                 </span>
               ) : null}
             </div>
