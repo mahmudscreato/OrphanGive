@@ -405,7 +405,13 @@ export async function getChildById(
     // undefined and this resolves to null. The explicit guard is
     // defense-in-depth in case a future PUBLIC_FIELDS edit
     // accidentally re-adds the field.
-    district: tier === "public" ? null : row.bd_district?.name?.trim() ?? null,
+    // fix/donor-small-batch — district is now ADMIN-only (was Tier 2+).
+    // District narrows a child's location too far for anyone outside the
+    // org: donors see the DIVISION only (the safe public granularity),
+    // matching the Hotfix R1 rationale that pulled district from Tier 1.
+    // Admin/DI surfaces keep full location (admin via this tier; DI via
+    // the separate DI data layer, untouched).
+    district: tier === "admin" ? row.bd_district?.name?.trim() ?? null : null,
     region: row.bd_division?.name?.trim() ?? null,
     story,
     story_truncated: truncated,
