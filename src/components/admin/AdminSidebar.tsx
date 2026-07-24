@@ -123,6 +123,17 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
     group: "primary",
     section: "operations",
   },
+  // feat/quick-donation — guest (no-account) pooled cause gifts. Separate
+  // from Donations above (which is the sponsorship fulfillment queue):
+  // these rows have no donor account, sponsorship, or child.
+  {
+    href: "/admin/guest-donations",
+    label: "Guest gifts",
+    icon: Gift,
+    exact: false,
+    group: "primary",
+    section: "operations",
+  },
   // P4 — partnership reach-out queue (inquiries from /for-charities).
   // `new` count surfaces as a badge.
   {

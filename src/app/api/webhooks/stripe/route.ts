@@ -36,6 +36,15 @@ import { revokeRevealsForSponsorshipEnd } from "@/lib/reveal-data";
 // Best-effort: createFulfillmentTaskForPayment never throws, so the
 // payment flow is never affected by a task-creation hiccup.
 import { createFulfillmentTaskForPayment } from "@/lib/donation-task";
+// feat/quick-donation — GUEST (no-account) cause donations. These imports
+// serve ONLY the guest branches below; no sponsorship handler touches them.
+import {
+  markGuestDonationSucceeded,
+  findGuestDonationByPaymentIntent,
+  setGuestDonationStatus,
+} from "@/lib/guest-donations";
+import { sendEmail, siteUrl } from "@/lib/email";
+import { GuestDonationThankYouEmail } from "@/emails/GuestDonationThankYouEmail";
 
 // Webhooks need the RAW request body to verify signatures. Force the
 // Node.js runtime so request.text() returns the unparsed payload.
@@ -965,6 +974,105 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
   }
 }
 
+// ─── feat/quick-donation — GUEST cause-donation branches ────────────────────
+//
+// FULLY ISOLATED from every sponsorship handler above. Routing happens in
+// the event switch on metadata kind='guest_cause' (stamped on both the
+// Checkout Session and its PaymentIntent by /api/donate/guest-init, and
+// propagated by Stripe onto the Charge). Sponsorship events NEVER carry
+// that key, and guest events never reach the sponsorship handlers:
+//   - guest PIs have no metadata.payment_mode → handlePaymentIntentSucceeded
+//     returns at its own first gate even if it ever saw one;
+//   - guest charges are routed to handleGuestChargeRefunded BEFORE
+//     handleChargeRefunded is called (whose body is untouched).
+// No donor resolution, no sponsorship, no child, no cart-clear, no
+// welcome email — none of that code path is entered for guests.
+
+async function handleGuestCheckoutCompleted(
+  session: Stripe.Checkout.Session,
+) {
+  const guestDonationId = session.metadata?.guest_donation_id;
+  if (!guestDonationId) {
+    console.warn(
+      `[stripe-webhook] guest session ${session.id} missing guest_donation_id`,
+    );
+    return;
+  }
+  const piId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+  const email = session.customer_details?.email ?? null;
+
+  // Idempotent — a replayed event finds status already 'succeeded' and
+  // returns null (no duplicate email).
+  const row = await markGuestDonationSucceeded({
+    guestDonationId,
+    paymentIntentId: piId,
+    guestEmail: email,
+  });
+  if (!row) return;
+
+  // Warm thank-you (best-effort — Stripe's native Checkout receipt is the
+  // formal payment record; a failure here never affects the donation).
+  if (email) {
+    try {
+      const symbol = row.donor_currency_code ?? "USD";
+      const amountLabel = `${row.donor_currency_amount ?? row.amount_bdt} ${symbol}`;
+      await sendEmail({
+        to: email,
+        subject: "Thank you for your donation to OrphanGive",
+        template: GuestDonationThankYouEmail({
+          causeTitle: row.package_title ?? "our children's fund",
+          amountLabel,
+          childCount: row.child_count,
+          browseUrl: siteUrl("/children"),
+          signupUrl: siteUrl("/signup"),
+        }),
+      });
+    } catch (err) {
+      console.warn(
+        "[stripe-webhook] guest thank-you email failed (non-fatal)",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
+async function handleGuestChargeRefunded(charge: Stripe.Charge) {
+  const piId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null;
+  if (!piId) return;
+  const row = await findGuestDonationByPaymentIntent(piId);
+  if (!row) {
+    console.warn(
+      `[stripe-webhook] guest refund: no guest_donation for PI ${piId}`,
+    );
+    return;
+  }
+  if (row.status !== "refunded") {
+    await setGuestDonationStatus(row.id, "refunded");
+  }
+}
+
+async function handleGuestDisputeCreated(dispute: Stripe.Dispute) {
+  const piId =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id ?? null;
+  if (!piId) return;
+  // Guest-only: sponsorship charges have no guest_donation row, so this
+  // lookup misses and we ack + ignore — exactly the pre-existing behaviour
+  // for dispute events (previously unhandled → default case).
+  const row = await findGuestDonationByPaymentIntent(piId);
+  if (!row) return;
+  if (row.status !== "disputed") {
+    await setGuestDonationStatus(row.id, "disputed");
+  }
+}
+
 // ─── Webhook entry point ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature");
@@ -1067,8 +1175,40 @@ export async function POST(req: NextRequest) {
       // (status='refunded', refunded_at, refund_reason) and the
       // sponsorship row (status='cancelled', cancellation_reason='refunded'),
       // then fire the inline refund-confirmation email.
-      case "charge.refunded":
-        await handleChargeRefunded(event.data.object as Stripe.Charge);
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        // feat/quick-donation — guest charges carry metadata.kind=
+        // 'guest_cause' (propagated from payment_intent_data). They are
+        // routed to the guest handler and NEVER enter the sponsorship
+        // refund path. Sponsorship charges don't carry the key and flow
+        // to handleChargeRefunded exactly as before (its body is
+        // untouched).
+        if (charge.metadata?.kind === "guest_cause") {
+          await handleGuestChargeRefunded(charge);
+          break;
+        }
+        await handleChargeRefunded(charge);
+        break;
+      }
+      // ── feat/quick-donation — guest hosted-Checkout completion ───────
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        // Guest cause donations only. No other flow creates Checkout
+        // Sessions, so a non-guest session (if one ever appears) is
+        // acked + ignored — the same as the previous default-case
+        // behaviour for this event type.
+        if (session.metadata?.kind === "guest_cause") {
+          await handleGuestCheckoutCompleted(session);
+        }
+        break;
+      }
+      // ── feat/quick-donation — guest dispute marking ──────────────────
+      case "charge.dispute.created":
+        // Previously unhandled (fell to default → ack). The handler is
+        // guest-only: it looks up guest_donation by PI and ignores
+        // everything else, so sponsorship disputes keep the exact
+        // pre-existing ack-and-ignore behaviour.
+        await handleGuestDisputeCreated(event.data.object as Stripe.Dispute);
         break;
       default:
         // Unhandled event types are still acknowledged — Stripe shouldn't

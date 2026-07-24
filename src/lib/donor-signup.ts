@@ -90,7 +90,10 @@ export function generateOtpCode(): string {
 // "password_change" added for the donor password-change throttle (#1).
 // og_otp_request.kind is a free varchar (no CHECK/enum), so this is a new
 // data value, not a schema change.
-type Kind = "send" | "verify" | "password_change";
+// "guest_donation" — the public guest-checkout init throttle
+// (feat/quick-donation), keyed by IP. og_otp_request.kind is a free
+// varchar (no CHECK/enum), so a new kind value is data, not schema.
+type Kind = "send" | "verify" | "password_change" | "guest_donation";
 
 export type RateLimitWindow = {
   kind: Kind;
@@ -109,6 +112,16 @@ export const RATE_LIMITS = {
     kind: "password_change" as const,
     windowMs: 15 * 60 * 1000,
     max: 5,
+  },
+  // feat/quick-donation — public guest-checkout init throttle (per IP):
+  // 20 / 15 min. Deliberately GENEROUS: Bangladesh has heavy carrier-grade
+  // NAT + shared wifi, so a mosque/office can legitimately produce many
+  // donations from one IP. Server-computed amounts + Stripe Radar are the
+  // real card-testing defence; this counter is a coarse backstop.
+  guest_donation_per_ip: {
+    kind: "guest_donation" as const,
+    windowMs: 15 * 60 * 1000,
+    max: 20,
   },
 };
 

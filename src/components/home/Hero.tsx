@@ -131,6 +131,18 @@ export function Hero(_props: HeroProps) {
               Support a Child →
             </Button>
 
+            {/* feat/quick-donation — secondary entry to the guest
+                cause-donation flow. Deliberately quieter than the
+                sponsorship CTA: sponsorship is the relationship, this
+                is the one-minute gift for visitors not ready to commit
+                (and it needs no account). */}
+            <Link
+              href="/donate/quick"
+              className="font-body text-[14.5px] text-ink/80 underline underline-offset-4 decoration-tangerine/50 hover:text-tangerine-deeper hover:decoration-tangerine transition-colors"
+            >
+              or give in a minute — no account needed
+            </Link>
+
             {/* Icon-only circular play button with one-shot pulse
                 ring on viewport entry. TODO: Mahmud to provide
                 video URL; wire to modal lightbox in follow-up
