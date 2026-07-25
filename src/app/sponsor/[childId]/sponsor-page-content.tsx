@@ -144,6 +144,11 @@ export interface SponsorPageContentProps {
 const OTHER_TIER_ID = "other" as const;
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 const ONE_TIME_MIN_BDT_DEFAULT = 1500;
+// feat/donate-flow-ux — auto-advance delay on DISCRETE single-choice steps.
+// Short enough to feel instant, long enough that the donor sees their
+// selection register before the step swaps. Never applied to typed input
+// (custom amount / custom months) or the payment step.
+const ADVANCE_DELAY_MS = 300;
 
 // Cached Stripe.js per publishable key.
 const stripePromiseCache = new Map<string, Promise<StripeJs | null>>();
@@ -284,6 +289,34 @@ export function SponsorPageContent({
   // motion.div's initial state settle so we're scrolling to the
   // actual rendered position. Skip on the very first render (step
   // starts at 1; no transition).
+  // feat/donate-flow-ux — pending auto-advance timer. Selecting a discrete
+  // option schedules the step advance after ADVANCE_DELAY_MS; any new
+  // selection, any Back, or unmount cancels the pending one so a stale
+  // timer can never jump the donor forward after they've navigated.
+  const advanceTimer = useRef<number | null>(null);
+  function clearAdvance() {
+    if (advanceTimer.current !== null) {
+      window.clearTimeout(advanceTimer.current);
+      advanceTimer.current = null;
+    }
+  }
+  function scheduleAdvance(run: () => void) {
+    clearAdvance();
+    advanceTimer.current = window.setTimeout(() => {
+      advanceTimer.current = null;
+      run();
+    }, ADVANCE_DELAY_MS);
+  }
+  // Cancel any pending advance on unmount.
+  useEffect(() => () => clearAdvance(), []);
+  // Back / explicit navigation: cancel any pending advance, then move. State
+  // (all prior selections) is preserved — nothing is reset here.
+  function goToStep(n: Step) {
+    clearAdvance();
+    setError(null);
+    setStep(n);
+  }
+
   const previousStepRef = useRef<number>(1);
   useEffect(() => {
     if (previousStepRef.current === step) return;
@@ -303,9 +336,16 @@ export function SponsorPageContent({
   // never competes with the 58.4 step-top scroll on advance (which
   // fires on step CHANGE while donorAmount is still null right after
   // mode pick).
+  //
+  // feat/donate-flow-ux — now scoped to the CUSTOM-amount path only
+  // (tierId === OTHER). Preset tiles + gifts auto-advance, so scrolling to
+  // Continue for them would just jitter (scroll down, then the step swaps
+  // ~300ms later). For a typed custom amount there's no auto-advance, so
+  // Continue IS the next action and the scroll still helps.
   useEffect(() => {
     if (step !== 2) return;
     if (donorAmount === null) return;
+    if (tierId !== OTHER_TIER_ID) return;
     const id = requestAnimationFrame(() => {
       step2ContinueRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -339,7 +379,18 @@ export function SponsorPageContent({
   );
 
   // ── Step transitions ─────────────────────────────────────────────
+  //
+  // feat/donate-flow-ux — DISCRETE single-choice selections auto-advance
+  // after ADVANCE_DELAY_MS. Each handler schedules an EXPLICIT target step
+  // (never derived from state the selection just changed) so there's no
+  // stale-closure race. Typed input (custom amount, custom months) never
+  // auto-advances — it keeps its Continue button. State is preserved on
+  // back; only a MODE change resets downstream (unchanged behaviour).
+
+  // Step 1 (mode) — discrete: reset the downstream path immediately (so the
+  // stale amount/duration can't leak), then auto-advance to Step 2.
   function pickMode(next: PaymentMode) {
+    clearAdvance();
     setError(null);
     setMode(next);
     setTierId(null);
@@ -347,24 +398,81 @@ export function SponsorPageContent({
     setCustomAmount("");
     setDuration({ optionId: "d_indef", months: null });
     setSchedule(null);
-    setStep(2);
+    scheduleAdvance(() => setStep(2));
   }
 
+  // Step 2 preset tile — discrete → auto-advance to Step 3 (duration for
+  // monthly, cause for one-time). The OTHER (custom) tile is TYPED, so it
+  // never auto-advances — the donor types an amount and clicks Continue.
   function selectTier(id: string) {
+    clearAdvance();
     setError(null);
     setTierId(id);
     setGiftId(null);
-    if (id !== OTHER_TIER_ID) setCustomAmount("");
+    if (id !== OTHER_TIER_ID) {
+      setCustomAmount("");
+      scheduleAdvance(() => setStep(3));
+    }
   }
 
+  // Step 2 specific gift — discrete → auto-advance to Step 5 (a gift's
+  // cause_tag IS the cause, so the cause step is skipped).
   function selectGift(id: string) {
+    clearAdvance();
     setError(null);
     setGiftId(id);
     setTierId(null);
     setCustomAmount("");
+    scheduleAdvance(() => setStep(5));
   }
 
+  // Step 3 duration change. PRESET tiles are discrete → auto-advance
+  // (finite → Step 4 schedule; indefinite → skip to Step 5). The "Custom"
+  // months option is TYPED → no auto-advance; the donor types + Continue.
+  function handleDurationChange(next: DurationSelection) {
+    clearAdvance();
+    setError(null);
+    setDuration(next);
+    if (next.optionId === "d_custom") return; // typed — wait for Continue
+    scheduleAdvance(() => {
+      if (next.months === null) {
+        setSchedule("monthly");
+        setStep(5);
+      } else {
+        setStep(4);
+      }
+    });
+  }
+
+  // Step 3 cause — discrete radio → auto-advance to Step 5.
+  function handleCauseChange(next: CauseEnum) {
+    clearAdvance();
+    setCause(next);
+    scheduleAdvance(() => setStep(5));
+  }
+
+  // Step 4 schedule — discrete → auto-advance to Step 5.
+  function handleScheduleChange(next: PaymentSchedule) {
+    clearAdvance();
+    setError(null);
+    setSchedule(next);
+    scheduleAdvance(() => setStep(5));
+  }
+
+  // Step 5 visibility — discrete radio → auto-advance to Step 6 (review).
+  // NOTE: this advances to REVIEW, never to payment — Step 6 still requires
+  // an explicit "Continue to payment" then an explicit "Pay now".
+  function handleVisibilityChange(next: VisibilityEnum) {
+    clearAdvance();
+    setVisibility(next);
+    scheduleAdvance(() => setStep(6));
+  }
+
+  // ── Explicit Continue-button handlers (typed-input + confirm paths).
+  //    Each cancels any pending auto-advance first so a click + a pending
+  //    timer can't both fire (harmless duplicate setStep, but kept clean).
   function confirmAmount() {
+    clearAdvance();
     if (mode === "one_time") {
       // One-time: if a gift was selected, skip cause (gift defines it).
       // Otherwise next step is cause.
@@ -377,6 +485,7 @@ export function SponsorPageContent({
   }
 
   function confirmDuration() {
+    clearAdvance();
     if (duration.months === null) {
       // Indefinite → schedule is implicitly recurring, skip Step 4.
       setSchedule("monthly");
@@ -387,21 +496,36 @@ export function SponsorPageContent({
   }
 
   function confirmSchedule() {
+    clearAdvance();
     setStep(5);
   }
 
   function confirmCause() {
+    clearAdvance();
     setStep(5);
   }
 
   function confirmVisibility() {
+    clearAdvance();
     setStep(6);
   }
 
   function editSelections() {
+    clearAdvance();
     setStep(1);
     setError(null);
     setInitData(null);
+  }
+
+  // feat/donate-flow-ux — explicit Back from the review step to visibility.
+  // Preserves all selections (state untouched) and clears the Stripe init
+  // (initData) so re-continuing re-initialises cleanly. Navigation only —
+  // never submits or re-charges.
+  function backFromReview() {
+    clearAdvance();
+    setError(null);
+    setInitData(null);
+    setStep(5);
   }
 
   // ── Continue to payment: call /api/donate/init ──────────────────
@@ -667,7 +791,7 @@ export function SponsorPageContent({
                 }
                 progress={stepProgress}
               />
-              <BackLink onClick={() => setStep(1)} label="Back to give type" />
+              <BackLink onClick={() => goToStep(1)} label="Back to give type" />
 
               {/* Quick amounts (zone A on one-time; the only zone on monthly) */}
               <TierGrid
@@ -757,8 +881,8 @@ export function SponsorPageContent({
                 title="How long?"
                 progress={stepProgress}
               />
-              <BackLink onClick={() => setStep(2)} label="Back to amount" />
-              <DurationPicker value={duration} onChange={setDuration} />
+              <BackLink onClick={() => goToStep(2)} label="Back to amount" />
+              <DurationPicker value={duration} onChange={handleDurationChange} />
               <div className="mt-6">
                 <ContinueButton
                   onClick={confirmDuration}
@@ -776,8 +900,8 @@ export function SponsorPageContent({
                 title="What is this gift for?"
                 progress={stepProgress}
               />
-              <BackLink onClick={() => setStep(2)} label="Back to amount" />
-              <CausePicker value={cause} onChange={setCause} />
+              <BackLink onClick={() => goToStep(2)} label="Back to amount" />
+              <CausePicker value={cause} onChange={handleCauseChange} />
               <div className="mt-6">
                 <ContinueButton onClick={confirmCause} />
               </div>
@@ -795,14 +919,14 @@ export function SponsorPageContent({
                 title="How would you like to pay?"
                 progress={stepProgress}
               />
-              <BackLink onClick={() => setStep(3)} label="Back to duration" />
+              <BackLink onClick={() => goToStep(3)} label="Back to duration" />
               <PaymentSchedulePicker
                 perMonthDonorAmount={donorAmount}
                 durationMonths={duration.months}
                 currencySymbol={currency.symbol}
                 currencyCode={currency.code}
                 value={schedule}
-                onChange={setSchedule}
+                onChange={handleScheduleChange}
               />
               <div className="mt-6">
                 <ContinueButton
@@ -826,18 +950,18 @@ export function SponsorPageContent({
                   // Smart back: jump to whichever was the previous
                   // visited step.
                   if (mode === "one_time") {
-                    setStep(isGiftSelected ? 2 : 3);
+                    goToStep(isGiftSelected ? 2 : 3);
                   } else if (duration.months === null) {
-                    setStep(3);
+                    goToStep(3);
                   } else {
-                    setStep(4);
+                    goToStep(4);
                   }
                 }}
                 label="Back"
               />
               <VisibilityPicker
                 value={visibility}
-                onChange={setVisibility}
+                onChange={handleVisibilityChange}
                 donorFirstName={donorFirstName}
               />
               <div className="mt-6">
@@ -854,6 +978,7 @@ export function SponsorPageContent({
                 title="Review"
                 progress={stepProgress}
               />
+              <BackLink onClick={backFromReview} label="Back to visibility" />
               <SponsorReviewCard
                 paymentMode={mode}
                 perChargeDonorAmount={donorAmount}
