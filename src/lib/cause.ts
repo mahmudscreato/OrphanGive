@@ -55,6 +55,18 @@ export const CAUSES = [
     description:
       "An Eid gift for the child to mark the holiday with their community.",
   },
+  // fix/donate-checkout-and-copy (Fix 3) — Zakat as a donor-facing giving
+  // intent on the guest donate surfaces. NOTE: this is the single source of
+  // truth for causes, so Zakat also becomes selectable in the sponsor flow's
+  // cause picker. ⚠️ Zakat has religious eligibility rules; there is no
+  // dedicated Zakat package/fund yet, so guest donations currently route to
+  // the general "Where most needed" fallback package — flagged for follow-up.
+  {
+    enum: "zakat",
+    label: "Zakat",
+    description:
+      "Your Zakat, directed to eligible children and families in Bangladesh.",
+  },
 ] as const;
 
 export type CauseEnum = (typeof CAUSES)[number]["enum"];

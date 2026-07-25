@@ -5,22 +5,18 @@
 // recomputes the amount SERVER-SIDE and returns a hosted Stripe Checkout
 // URL. Stripe collects the card + email; no account is created here.
 //
-// The numbers rendered are display-only (server-converted on first
-// paint); the charged amount always comes from the server.
+// fix/donate-checkout-and-copy — the cause list is now the SAME curated
+// taxonomy the bottom strip + homepage section use (loadDonateModuleData →
+// DonateCause), so both surfaces show the same causes (incl. Zakat). Each
+// cause carries a server-resolved representative packageId (what guest-init
+// charges) + the donor's picked cause enum (drives the Stripe line-item
+// label). Amounts are BDT (taka) — the guest flow is BDT-only.
 
 "use client";
 
 import { useState } from "react";
 import { Heart, Loader2, Minus, Plus } from "lucide-react";
-
-export interface QuickCause {
-  id: string;
-  name_en: string;
-  description_en: string;
-  cause_tag: string | null;
-  /** Unit price per child, in the donor's display currency. */
-  unit_donor_amount: number;
-}
+import type { DonateCause } from "@/lib/donate-module";
 
 const MAX_CHILDREN = 100;
 
@@ -30,21 +26,23 @@ export function QuickDonateClient({
   currencyCode,
   customFloor,
 }: {
-  causes: QuickCause[];
+  causes: DonateCause[];
   currencySymbol: string;
   currencyCode: string;
   /** Display-currency minimum for the custom amount (server enforces BDT floor). */
   customFloor: number;
 }) {
-  const [causeId, setCauseId] = useState<string | null>(causes[0]?.id ?? null);
+  const [causeEnum, setCauseEnum] = useState<string | null>(
+    causes[0]?.enum ?? null,
+  );
   const [count, setCount] = useState(1);
   const [useCustom, setUseCustom] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cause = causes.find((c) => c.id === causeId) ?? null;
-  const presetTotal = cause ? cause.unit_donor_amount * count : 0;
+  const cause = causes.find((c) => c.enum === causeEnum) ?? null;
+  const presetTotal = cause ? cause.unitAmountBdt * count : 0;
 
   async function donate() {
     setError(null);
@@ -53,8 +51,11 @@ export function QuickDonateClient({
       return;
     }
     let payload: Record<string, unknown> = {
-      packageId: cause.id,
+      packageId: cause.packageId,
       currencyCode,
+      // Fix 1 — the curated cause drives the Stripe line-item label
+      // (server-validated; the charge is still keyed by packageId).
+      cause: cause.enum,
     };
     if (useCustom) {
       const n = Number(customAmount);
@@ -108,12 +109,12 @@ export function QuickDonateClient({
         </h2>
         <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
           {causes.map((c) => {
-            const selected = c.id === causeId;
+            const selected = c.enum === causeEnum;
             return (
               <button
-                key={c.id}
+                key={c.enum}
                 type="button"
-                onClick={() => setCauseId(c.id)}
+                onClick={() => setCauseEnum(c.enum)}
                 disabled={pending}
                 className={`text-left rounded-2xl border p-4 transition-all disabled:opacity-60 ${
                   selected
@@ -122,14 +123,14 @@ export function QuickDonateClient({
                 }`}
               >
                 <p className="font-display text-[17px] text-ink leading-snug">
-                  {c.name_en}
+                  {c.label}
                 </p>
                 <p className="mt-1 text-[13px] text-slate leading-[1.5] line-clamp-2">
-                  {c.description_en}
+                  {c.description}
                 </p>
                 <p className="mt-2 text-[13px] text-tangerine-deeper font-medium">
                   {currencySymbol}
-                  {c.unit_donor_amount} per child
+                  {c.unitAmountBdt} per child
                 </p>
               </button>
             );

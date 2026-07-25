@@ -120,6 +120,9 @@ export function DonateModule({
           packageId: cause.packageId,
           customAmount: Math.round(n),
           currencyCode,
+          // Fix 1 — the curated cause the donor picked drives the Stripe
+          // line-item label (server-validated; charge still keyed by packageId).
+          cause: cause.enum,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -212,7 +215,8 @@ export function DonateModule({
               aria-hidden="true"
               className="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-tangerine-light/25 blur-3xl"
             />
-            <div className="relative">
+            {/* Fix 4 — center-aligned to match the other homepage sections. */}
+            <div className="relative text-center">
               <div className="inline-flex items-center text-script-md text-tangerine-deep">
                 <EyebrowIcon />
                 Give in a minute
@@ -230,17 +234,19 @@ export function DonateModule({
                 </span>
               </h2>
 
-              <p className="mt-6 text-lg text-ink-soft leading-[1.65] max-w-[560px]">
-                Not ready to sponsor a child? You can still help today. Choose a
-                cause, name your amount, and give in under a minute — it joins a
-                pooled fund and reaches the children who need it most. No account
-                needed.
+              {/* Fix 5 — emotional, human copy; leads with heart, keeps the
+                  practical reassurance, no "pooled fund" language. */}
+              <p className="mt-6 text-lg text-ink-soft leading-[1.65] max-w-[560px] mx-auto">
+                Somewhere in Bangladesh, a child is waiting for someone to care.
+                In just a minute — no account needed — your gift becomes a warm
+                meal, school supplies, or a doctor&rsquo;s visit for a child who
+                needs it, reaching them exactly where the need is greatest.
               </p>
 
               {/* Control panel — a clean white inset keeps the one-row
                   cause · amount · donate flow crisp on the warm card. */}
               <div className="mt-8 rounded-3xl border border-ink/[0.06] bg-white/70 backdrop-blur-sm px-6 py-5 max-md:px-4 max-md:py-4">
-                {controls}
+                <div className="flex justify-center">{controls}</div>
                 {errorLine ? <div className="mt-3">{errorLine}</div> : null}
               </div>
 
