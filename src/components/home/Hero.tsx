@@ -131,17 +131,10 @@ export function Hero(_props: HeroProps) {
               Support a Child →
             </Button>
 
-            {/* feat/quick-donation — secondary entry to the guest
-                cause-donation flow. Deliberately quieter than the
-                sponsorship CTA: sponsorship is the relationship, this
-                is the one-minute gift for visitors not ready to commit
-                (and it needs no account). */}
-            <Link
-              href="/donate/quick"
-              className="font-body text-[14.5px] text-ink/80 underline underline-offset-4 decoration-tangerine/50 hover:text-tangerine-deeper hover:decoration-tangerine transition-colors"
-            >
-              or give in a minute — no account needed
-            </Link>
+            {/* feat/homepage-donate-section — the quiet quick-donate link
+                the founder couldn't find was removed here; the dedicated
+                QuickDonateSection (between FeaturedChildren + AboutSection)
+                is now the single, findable entry to /donate/quick. */}
 
             {/* Icon-only circular play button with one-shot pulse
                 ring on viewport entry. TODO: Mahmud to provide
