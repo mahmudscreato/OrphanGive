@@ -4,7 +4,6 @@ import { TrustBar } from "@/components/home/TrustBar";
 import { StatsBand } from "@/components/home/StatsBand";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { FeaturedChildren } from "@/components/home/FeaturedChildren";
-import { QuickDonateSection } from "@/components/home/QuickDonateSection";
 import { AboutSection } from "@/components/home/AboutSection";
 import { ClosingCTA } from "@/components/home/ClosingCTA";
 import {
@@ -129,7 +128,6 @@ export default async function Home() {
       <StatsBand stats={stats} />
       <HowItWorks />
       <FeaturedChildren children={featured} totalListed={stats.listed} />
-      <QuickDonateSection />
       <AboutSection />
       <ClosingCTA />
     </>
