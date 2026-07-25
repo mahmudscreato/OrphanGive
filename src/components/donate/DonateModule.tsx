@@ -234,13 +234,11 @@ export function DonateModule({
                 </span>
               </h2>
 
-              {/* Fix 5 — emotional, human copy; leads with heart, keeps the
-                  practical reassurance, no "pooled fund" language. */}
+              {/* Fix 5 — founder's chosen wording (verbatim); no "pooled" language. */}
               <p className="mt-6 text-lg text-ink-soft leading-[1.65] max-w-[560px] mx-auto">
-                Somewhere in Bangladesh, a child is waiting for someone to care.
-                In just a minute — no account needed — your gift becomes a warm
-                meal, school supplies, or a doctor&rsquo;s visit for a child who
-                needs it, reaching them exactly where the need is greatest.
+                Every child deserves to feel held. Your gift reaches a child in
+                Bangladesh as a warm meal, a health check, or a day of school —
+                real care, delivered with dignity.
               </p>
 
               {/* Control panel — a clean white inset keeps the one-row
