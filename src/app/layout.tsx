@@ -11,13 +11,9 @@ import { SiteNav } from "@/components/layout/SiteNav";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { Analytics } from "@/components/analytics/Analytics";
 import { ConsentBanner } from "@/components/analytics/ConsentBanner";
-import { DonateStrip, type StripCause } from "@/components/donate/DonateStrip";
+import { DonateModule } from "@/components/donate/DonateModule";
 import { getCurrentDonor } from "@/lib/donor-data";
-import { listActivePackages } from "@/lib/donation-packages";
-import {
-  bdtFloorToCurrencyFloor,
-  getCurrencyByCode,
-} from "@/lib/currency-rates";
+import { loadDonateModuleData } from "@/lib/donate-module";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -164,48 +160,6 @@ export const viewport: Viewport = {
   themeColor: "#FFFAF2",
 };
 
-// feat/donate-strip — the one-time BDT floor mirrored from /donate/quick +
-// validateCustomAmount. Used only to derive the strip's display-currency
-// placeholder/pre-check; the server (guest-init) re-validates authoritatively.
-const ONE_TIME_BDT_FLOOR = 500;
-
-// feat/donate-strip — resilient loader for the global strip's data. This runs
-// in the ROOT layout (every route), so a Directus hiccup must NOT take the
-// whole site down: on any failure we return an empty cause list and the strip
-// hides itself. listActivePackages throws on error, hence the guard.
-async function loadDonateStripData(): Promise<{
-  causes: StripCause[];
-  currencySymbol: string;
-  currencyCode: string;
-  customFloor: number;
-}> {
-  try {
-    const [packages, rate] = await Promise.all([
-      listActivePackages("one_time"),
-      getCurrencyByCode("USD"),
-    ]);
-    return {
-      causes: packages.map((p) => ({ id: p.id, name_en: p.name_en })),
-      currencySymbol: rate?.symbol ?? "$",
-      currencyCode: rate?.currency_code ?? "USD",
-      customFloor: rate
-        ? bdtFloorToCurrencyFloor(ONE_TIME_BDT_FLOOR, rate)
-        : ONE_TIME_BDT_FLOOR,
-    };
-  } catch (err) {
-    console.warn(
-      "[donate-strip] cause load failed — strip hidden",
-      err instanceof Error ? err.message : err,
-    );
-    return {
-      causes: [],
-      currencySymbol: "$",
-      currencyCode: "USD",
-      customFloor: ONE_TIME_BDT_FLOOR,
-    };
-  }
-}
-
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -214,14 +168,16 @@ export default async function RootLayout({
   // Fetch donor at the top so SiteNav can render auth-aware UI.
   // SiteNav itself decides to skip rendering on /dashboard/* routes.
   //
-  // feat/donate-strip — the global DonateStrip (mounted below) needs the
-  // active one-time causes + the default (USD) display currency. Fetched in
-  // the SAME parallel batch as the donor so it adds no serial latency; the
-  // loader is failure-safe (empty causes → strip self-hides) so it can never
-  // take the whole site down. The strip also self-hides on excluded routes.
-  const [donor, donateStrip] = await Promise.all([
+  // fix/donate-strip-polish — the global bottom DonateModule (strip variant,
+  // mounted below) needs the 6 curated causes + the default (USD) display
+  // currency. Fetched in the SAME parallel batch as the donor so it adds no
+  // serial latency; the loader is failure-safe (empty causes → strip
+  // self-hides) so it can never take the whole site down. The strip also
+  // self-hides on excluded routes and on the homepage (which shows the
+  // inspiring section variant mid-page instead).
+  const [donor, donateData] = await Promise.all([
     getCurrentDonor(),
-    loadDonateStripData(),
+    loadDonateModuleData(),
   ]);
   return (
     <html
@@ -274,15 +230,17 @@ export default async function RootLayout({
         <main id="main-content" tabIndex={-1} className="flex-1">
           {children}
         </main>
-        {/* feat/donate-strip — compact global donate bar, above the footer.
-            Repeats at the bottom of every page (public site + donor
+        {/* fix/donate-strip-polish — compact global donate bar, above the
+            footer. Repeats at the bottom of every page (public site + donor
             dashboard); self-hides on the donation flow, mid-payment/checkout,
-            staff, and auth routes. Same guest backend as /donate/quick. */}
-        <DonateStrip
-          causes={donateStrip.causes}
-          currencySymbol={donateStrip.currencySymbol}
-          currencyCode={donateStrip.currencyCode}
-          customFloor={donateStrip.customFloor}
+            staff, auth routes, and the homepage. Same guest backend as
+            /donate/quick. */}
+        <DonateModule
+          variant="strip"
+          causes={donateData.causes}
+          currencySymbol={donateData.currencySymbol}
+          currencyCode={donateData.currencyCode}
+          customFloor={donateData.customFloor}
         />
         <SiteFooter />
         {/* GA4 — loads ONLY after explicit opt-in consent, child-route
