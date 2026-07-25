@@ -131,10 +131,10 @@ export function Hero(_props: HeroProps) {
               Support a Child →
             </Button>
 
-            {/* feat/homepage-donate-section — the quiet quick-donate link
-                the founder couldn't find was removed here; the dedicated
-                QuickDonateSection (between FeaturedChildren + AboutSection)
-                is now the single, findable entry to /donate/quick. */}
+            {/* feat/donate-strip — the quiet quick-donate link the founder
+                couldn't find was removed here; the global DonateStrip (mounted
+                in the root layout, above the footer on every page) is now the
+                persistent entry to guest cause donation. */}
 
             {/* Icon-only circular play button with one-shot pulse
                 ring on viewport entry. TODO: Mahmud to provide
