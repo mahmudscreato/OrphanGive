@@ -6,6 +6,8 @@ import { HowItWorks } from "@/components/home/HowItWorks";
 import { FeaturedChildren } from "@/components/home/FeaturedChildren";
 import { AboutSection } from "@/components/home/AboutSection";
 import { ClosingCTA } from "@/components/home/ClosingCTA";
+import { DonateModule } from "@/components/donate/DonateModule";
+import { loadDonateModuleData } from "@/lib/donate-module";
 import {
   getFeaturedChildren,
   getHomepageStats,
@@ -77,9 +79,10 @@ export const metadata: Metadata = {
 //   Hero → TrustBar → StatsBand → HowItWorks → FeaturedChildren
 //   → AboutSection → ClosingCTA
 export default async function Home() {
-  const [stats, featured] = await Promise.all([
+  const [stats, featured, donateData] = await Promise.all([
     getHomepageStats(),
     getFeaturedChildren(),
+    loadDonateModuleData(),
   ]);
 
   // Lot 4 Job B — Schema.org NGO JSON-LD. Renders inline so social
@@ -128,6 +131,17 @@ export default async function Home() {
       <StatsBand stats={stats} />
       <HowItWorks />
       <FeaturedChildren children={featured} totalListed={stats.listed} />
+      {/* fix/donate-strip-polish — the inspiring quick-donation module sits
+          mid-page (after "Meet some of our Children", before About). The
+          global bottom strip self-hides on the homepage so it isn't shown
+          twice on one page. */}
+      <DonateModule
+        variant="section"
+        causes={donateData.causes}
+        currencySymbol={donateData.currencySymbol}
+        currencyCode={donateData.currencyCode}
+        customFloor={donateData.customFloor}
+      />
       <AboutSection />
       <ClosingCTA />
     </>

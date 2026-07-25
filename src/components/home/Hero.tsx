@@ -132,9 +132,9 @@ export function Hero(_props: HeroProps) {
             </Button>
 
             {/* feat/donate-strip — the quiet quick-donate link the founder
-                couldn't find was removed here; the global DonateStrip (mounted
-                in the root layout, above the footer on every page) is now the
-                persistent entry to guest cause donation. */}
+                couldn't find was removed here; the DonateModule (an inspiring
+                section mid-homepage + a compact strip at the bottom of other
+                pages) is now the persistent entry to guest cause donation. */}
 
             {/* Icon-only circular play button with one-shot pulse
                 ring on viewport entry. TODO: Mahmud to provide
