@@ -31,12 +31,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe-client";
 import { getPackageById } from "@/lib/donation-packages";
 import {
-  getCurrencyByCode,
+  getBdtRate,
   convertBdtToCurrency,
   convertCurrencyToBdt,
 } from "@/lib/currency-rates";
 import { toStripeAmount, toStripeCurrency } from "@/lib/stripe-currency";
 import { validateCustomAmount } from "@/lib/donation-checkout";
+import { isValidCause, labelForCause } from "@/lib/cause";
 import {
   RATE_LIMITS,
   countRecentRequests,
@@ -85,10 +86,12 @@ export async function POST(req: NextRequest) {
   let body: {
     packageId?: unknown;
     childCount?: unknown;
-    // In the DONOR'S currency (what they typed); the BDT equivalent is
-    // derived server-side for validation + the canonical record.
+    // In BDT (taka) — what the donor typed; the guest flow is BDT-only.
     customAmount?: unknown;
-    currencyCode?: unknown;
+    // The curated cause the donor selected (enum) — DISPLAY ONLY: used for the
+    // Stripe line-item label. The charge is governed by packageId (below),
+    // never by this. Validated server-side against the cause taxonomy.
+    cause?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -106,13 +109,19 @@ export async function POST(req: NextRequest) {
     return bad("Unknown or inactive cause.", 404);
   }
 
-  // ── Currency (validated against the active rate table) ──────────
-  const requestedCode =
-    typeof body.currencyCode === "string" && body.currencyCode.trim()
-      ? body.currencyCode.trim()
-      : "USD";
-  const rate = await getCurrencyByCode(requestedCode);
-  if (!rate) return bad("Unsupported currency.");
+  // ── Currency: BDT, server-authoritative ─────────────────────────
+  // fix/donate-checkout-and-copy (Fix 2) — the guest flow is Bangladesh-only
+  // and charges in BDT (taka). Currency is NOT taken from the client; the
+  // server always resolves BDT so the charge is always in taka. The donor's
+  // typed amount is therefore taka. getBdtRate never returns null (exact
+  // hardcoded fallback), so there is no "unsupported currency" path here.
+  const rate = await getBdtRate();
+
+  // Curated cause the donor picked — DISPLAY ONLY, for the Stripe line item.
+  // Validated against the cause taxonomy; falls back to the package's own tag.
+  const causeLabel = isValidCause(body.cause)
+    ? labelForCause(body.cause)
+    : labelForCause(pkg.cause_tag);
 
   // ── Server-side amount computation (never trust a client total) ──
   let amountBdt: number;
@@ -122,9 +131,9 @@ export async function POST(req: NextRequest) {
 
   const rawCustom = body.customAmount;
   if (rawCustom !== undefined && rawCustom !== null) {
-    // Custom amount arrives in the DONOR'S currency (what they typed and
-    // what Stripe charges); the BDT equivalent is derived SERVER-SIDE for
-    // validation + the canonical record.
+    // Custom amount is in BDT (taka) — the guest flow is BDT-only, so
+    // convertCurrencyToBdt is an identity here (bdt_per_unit = 1). Kept
+    // generic so the same validation path holds if a currency is ever added.
     const custom = typeof rawCustom === "number" ? Math.round(rawCustom) : NaN;
     if (!Number.isFinite(custom) || custom < 1) {
       return bad("Invalid custom amount.");
@@ -185,12 +194,13 @@ export async function POST(req: NextRequest) {
             currency: stripeCurrency,
             unit_amount: stripeAmount,
             product_data: {
-              name: `${pkg.name_en} — OrphanGive`,
-              ...(childCount
-                ? {
-                    description: `Supports ${childCount} ${childCount === 1 ? "child" : "children"} (pooled cause fund)`,
-                  }
-                : { description: "Pooled cause fund donation" }),
+              // fix/donate-checkout-and-copy (Fix 1 + Fix 6) — the donor-facing
+              // line item is the CURATED CAUSE the donor picked, never the raw
+              // package title, and never says "pooled".
+              name: `${causeLabel} — One-Time Donation, OrphanGive`,
+              description: childCount
+                ? `Supports ${childCount} ${childCount === 1 ? "child" : "children"} in Bangladesh`
+                : "A one-time gift for children in Bangladesh",
             },
           },
         },

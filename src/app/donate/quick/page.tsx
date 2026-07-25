@@ -11,18 +11,10 @@
 // editable in /admin/donation-packages with no code change.
 
 import { Heart } from "lucide-react";
-import { listActivePackages } from "@/lib/donation-packages";
-import {
-  convertBdtToCurrency,
-  bdtFloorToCurrencyFloor,
-  getCurrencyByCode,
-} from "@/lib/currency-rates";
+import { loadDonateModuleData } from "@/lib/donate-module";
 import { buildPageMetadata } from "@/lib/page-metadata";
 import { EyebrowIcon } from "@/components/ui/EyebrowIcon";
-import {
-  QuickDonateClient,
-  type QuickCause,
-} from "@/components/donate/QuickDonateClient";
+import { QuickDonateClient } from "@/components/donate/QuickDonateClient";
 
 export const dynamic = "force-dynamic";
 
@@ -33,31 +25,12 @@ export const metadata = buildPageMetadata({
     "Support a cause — food, school supplies, health care — for children in Bangladesh. No account needed; give in under a minute.",
 });
 
-// Matches the one-time floor used by /donate + validateCustomAmount.
-const ONE_TIME_BDT_FLOOR = 500;
-
 export default async function QuickDonatePage() {
-  // Guests have no donor record, so there's no currency lock to resolve —
-  // default to USD (the picker on /donate remains the place to change
-  // currency for account holders).
-  const [packages, rate] = await Promise.all([
-    listActivePackages("one_time"),
-    getCurrencyByCode("USD"),
-  ]);
-
-  const causes: QuickCause[] = rate
-    ? packages.map((p) => ({
-        id: p.id,
-        name_en: p.name_en,
-        description_en: p.description_en,
-        cause_tag: p.cause_tag,
-        unit_donor_amount: convertBdtToCurrency(p.amount_bdt, rate).amount,
-      }))
-    : [];
-
-  const customFloor = rate
-    ? bdtFloorToCurrencyFloor(ONE_TIME_BDT_FLOOR, rate)
-    : ONE_TIME_BDT_FLOOR;
+  // fix/donate-checkout-and-copy — /donate/quick now uses the SAME curated
+  // cause source as the bottom strip + homepage section (loadDonateModuleData),
+  // so both surfaces show the same causes (incl. Zakat) and charge in BDT
+  // (taka). Guests have no currency choice — the guest flow is BDT-only.
+  const donateData = await loadDonateModuleData();
 
   return (
     <main className="bg-cream min-h-screen">
@@ -77,17 +50,17 @@ export default async function QuickDonatePage() {
           </h1>
           <p className="mt-5 text-[16px] text-slate leading-[1.65] max-w-[560px]">
             Choose what you&rsquo;d like to give toward — food, school
-            supplies, health care. Your gift joins a pooled fund for that
-            cause and reaches the children who need it most. No account,
+            supplies, health care. Every gift reaches a child in Bangladesh
+            who needs it, exactly where the need is greatest. No account,
             no commitment.
           </p>
 
           <div className="mt-10">
             <QuickDonateClient
-              causes={causes}
-              currencySymbol={rate?.symbol ?? "$"}
-              currencyCode={rate?.currency_code ?? "USD"}
-              customFloor={customFloor}
+              causes={donateData.causes}
+              currencySymbol={donateData.currencySymbol}
+              currencyCode={donateData.currencyCode}
+              customFloor={donateData.customFloor}
             />
           </div>
 

@@ -119,6 +119,30 @@ export async function getCurrencyByCode(
   return rate;
 }
 
+// fix/donate-checkout-and-copy (Fix 2) — canonical BDT rate for BDT-only
+// flows (the guest donate checkout). BDT is the base currency: bdt_per_unit
+// is 1.0 by definition, so the fallback below is exact even if the DB row is
+// missing/inactive — the guest flow must never fail to resolve its currency.
+export const BDT_RATE: CurrencyRate = {
+  id: "",
+  currency_code: "BDT",
+  display_name: "Bangladeshi Taka",
+  symbol: "৳",
+  bdt_per_unit: 1,
+  is_active: true,
+  date_updated: null,
+};
+
+/** The BDT currency row, or the exact hardcoded fallback (BDT = 1.0). */
+export async function getBdtRate(): Promise<CurrencyRate> {
+  try {
+    const rate = await getCurrencyByCode("BDT", { includeInactive: true });
+    return rate ?? BDT_RATE;
+  } catch {
+    return BDT_RATE;
+  }
+}
+
 /** Look up by Directus row id (admin-only). */
 export async function getCurrencyById(id: string): Promise<CurrencyRate | null> {
   try {

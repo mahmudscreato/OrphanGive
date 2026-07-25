@@ -27,7 +27,7 @@ import {
 } from "@/lib/donation-packages";
 import {
   bdtFloorToCurrencyFloor,
-  getCurrencyByCode,
+  getBdtRate,
 } from "@/lib/currency-rates";
 import { CAUSES } from "@/lib/cause";
 
@@ -41,8 +41,12 @@ export interface DonateCause {
   enum: string;
   /** Donor-facing label from the cause taxonomy (dropdown text). */
   label: string;
+  /** One-line cause description (used by the /donate/quick cards). */
+  description: string;
   /** Representative active one_time package id — what guest-init charges. */
   packageId: string;
+  /** Representative package unit amount in whole BDT (per-child pricing on /donate/quick). */
+  unitAmountBdt: number;
 }
 
 export interface DonateModuleData {
@@ -54,16 +58,16 @@ export interface DonateModuleData {
 
 export async function loadDonateModuleData(): Promise<DonateModuleData> {
   try {
+    // fix/donate-checkout-and-copy (Fix 2) — the guest flow charges in BDT
+    // (taka), so the display currency is BDT too (donor sees ৳, types taka).
     const [packages, rate] = await Promise.all([
       listActivePackages("one_time"),
-      getCurrencyByCode("USD"),
+      getBdtRate(),
     ]);
 
-    const symbol = rate?.symbol ?? "$";
-    const code = rate?.currency_code ?? "USD";
-    const customFloor = rate
-      ? bdtFloorToCurrencyFloor(ONE_TIME_BDT_FLOOR, rate)
-      : ONE_TIME_BDT_FLOOR;
+    const symbol = rate.symbol;
+    const code = rate.currency_code;
+    const customFloor = bdtFloorToCurrencyFloor(ONE_TIME_BDT_FLOOR, rate);
 
     // Representative package for each cause. Prefer a package tagged with the
     // cause enum; otherwise fall back to a general package (an explicit
@@ -83,7 +87,13 @@ export async function loadDonateModuleData(): Promise<DonateModuleData> {
 
     const causes: DonateCause[] = CAUSES.map((c) => {
       const pkg = firstByTag(c.enum) ?? generalPkg;
-      return { enum: c.enum, label: c.label, packageId: pkg.id };
+      return {
+        enum: c.enum,
+        label: c.label,
+        description: c.description,
+        packageId: pkg.id,
+        unitAmountBdt: pkg.amount_bdt,
+      };
     });
 
     return { causes, currencySymbol: symbol, currencyCode: code, customFloor };
@@ -94,8 +104,8 @@ export async function loadDonateModuleData(): Promise<DonateModuleData> {
     );
     return {
       causes: [],
-      currencySymbol: "$",
-      currencyCode: "USD",
+      currencySymbol: "৳",
+      currencyCode: "BDT",
       customFloor: ONE_TIME_BDT_FLOOR,
     };
   }

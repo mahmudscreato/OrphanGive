@@ -51,7 +51,7 @@ export function GuestDonationThankYouEmail({
         <strong>{causeTitle}</strong> has been received.
         {childCount
           ? ` It goes toward this cause for ${childCount} ${childCount === 1 ? "child" : "children"} in Bangladesh.`
-          : " It goes into the pooled fund for this cause, reaching children in Bangladesh wherever the need is greatest."}
+          : " It reaches children in Bangladesh through this cause, wherever the need is greatest."}
       </Text>
 
       <Text
