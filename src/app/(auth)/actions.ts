@@ -57,6 +57,26 @@ async function persistTokens(data: AuthenticationData) {
   );
 }
 
+// fix/remove-approval-wall — establish a donor session WITHOUT redirecting, so
+// the caller controls navigation. Used by /signup/verify to auto-sign-in a
+// just-verified donor (with the password they set at signup) and resume the
+// origin child flow. Sets the same session cookies as signInAction; returns a
+// result instead of redirecting (avoids server-action-redirect ambiguity in an
+// imperative client call).
+export async function establishSession(
+  email: string,
+  password: string,
+): Promise<{ ok: true } | { error: string }> {
+  let tokens: AuthenticationData;
+  try {
+    tokens = await signIn(email, password);
+  } catch (err) {
+    return { error: readableDirectusError(err, "Sign-in failed.") };
+  }
+  await persistTokens(tokens);
+  return { ok: true };
+}
+
 export async function signInAction(
   _prev: AuthFormState,
   formData: FormData,

@@ -7,10 +7,29 @@ import {
   useState,
   useTransition,
 } from "react";
+import { establishSession } from "@/app/(auth)/actions";
 
 const RESEND_COOLDOWN_SEC = 60;
 
-export function VerifyForm({ initialEmail }: { initialEmail: string }) {
+// fix/remove-approval-wall — the sign-up form stashes the just-created password
+// here so verification can auto-sign-in (Directus login needs it) and resume
+// the origin child WITHOUT a separate sign-in step. Read once, then cleared.
+const SIGNUP_PW_KEY = "og_signup_pw";
+
+// Only follow same-site relative destinations (guards against open redirects).
+function safeNext(next: string | null | undefined): string | null {
+  if (typeof next !== "string") return null;
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  return next;
+}
+
+export function VerifyForm({
+  initialEmail,
+  next,
+}: {
+  initialEmail: string;
+  next?: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [resendPending, setResendPending] = useState(false);
@@ -83,7 +102,38 @@ export function VerifyForm({ initialEmail }: { initialEmail: string }) {
           setError(json.error ?? "Invalid or expired code.");
           return;
         }
-        router.push("/signup/pending");
+
+        // fix/remove-approval-wall — email verified. There is NO approval wall:
+        // a verified donor already resolves to getDonorState() === "approved".
+        // Auto-sign-in with the password they just set (stashed by the sign-up
+        // form) and resume the child sponsor/checkout flow they came from. If
+        // the password isn't available (page reload / direct navigation), fall
+        // back to a quick sign-in with the email prefilled + the same `next`.
+        const dest = safeNext(next);
+        const signinFallback = `/signin?${
+          dest ? `next=${encodeURIComponent(dest)}&` : ""
+        }email=${encodeURIComponent(initialEmail)}`;
+
+        let pw: string | null = null;
+        try {
+          pw = sessionStorage.getItem(SIGNUP_PW_KEY);
+          sessionStorage.removeItem(SIGNUP_PW_KEY);
+        } catch {
+          /* sessionStorage unavailable — fall through to manual sign-in */
+        }
+
+        if (pw) {
+          // establishSession sets the session cookies and RETURNS (no server
+          // redirect), so we control navigation here — no imperative
+          // server-action-redirect ambiguity. On success, resume the origin
+          // child flow (dest) or the sensible default (/dashboard for a generic
+          // signup). On failure, fall back to a manual sign-in.
+          const result = await establishSession(initialEmail, pw);
+          router.push("ok" in result ? dest ?? "/dashboard" : signinFallback);
+          return;
+        }
+
+        router.push(signinFallback);
       } catch {
         setError("Network error. Please try again.");
       }

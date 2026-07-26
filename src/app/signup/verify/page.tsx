@@ -20,6 +20,15 @@ export default async function VerifyPage({
       : Array.isArray(emailParam)
         ? emailParam[0] ?? ""
         : "";
+  // fix/remove-approval-wall — origin to resume after verification (the child
+  // sponsor/checkout flow the donor came from), carried from the sign-up form.
+  const nextParam = sp.next;
+  const next =
+    typeof nextParam === "string"
+      ? nextParam
+      : Array.isArray(nextParam)
+        ? nextParam[0] ?? null
+        : null;
 
   return (
     <div className="bg-cream">
@@ -40,12 +49,17 @@ export default async function VerifyPage({
           </p>
 
           <div className="mt-10">
-            <VerifyForm initialEmail={email} />
+            <VerifyForm initialEmail={email} next={next} />
           </div>
 
           <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 text-[13px]">
             <Link
-              href={`/signup${email ? `?email=${encodeURIComponent(email)}` : ""}`}
+              href={`/signup?${[
+                email ? `email=${encodeURIComponent(email)}` : "",
+                next ? `next=${encodeURIComponent(next)}` : "",
+              ]
+                .filter(Boolean)
+                .join("&")}`}
               className="text-slate hover:text-tangerine-deeper transition-colors"
             >
               ← Use a different email

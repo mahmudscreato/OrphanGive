@@ -1,11 +1,23 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { COUNTRIES, COUNTRY_BY_CODE, DEFAULT_COUNTRY_CODE } from "@/lib/countries";
 import { signupSchema, type SignupInput } from "@/lib/donor-signup";
+
+// fix/remove-approval-wall — key under which the just-created password is
+// briefly stashed so /signup/verify can auto-sign-in the donor (Directus login
+// needs it) and resume the origin child flow. Cleared immediately after use.
+const SIGNUP_PW_KEY = "og_signup_pw";
+
+// Only carry same-site relative destinations (guards against open redirects).
+function safeNext(next: string | null): string | null {
+  if (!next) return null;
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  return next;
+}
 
 const HOW_HEARD_OPTIONS = [
   { value: "search", label: "Search engine" },
@@ -23,6 +35,7 @@ const errorClass = "mt-1.5 text-[12px] text-[#D04848]";
 
 export function SignUpForm() {
   const router = useRouter();
+  const next = safeNext(useSearchParams().get("next"));
   const [pending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -65,7 +78,18 @@ export function SignUpForm() {
           setServerError(json.error ?? "Could not create account. Please try again.");
           return;
         }
-        const target = `/signup/verify?email=${encodeURIComponent(json.email ?? values.email)}`;
+        // Stash the password so verification can auto-sign-in the donor and
+        // resume the origin child flow (no separate sign-in). Verify reads it
+        // once, then clears it.
+        try {
+          sessionStorage.setItem(SIGNUP_PW_KEY, values.password);
+        } catch {
+          /* sessionStorage unavailable — verify falls back to manual sign-in */
+        }
+        const email = json.email ?? values.email;
+        const target = `/signup/verify?email=${encodeURIComponent(email)}${
+          next ? `&next=${encodeURIComponent(next)}` : ""
+        }`;
         router.push(target);
       } catch {
         setServerError("Network error. Please try again.");

@@ -16,9 +16,9 @@ export default function SignUpPage() {
             Walk with a child for the long term.
           </h1>
           <p className="mt-5 text-[16px] text-slate leading-[1.65]">
-            We collect a small amount of information so our safeguarding team
-            can verify donors. Your account becomes active after we approve it
-            — usually within 1–2 business days.
+            We collect a small amount of information to keep our community safe.
+            Verify your email and your account is ready right away — no waiting
+            for approval.
           </p>
 
           <div className="mt-10">
