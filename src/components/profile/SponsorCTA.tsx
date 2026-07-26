@@ -66,18 +66,22 @@ export function SponsorCTA({
               blend into the background). */}
           {tier === "public" ? (
             <>
+              {/* fix/child-profile-support-cta — no sign-in wall. The primary
+                  action gives now (guest one-time, account optional after);
+                  monthly/recurring genuinely needs an account, offered as the
+                  clear secondary. */}
               <Button
-                href={`/signin?from=/children/${child.id}`}
+                href={`/support/${child.id}`}
                 variant="white"
                 size="lg"
               >
-                Sign in to begin sponsorship →
+                Support {firstName} →
               </Button>
               <Link
-                href={`/signup?from=/children/${child.id}`}
+                href={`/signin?next=/sponsor/${child.id}`}
                 className="text-[14px] text-cream/80 hover:text-white underline-offset-4 hover:underline"
               >
-                Or create a donor account
+                Or sign in to sponsor monthly
               </Link>
             </>
           ) : (

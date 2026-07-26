@@ -39,6 +39,7 @@ import type { DonateCause } from "@/lib/donate-module";
 const HIDE_PREFIXES = [
   "/donate",
   "/sponsor",
+  "/support",
   "/checkout",
   "/cart",
   "/resume",
