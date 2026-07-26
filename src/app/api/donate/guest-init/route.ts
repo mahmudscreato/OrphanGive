@@ -99,9 +99,14 @@ export async function POST(req: NextRequest) {
     // charge vehicle is still the resolved one_time package (schema-free — the
     // child link rides in the label + Stripe metadata).
     childId?: unknown;
-    // Optional WhatsApp for child updates — DISPLAY/CONTACT ONLY, stored in
-    // Stripe metadata. Email + name are collected by Stripe at checkout.
-    whatsapp?: unknown;
+    // fix/child-support-flow — inline guest contact collected at the /sponsor
+    // one-time payment step (Name required, Email required, Phone optional).
+    // Email prefills Stripe Checkout (and lands on the guest_donation via the
+    // webhook); Name + Phone are stored in Stripe metadata (CONTACT/DISPLAY
+    // only — never the charge, which is governed by packageId + amount).
+    guestName?: unknown;
+    guestEmail?: unknown;
+    guestPhone?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -187,9 +192,15 @@ export async function POST(req: NextRequest) {
     if (child) childGiftName = child.display_name?.trim() || null;
   }
   const isChildGift = childGiftName !== null;
-  // Optional WhatsApp — contact only, kept short + stored in Stripe metadata.
-  const whatsapp =
-    typeof body.whatsapp === "string" ? body.whatsapp.trim().slice(0, 32) : "";
+  // Inline guest contact (child one-time). Contact only — kept short; stored in
+  // Stripe metadata (name/phone) + Stripe customer_email (email). Never affects
+  // the charge.
+  const guestName =
+    typeof body.guestName === "string" ? body.guestName.trim().slice(0, 120) : "";
+  const guestEmail =
+    typeof body.guestEmail === "string" ? body.guestEmail.trim().slice(0, 200) : "";
+  const guestPhone =
+    typeof body.guestPhone === "string" ? body.guestPhone.trim().slice(0, 40) : "";
 
   const recordTitle = isChildGift ? `Support ${childGiftName}` : pkg.name_en;
   const lineItemName = isChildGift
@@ -209,7 +220,8 @@ export async function POST(req: NextRequest) {
     giftMetadata.child_id = rawChildId;
     giftMetadata.child_gift = "1";
   }
-  if (whatsapp) giftMetadata.whatsapp = whatsapp;
+  if (guestName) giftMetadata.guest_name = guestName;
+  if (guestPhone) giftMetadata.guest_phone = guestPhone;
 
   // ── Record (pending) + hosted Checkout Session ──────────────────
   let guestDonationId: string;
@@ -219,6 +231,10 @@ export async function POST(req: NextRequest) {
       causeTag: pkg.cause_tag,
       packageTitle: recordTitle,
       unitAmountBdt,
+      // fix/child-support-flow — queryable child link (source of truth) for
+      // one-time CHILD gifts; NULL for pooled cause donations. The Stripe
+      // metadata child_id is kept too (below) for Stripe-side traceability.
+      childId: isChildGift ? rawChildId : null,
       childCount,
       amountBdt,
       donorCurrencyCode: rate.currency_code,
@@ -259,16 +275,23 @@ export async function POST(req: NextRequest) {
       //    dispute branches identify guest charges WITHOUT touching the
       //    sponsorship handlers (which gate on metadata.payment_mode and
       //    ignore guest PIs entirely).
-      // child_id / whatsapp (when present) ride along additively for the
+      // child_id / guest contact (when present) ride along additively for the
       // child-gift case; the routing key (kind) is unchanged.
       metadata: { ...giftMetadata, guest_donation_id: guestDonationId },
       payment_intent_data: {
         metadata: { ...giftMetadata, guest_donation_id: guestDonationId },
       },
+      // Prefill the email the guest typed inline (child one-time). Stripe still
+      // collects/confirms it; the webhook records it on the guest_donation.
+      ...(guestEmail ? { customer_email: guestEmail } : {}),
       success_url: siteUrl(
         "/donate/quick/success?session_id={CHECKOUT_SESSION_ID}",
       ),
-      cancel_url: siteUrl("/donate/quick"),
+      // A child one-time gift is initiated from /sponsor/[childId]; cancel
+      // returns there. Cause donations (no childId) return to /donate/quick.
+      cancel_url: siteUrl(
+        isChildGift ? `/sponsor/${rawChildId}` : "/donate/quick",
+      ),
     });
 
     // Best-effort session-id stamp (the webhook keys on the metadata id,

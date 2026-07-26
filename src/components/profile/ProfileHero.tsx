@@ -207,7 +207,7 @@ export function ProfileHero({
               // visitors go straight into the guest one-time gift flow for
               // this child (account optional, offered after payment).
               <Button
-                href={`/support/${child.id}`}
+                href={`/sponsor/${child.id}`}
                 variant="tangerine"
                 size="lg"
               >
