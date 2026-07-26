@@ -30,6 +30,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe-client";
 import { getPackageById } from "@/lib/donation-packages";
+import { getChildById } from "@/lib/child-profile-data";
 import {
   getBdtRate,
   convertBdtToCurrency,
@@ -92,6 +93,15 @@ export async function POST(req: NextRequest) {
     // Stripe line-item label. The charge is governed by packageId (below),
     // never by this. Validated server-side against the cause taxonomy.
     cause?: unknown;
+    // fix/child-profile-support-cta — optional guest one-time gift FOR a
+    // specific child (from the profile "Support [Name]" CTA). The child NAME is
+    // resolved server-side from this id (never trusted from the client); the
+    // charge vehicle is still the resolved one_time package (schema-free — the
+    // child link rides in the label + Stripe metadata).
+    childId?: unknown;
+    // Optional WhatsApp for child updates — DISPLAY/CONTACT ONLY, stored in
+    // Stripe metadata. Email + name are collected by Stripe at checkout.
+    whatsapp?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -163,13 +173,51 @@ export async function POST(req: NextRequest) {
   const stripeAmount = toStripeAmount(donorCurrencyAmount, rate.currency_code);
   const stripeCurrency = toStripeCurrency(rate.currency_code);
 
+  // ── Optional child gift (schema-free) ───────────────────────────
+  // When a childId is supplied, this is a guest one-time gift FOR that child.
+  // The child NAME is resolved SERVER-SIDE (never trusted from the client) so
+  // no arbitrary text can reach the Stripe line item. The charge still runs on
+  // the resolved one_time package (the pooled vehicle); the child link is
+  // recorded via the label + the guest_donation title + Stripe metadata — no
+  // schema change. An unknown/inactive childId simply degrades to a normal gift.
+  const rawChildId = typeof body.childId === "string" ? body.childId.trim() : "";
+  let childGiftName: string | null = null;
+  if (rawChildId) {
+    const child = await getChildById(rawChildId, "public");
+    if (child) childGiftName = child.display_name?.trim() || null;
+  }
+  const isChildGift = childGiftName !== null;
+  // Optional WhatsApp — contact only, kept short + stored in Stripe metadata.
+  const whatsapp =
+    typeof body.whatsapp === "string" ? body.whatsapp.trim().slice(0, 32) : "";
+
+  const recordTitle = isChildGift ? `Support ${childGiftName}` : pkg.name_en;
+  const lineItemName = isChildGift
+    ? `Support ${childGiftName} — One-Time Donation, OrphanGive`
+    : `${causeLabel} — One-Time Donation, OrphanGive`;
+  const lineItemDescription = isChildGift
+    ? `A one-time gift for ${childGiftName} in Bangladesh`
+    : childCount
+      ? `Supports ${childCount} ${childCount === 1 ? "child" : "children"} in Bangladesh`
+      : "A one-time gift for children in Bangladesh";
+
+  // Stripe metadata — keep kind='guest_cause' so the webhook still routes this
+  // to the guest branch (unchanged); child_id / whatsapp are additive.
+  // guest_donation_id is added at session-create time (once the row exists).
+  const giftMetadata: Record<string, string> = { kind: "guest_cause" };
+  if (isChildGift) {
+    giftMetadata.child_id = rawChildId;
+    giftMetadata.child_gift = "1";
+  }
+  if (whatsapp) giftMetadata.whatsapp = whatsapp;
+
   // ── Record (pending) + hosted Checkout Session ──────────────────
   let guestDonationId: string;
   try {
     guestDonationId = await createPendingGuestDonation({
       donationPackageId: pkg.id,
       causeTag: pkg.cause_tag,
-      packageTitle: pkg.name_en,
+      packageTitle: recordTitle,
       unitAmountBdt,
       childCount,
       amountBdt,
@@ -195,12 +243,11 @@ export async function POST(req: NextRequest) {
             unit_amount: stripeAmount,
             product_data: {
               // fix/donate-checkout-and-copy (Fix 1 + Fix 6) — the donor-facing
-              // line item is the CURATED CAUSE the donor picked, never the raw
-              // package title, and never says "pooled".
-              name: `${causeLabel} — One-Time Donation, OrphanGive`,
-              description: childCount
-                ? `Supports ${childCount} ${childCount === 1 ? "child" : "children"} in Bangladesh`
-                : "A one-time gift for children in Bangladesh",
+              // line item is the CURATED CAUSE the donor picked (or, for a child
+              // gift, "Support <Name>"), never the raw package title, never
+              // "pooled".
+              name: lineItemName,
+              description: lineItemDescription,
             },
           },
         },
@@ -212,9 +259,11 @@ export async function POST(req: NextRequest) {
       //    dispute branches identify guest charges WITHOUT touching the
       //    sponsorship handlers (which gate on metadata.payment_mode and
       //    ignore guest PIs entirely).
-      metadata: { kind: "guest_cause", guest_donation_id: guestDonationId },
+      // child_id / whatsapp (when present) ride along additively for the
+      // child-gift case; the routing key (kind) is unchanged.
+      metadata: { ...giftMetadata, guest_donation_id: guestDonationId },
       payment_intent_data: {
-        metadata: { kind: "guest_cause", guest_donation_id: guestDonationId },
+        metadata: { ...giftMetadata, guest_donation_id: guestDonationId },
       },
       success_url: siteUrl(
         "/donate/quick/success?session_id={CHECKOUT_SESSION_ID}",

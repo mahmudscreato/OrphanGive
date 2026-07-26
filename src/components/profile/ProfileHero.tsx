@@ -203,12 +203,15 @@ export function ProfileHero({
 
           <div className="mt-10 flex gap-3.5 items-center flex-wrap">
             {tier === "public" ? (
+              // fix/child-profile-support-cta — no sign-in wall. Public
+              // visitors go straight into the guest one-time gift flow for
+              // this child (account optional, offered after payment).
               <Button
-                href={`/signin?from=/children/${child.id}`}
+                href={`/support/${child.id}`}
                 variant="tangerine"
                 size="lg"
               >
-                Sign in to learn more →
+                Support {firstName}
               </Button>
             ) : (
               <Button
