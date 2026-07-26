@@ -2,9 +2,11 @@
 //
 // Backs /api/donate/guest-init, the Stripe webhook's guest branches, and the
 // read-only /admin/guest-donations list. Writes ONLY the guest_donation
-// collection (migrations/guest-donation/001) — fully isolated from
-// sponsorship / payment / the legacy donation model. No child link, no donor
-// FK, by design (founder decision: pooled cause fund, guest checkout).
+// collection (migrations/guest-donation/001 + 002) — fully isolated from
+// sponsorship / payment / the legacy donation model. No donor FK, by design
+// (the guest has no account). A nullable `child` reference (002) tags one-time
+// CHILD gifts from the /sponsor flow so they're queryable per child; pooled
+// cause donations (/donate/quick, the strip) leave it NULL.
 
 import "server-only";
 
@@ -25,6 +27,10 @@ export interface GuestDonationRow {
   cause_tag: string | null;
   package_title: string | null;
   unit_amount_bdt: number | null;
+  // fix/child-support-flow — queryable child reference. Set for one-time CHILD
+  // gifts (from the /sponsor flow); NULL for pooled cause donations. The
+  // canonical, reportable source of truth for "which child was this gift for".
+  child: string | null;
   child_count: number | null;
   amount_bdt: number;
   donor_currency_code: string | null;
@@ -43,6 +49,7 @@ const FIELDS = [
   "cause_tag",
   "package_title",
   "unit_amount_bdt",
+  "child",
   "child_count",
   "amount_bdt",
   "donor_currency_code",
@@ -61,6 +68,8 @@ export async function createPendingGuestDonation(input: {
   causeTag: string | null;
   packageTitle: string;
   unitAmountBdt: number | null;
+  /** One-time CHILD gift target (queryable). NULL for pooled cause donations. */
+  childId: string | null;
   childCount: number | null;
   amountBdt: number;
   donorCurrencyCode: string;
@@ -73,6 +82,7 @@ export async function createPendingGuestDonation(input: {
       cause_tag: input.causeTag,
       package_title: input.packageTitle,
       unit_amount_bdt: input.unitAmountBdt,
+      child: input.childId,
       child_count: input.childCount,
       amount_bdt: input.amountBdt,
       donor_currency_code: input.donorCurrencyCode,

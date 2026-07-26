@@ -231,6 +231,10 @@ export async function POST(req: NextRequest) {
       causeTag: pkg.cause_tag,
       packageTitle: recordTitle,
       unitAmountBdt,
+      // fix/child-support-flow — queryable child link (source of truth) for
+      // one-time CHILD gifts; NULL for pooled cause donations. The Stripe
+      // metadata child_id is kept too (below) for Stripe-side traceability.
+      childId: isChildGift ? rawChildId : null,
       childCount,
       amountBdt,
       donorCurrencyCode: rate.currency_code,
