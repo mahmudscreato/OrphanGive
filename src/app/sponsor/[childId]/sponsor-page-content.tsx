@@ -224,6 +224,17 @@ export function SponsorPageContent({
     publishableKey: string;
   } | null>(null);
 
+  // fix/child-support-flow — GUEST (not signed in) payment state at Step 6.
+  // Only used when !signedIn; logged-in donors never touch any of this and
+  // their payment path (handleContinue → /api/donate/init → PayInline) is
+  // completely unchanged.
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+  const [showGuestOneTime, setShowGuestOneTime] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+
   const subhead = pickFirstSentence(child.story);
   const photoSrc = directusAssetUrl(child.photo);
 
@@ -626,6 +637,80 @@ export function SponsorPageContent({
     }
   }
 
+  // ── Guest (not signed in) payment at Step 6 ─────────────────────────
+  // fix/child-support-flow. MONTHLY needs an account (recurring = identified
+  // sponsor + saved card) → send to signup, returning here. ONE-TIME reveals
+  // an inline panel: create an account (optional) OR give as a guest with
+  // Name + Email (required) + Phone (optional), routed to the EXISTING
+  // guest_donation Checkout, tagged to this child.
+  function handleGuestContinue() {
+    setGuestError(null);
+    if (mode === "monthly") {
+      window.location.href = `/signup?next=/sponsor/${child.id}`;
+      return;
+    }
+    setShowGuestOneTime(true);
+  }
+
+  async function submitGuestOneTime() {
+    setGuestError(null);
+    if (donorAmount === null) return;
+    const name = guestName.trim();
+    const email = guestEmail.trim();
+    if (!name) {
+      setGuestError("Please enter your full name.");
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setGuestError("Please enter a valid email address.");
+      return;
+    }
+    // Charge vehicle: the selected one_time package (gift or quick tier), else
+    // a general one_time package for the custom-amount path. guest-init uses
+    // customAmount (BDT) for the charge and labels it "Support <Name>".
+    let vehiclePackageId: string | null = null;
+    if (giftId) vehiclePackageId = giftId;
+    else if (tierId && tierId !== OTHER_TIER_ID) vehiclePackageId = tierId;
+    else vehiclePackageId = oneTimeQuick[0]?.id ?? oneTimeGifts[0]?.id ?? null;
+    if (!vehiclePackageId) {
+      setGuestError("Giving is temporarily unavailable. Please try again.");
+      return;
+    }
+
+    setGuestSubmitting(true);
+    try {
+      const res = await fetch("/api/donate/guest-init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packageId: vehiclePackageId,
+          customAmount: perChargeBdt, // BDT — the guest flow is BDT
+          childId: child.id,
+          guestName: name,
+          guestEmail: email,
+          guestPhone: guestPhone.trim() || undefined,
+          cause, // label fallback (the child branch overrides to "Support <Name>")
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.url) {
+        setGuestError(
+          data.error ?? "Could not start the donation. Please try again.",
+        );
+        setGuestSubmitting(false);
+        return;
+      }
+      // Explicit hand-off to Stripe's hosted Checkout.
+      window.location.href = data.url;
+    } catch {
+      setGuestError("Network error. Please try again.");
+      setGuestSubmitting(false);
+    }
+  }
+
   // Resolve cause label for review (only when cause step was visited
   // — i.e. one-time custom or one-time quick amount, never monthly).
   const causeLabel = useMemo<string | null>(() => {
@@ -712,7 +797,8 @@ export function SponsorPageContent({
           ) : null}
           {!signedIn ? (
             <p className="text-[13.5px] text-slate-soft mb-5">
-              You&apos;ll sign in to complete payment.
+              A one-time gift needs no account — monthly sponsorship requires a
+              quick, free signup at the payment step.
             </p>
           ) : null}
 
@@ -1005,12 +1091,15 @@ export function SponsorPageContent({
                     : null
                 }
                 onEdit={editSelections}
-                onContinue={handleContinue}
-                pending={initing || initData !== null}
-                error={error}
+                onContinue={signedIn ? handleContinue : handleGuestContinue}
+                pending={
+                  signedIn ? initing || initData !== null : guestSubmitting
+                }
+                error={signedIn ? error : null}
               />
 
-              {initData ? (
+              {/* Signed-in donor: existing inline Stripe payment — UNCHANGED. */}
+              {signedIn && initData ? (
                 <div className="rounded-[20px] bg-white border border-ink/[0.08] px-6 py-5 shadow-warm">
                   <h3 className="font-display text-[18px] text-ink mb-3">
                     Payment
@@ -1021,6 +1110,115 @@ export function SponsorPageContent({
                       sponsorshipId={initData.sponsorshipId}
                     />
                   </Elements>
+                </div>
+              ) : null}
+
+              {/* Guest + MONTHLY → account required (recurring needs a saved
+                  card + identified sponsor). "Continue to payment" sends them
+                  to signup, returning here afterward. */}
+              {!signedIn && mode === "monthly" ? (
+                <p className="text-[13.5px] text-slate leading-[1.6]">
+                  Monthly sponsorship needs a free account (for your recurring
+                  card and updates) — you&rsquo;ll create one at the next step.
+                </p>
+              ) : null}
+
+              {/* Guest + ONE-TIME → optional account, or give as a guest with
+                  inline details. Routes to the EXISTING guest_donation Checkout,
+                  tagged to this child. */}
+              {!signedIn && mode === "one_time" && showGuestOneTime ? (
+                <div className="rounded-[20px] bg-white border border-ink/[0.08] px-6 py-5 shadow-warm space-y-4">
+                  <div>
+                    <h3 className="font-display text-[18px] text-ink">
+                      Almost there
+                    </h3>
+                    <p className="mt-1 text-[14px] text-slate leading-[1.6]">
+                      Create a free account to follow {child.display_name}
+                      &rsquo;s journey — or simply continue as a guest.
+                    </p>
+                    <a
+                      href={`/signup?next=/sponsor/${child.id}`}
+                      className="mt-2 inline-block text-[14px] font-medium text-tangerine-deeper underline-offset-4 hover:underline"
+                    >
+                      Create an account →
+                    </a>
+                  </div>
+
+                  <div className="border-t border-ink/[0.08] pt-4 space-y-3">
+                    <p className="text-[13px] font-medium text-ink">
+                      Or continue as a guest
+                    </p>
+                    <div>
+                      <label
+                        htmlFor="guest-name"
+                        className="block text-[13px] text-slate mb-1"
+                      >
+                        Full name <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        id="guest-name"
+                        type="text"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        disabled={guestSubmitting}
+                        className="w-full h-11 rounded-xl border border-ink/[0.14] bg-white px-4 text-[15px] text-ink focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="guest-email"
+                        className="block text-[13px] text-slate mb-1"
+                      >
+                        Email <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        id="guest-email"
+                        type="email"
+                        inputMode="email"
+                        value={guestEmail}
+                        onChange={(e) => setGuestEmail(e.target.value)}
+                        disabled={guestSubmitting}
+                        className="w-full h-11 rounded-xl border border-ink/[0.14] bg-white px-4 text-[15px] text-ink focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="guest-phone"
+                        className="block text-[13px] text-slate mb-1"
+                      >
+                        Phone{" "}
+                        <span className="text-slate-soft">(optional)</span>
+                      </label>
+                      <input
+                        id="guest-phone"
+                        type="tel"
+                        inputMode="tel"
+                        value={guestPhone}
+                        onChange={(e) => setGuestPhone(e.target.value)}
+                        disabled={guestSubmitting}
+                        className="w-full h-11 rounded-xl border border-ink/[0.14] bg-white px-4 text-[15px] text-ink focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft"
+                      />
+                    </div>
+                    {guestError ? (
+                      <p className="text-[13px] text-danger" role="alert">
+                        {guestError}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={submitGuestOneTime}
+                      disabled={guestSubmitting}
+                      className="inline-flex items-center justify-center gap-2 h-12 font-body font-semibold rounded-full bg-tangerine text-ink px-7 text-[15px] transition-all hover:bg-tangerine-deep hover:shadow-warm disabled:opacity-60"
+                    >
+                      {guestSubmitting
+                        ? "Taking you to checkout…"
+                        : `Donate ৳${perChargeBdt.toLocaleString()}`}
+                    </button>
+                    <p className="text-[12px] text-slate-soft leading-[1.5]">
+                      You&rsquo;ll pay securely on Stripe in BDT (৳). No account
+                      needed; your receipt goes to the email above.
+                    </p>
+                  </div>
                 </div>
               ) : null}
             </div>

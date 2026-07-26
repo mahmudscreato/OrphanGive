@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { getChildById } from "@/lib/child-profile-data";
 import { getCurrentDonor, getDonorState } from "@/lib/donor-data";
@@ -30,14 +30,16 @@ export default async function SponsorPage({
 }) {
   const { childId } = await params;
 
-  // Charity-trust pattern: sponsoring requires a signed-in donor from
-  // the very first step. Anonymous visitors browsing /children/[id]
-  // who click "Sponsor a Child" land on /signin with this URL queued
-  // as `next=`, so they return here after authenticating.
+  // fix/child-support-flow — NO sign-in gate at entry. Guests enter the SAME
+  // flow (select mode → amount/package → cause → visibility → review). The
+  // account requirement is applied at the PAYMENT step (Step 6) inside
+  // sponsor-page-content: MONTHLY requires signup (recurring needs an
+  // identified sponsor); ONE-TIME completes as a guest_donation (child-tagged)
+  // with inline name/email/phone, or the donor may sign up. Logged-in donors
+  // keep the existing proven flow unchanged. All donor-keyed reads below are
+  // guest-safe (getDonorState(null)='unauthenticated'; resolveDonorCurrency-
+  // WithLock(null) falls back to geo currency; readCart() returns null).
   const donor = await getCurrentDonor();
-  if (!donor) {
-    redirect(`/signin?next=/sponsor/${encodeURIComponent(childId)}`);
-  }
 
   // Use admin tier for the fetch — sponsor page only displays public-safe
   // fields, but we want full reliability regardless of viewer role.
@@ -71,7 +73,7 @@ export default async function SponsorPage({
   // info if the page was open while another donor checked out).
   const activeMonthly = await getActiveMonthlySponsorForChild(child.id);
   const isOwnActiveMonthly = Boolean(
-    activeMonthly && activeMonthly.donorId === donor.id,
+    donor && activeMonthly && activeMonthly.donorId === donor.id,
   );
 
   let monthlyLocked = false;

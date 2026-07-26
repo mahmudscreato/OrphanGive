@@ -48,7 +48,6 @@ import {
 const HIDE_PREFIXES = [
   "/donate",
   "/sponsor",
-  "/support",
   "/checkout",
   "/cart",
   "/resume",

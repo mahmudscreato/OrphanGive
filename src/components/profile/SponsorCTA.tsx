@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/Button";
-import Link from "next/link";
 import type { ChildProfile, ViewerTier } from "@/lib/child-profile-data";
 
 const TRUST_PILLS = [
@@ -66,23 +65,17 @@ export function SponsorCTA({
               blend into the background). */}
           {tier === "public" ? (
             <>
-              {/* fix/child-profile-support-cta — no sign-in wall. The primary
-                  action gives now (guest one-time, account optional after);
-                  monthly/recurring genuinely needs an account, offered as the
-                  clear secondary. */}
+              {/* fix/child-support-flow — no sign-in wall at entry; "Support
+                  [Name]" leads into the EXISTING sponsorship flow. The
+                  account requirement is applied at the payment step there
+                  (monthly = mandatory signup; one-time = optional). */}
               <Button
-                href={`/support/${child.id}`}
+                href={`/sponsor/${child.id}`}
                 variant="white"
                 size="lg"
               >
                 Support {firstName} →
               </Button>
-              <Link
-                href={`/signin?next=/sponsor/${child.id}`}
-                className="text-[14px] text-cream/80 hover:text-white underline-offset-4 hover:underline"
-              >
-                Or sign in to sponsor monthly
-              </Link>
             </>
           ) : (
             <Button
