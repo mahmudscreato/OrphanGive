@@ -25,10 +25,24 @@ export const dynamic = "force-dynamic";
 
 export default async function SponsorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ childId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { childId } = await params;
+
+  // fix/resume-at-payment-after-signup — `rs` is a JSON snapshot of the
+  // donor's in-progress selections, carried back through signup so the client
+  // restores them and resumes at the payment step. null = fresh entry.
+  const sp = await searchParams;
+  const rsParam = sp.rs;
+  const resume =
+    typeof rsParam === "string"
+      ? rsParam
+      : Array.isArray(rsParam)
+        ? rsParam[0] ?? null
+        : null;
 
   // fix/child-support-flow — NO sign-in gate at entry. Guests enter the SAME
   // flow (select mode → amount/package → cause → visibility → review). The
@@ -150,6 +164,7 @@ export default async function SponsorPage({
         selfActiveMonthly={selfActiveMonthly}
         queueJoin={queueJoin}
         queueFullThrough={queueFullThrough}
+        resume={resume}
       />
     </div>
   );
@@ -170,6 +185,7 @@ async function SponsorPageContentWithData({
   selfActiveMonthly,
   queueJoin,
   queueFullThrough,
+  resume,
 }: {
   donor: Awaited<ReturnType<typeof getCurrentDonor>>;
   child: {
@@ -195,6 +211,7 @@ async function SponsorPageContentWithData({
     donorsAhead: number;
   } | null;
   queueFullThrough: string | null;
+  resume: string | null;
 }) {
   // Parallel fetches: 3 package reads + currency list + donor's
   // current currency. All server-only.
@@ -233,6 +250,7 @@ async function SponsorPageContentWithData({
       selfActiveMonthly={selfActiveMonthly}
       queueJoin={queueJoin}
       queueFullThrough={queueFullThrough}
+      resume={resume}
       monthlyTiers={monthlyTiers.map((p) => ({
         id: p.id,
         name_en: p.name_en,
