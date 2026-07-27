@@ -139,6 +139,10 @@ export interface SponsorPageContentProps {
   /** Session 58.3.2 — when true, the donor's Stripe customer already
    *  has objects in this currency; the picker renders disabled. */
   currencyLocked: boolean;
+  /** fix/resume-at-payment-after-signup — the `rs` query param (a JSON
+   *  snapshot of the donor's in-progress selections) carried back through
+   *  signup so they resume at the payment step. null/absent = fresh entry. */
+  resume: string | null;
 }
 
 const OTHER_TIER_ID = "other" as const;
@@ -199,6 +203,7 @@ export function SponsorPageContent({
   monthlyMinBdt,
   oneTimeMinBdt,
   currencyLocked,
+  resume,
 }: SponsorPageContentProps) {
   // ── State machine ─────────────────────────────────────────────────
   const [mode, setMode] = useState<PaymentMode | null>(null);
@@ -327,6 +332,97 @@ export function SponsorPageContent({
     setError(null);
     setStep(n);
   }
+
+  // ── fix/resume-at-payment-after-signup ──────────────────────────────
+  // Preserve in-progress selections across the signup detour so the donor
+  // resumes at the PAYMENT step, not step 1. The selection is JSON-encoded
+  // into the `next` URL (which already round-trips through signup → verify →
+  // establishSession) as a single `rs` param — no storage, no schema. It is
+  // UI PRE-FILL ONLY: the charge is still validated SERVER-SIDE by
+  // /api/donate/init on the restored values, exactly as a freshly-typed one.
+  function buildSignupNext(): string {
+    const sel = {
+      f: mode,
+      t: tierId,
+      g: giftId,
+      a: customAmount === "" ? null : customAmount,
+      do: duration.optionId,
+      dm: duration.months,
+      s: schedule,
+      v: visibility,
+      k: cause,
+    };
+    const p = new URLSearchParams({ rs: JSON.stringify(sel) });
+    const next = `/sponsor/${child.id}?${p.toString()}`;
+    return `/signup?next=${encodeURIComponent(next)}`;
+  }
+
+  // Mirror donorAmount() for a restored selection — returns the donor-currency
+  // amount, or null when the package/amount is stale/invalid (→ graceful
+  // fallback to step 1 rather than resuming into a broken review).
+  function resolveResumeAmount(sel: {
+    f?: unknown;
+    t?: unknown;
+    g?: unknown;
+    a?: unknown;
+  }): number | null {
+    const f = sel.f;
+    if (f === "one_time" && typeof sel.g === "string") {
+      const gift = oneTimeGifts.find((x) => x.id === sel.g);
+      return gift ? convertBdtToDonor(gift.amount_bdt, bdtPerDonorUnit) : null;
+    }
+    if (sel.t === OTHER_TIER_ID) {
+      return typeof sel.a === "number" && sel.a > 0 ? sel.a : null;
+    }
+    if (typeof sel.t === "string") {
+      const source = f === "monthly" ? monthlyTiers : oneTimeQuick;
+      const found = source.find((x) => x.id === sel.t);
+      return found ? convertBdtToDonor(found.amount_bdt, bdtPerDonorUnit) : null;
+    }
+    return null;
+  }
+
+  // Restore on mount (once) from the `rs` snapshot, if present + valid.
+  const didRestore = useRef(false);
+  useEffect(() => {
+    if (didRestore.current) return;
+    didRestore.current = true;
+    if (!resume) return;
+    let sel: Record<string, unknown>;
+    try {
+      sel = JSON.parse(resume) as Record<string, unknown>;
+    } catch {
+      return; // malformed → ignore, start fresh (existing behavior)
+    }
+    if (sel.f !== "monthly" && sel.f !== "one_time") return;
+    // Stale/invalid package or amount → graceful fallback to step 1 (no error,
+    // just re-pick — rare: e.g. a package deactivated since they started).
+    if (resolveResumeAmount(sel) === null) return;
+
+    clearAdvance();
+    setMode(sel.f as PaymentMode);
+    setTierId(typeof sel.t === "string" ? sel.t : null);
+    setGiftId(typeof sel.g === "string" ? sel.g : null);
+    setCustomAmount(typeof sel.a === "number" ? sel.a : "");
+    if (typeof sel.do === "string") {
+      setDuration({
+        optionId: sel.do,
+        months: typeof sel.dm === "number" ? sel.dm : null,
+      });
+    }
+    if (sel.s === "monthly" || sel.s === "monthly_prepaid") setSchedule(sel.s);
+    if (typeof sel.v === "string") setVisibility(sel.v as VisibilityEnum);
+    if (typeof sel.k === "string") setCause(sel.k as CauseEnum);
+    setStep(6); // land at the payment/review step, ready to pay
+
+    // Drop `rs` from the URL so a reload/back doesn't re-trigger the jump.
+    try {
+      window.history.replaceState(null, "", `/sponsor/${child.id}`);
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const previousStepRef = useRef<number>(1);
   useEffect(() => {
@@ -646,7 +742,9 @@ export function SponsorPageContent({
   function handleGuestContinue() {
     setGuestError(null);
     if (mode === "monthly") {
-      window.location.href = `/signup?next=/sponsor/${child.id}`;
+      // Carry the in-progress selection so they resume at the payment step
+      // after signup (not step 1).
+      window.location.href = buildSignupNext();
       return;
     }
     setShowGuestOneTime(true);
@@ -1137,7 +1235,7 @@ export function SponsorPageContent({
                       &rsquo;s journey — or simply continue as a guest.
                     </p>
                     <a
-                      href={`/signup?next=/sponsor/${child.id}`}
+                      href={buildSignupNext()}
                       className="mt-2 inline-block text-[14px] font-medium text-tangerine-deeper underline-offset-4 hover:underline"
                     >
                       Create an account →
