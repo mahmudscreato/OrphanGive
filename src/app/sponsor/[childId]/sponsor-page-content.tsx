@@ -141,7 +141,8 @@ export interface SponsorPageContentProps {
   currencyLocked: boolean;
   /** fix/resume-at-payment-after-signup — the `rs` query param (a JSON
    *  snapshot of the donor's in-progress selections) carried back through
-   *  signup so they resume at the payment step. null/absent = fresh entry. */
+   *  signup so they resume PRE-FILLED just before payment (the reveal-approval
+   *  step), without re-picking. null/absent = fresh entry. */
   resume: string | null;
 }
 
@@ -333,13 +334,15 @@ export function SponsorPageContent({
     setStep(n);
   }
 
-  // ── fix/resume-at-payment-after-signup ──────────────────────────────
+  // ── fix/resume-at-payment-after-signup (Option A) ───────────────────
   // Preserve in-progress selections across the signup detour so the donor
-  // resumes at the PAYMENT step, not step 1. The selection is JSON-encoded
-  // into the `next` URL (which already round-trips through signup → verify →
-  // establishSession) as a single `rs` param — no storage, no schema. It is
-  // UI PRE-FILL ONLY: the charge is still validated SERVER-SIDE by
-  // /api/donate/init on the restored values, exactly as a freshly-typed one.
+  // resumes JUST BEFORE payment (the reveal-approval step) with everything
+  // pre-filled — not re-picking from step 1 — while the flow still runs its
+  // authenticated prerequisites. The selection is JSON-encoded into the `next`
+  // URL (which already round-trips through signup → verify → establishSession)
+  // as a single `rs` param — no storage, no schema. It is UI PRE-FILL ONLY:
+  // the charge is still validated SERVER-SIDE by /api/donate/init on the
+  // restored values, exactly as a freshly-typed one.
   function buildSignupNext(): string {
     const sel = {
       f: mode,
@@ -413,7 +416,16 @@ export function SponsorPageContent({
     if (sel.s === "monthly" || sel.s === "monthly_prepaid") setSchedule(sel.s);
     if (typeof sel.v === "string") setVisibility(sel.v as VisibilityEnum);
     if (typeof sel.k === "string") setCause(sel.k as CauseEnum);
-    setStep(6); // land at the payment/review step, ready to pay
+    // Option A (founder): PRE-FILL the selections but do NOT teleport past the
+    // authenticated prerequisites. Land at Step 5 — the donor-name
+    // reveal-approval (visibility) step — which still executes as normal for
+    // the now-authenticated donor. They confirm it (their prior choice is
+    // pre-selected) → review → pay. Frequency/package/amount/duration/schedule
+    // are already chosen, so nothing is re-picked; only the reveal-approval +
+    // review/payment-prep steps run, exactly as they would for any signed-in
+    // donor. (Restore never fires an auto-advance — setState here bypasses the
+    // change handlers — so the donor rests on Step 5, not skipped past it.)
+    setStep(5);
 
     // Drop `rs` from the URL so a reload/back doesn't re-trigger the jump.
     try {
