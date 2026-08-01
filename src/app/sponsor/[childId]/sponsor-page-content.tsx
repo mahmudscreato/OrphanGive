@@ -186,6 +186,100 @@ function bdtFloorToDonor(bdt: number, bdtPerDonorUnit: number): number {
   return Math.max(1, Math.ceil(bdt / bdtPerDonorUnit));
 }
 
+// ─── Resume-selection restore (fix/resume-selections-reveal-reset) ──────
+//
+// A just-authenticated donor returning from signup carries their in-progress
+// selection back in the `rs` snapshot (see buildSignupNext / page.tsx). These
+// pure helpers parse + validate that snapshot so the flow can LAZY-INITIALISE
+// its state from it (see the useState block below) — the returning donor is
+// then BORN at the reveal-approval step with everything pre-filled, instead of
+// being re-initialised to Step 1 by the normal fresh-start defaults.
+
+type RestoredSelection = {
+  mode: PaymentMode;
+  tierId: string | null;
+  giftId: string | null;
+  customAmount: number | "";
+  duration: DurationSelection;
+  schedule: PaymentSchedule | null;
+  cause: CauseEnum;
+  visibility: VisibilityEnum;
+};
+
+type ResumePackages = {
+  monthlyTiers: ReadonlyArray<PackageData>;
+  oneTimeQuick: ReadonlyArray<PackageData>;
+  oneTimeGifts: ReadonlyArray<PackageData>;
+  bdtPerDonorUnit: number;
+};
+
+// Mirror donorAmount() for a carried selection — returns the donor-currency
+// amount, or null when the package/amount is stale/invalid (→ the caller treats
+// the snapshot as absent and starts fresh at Step 1 rather than resuming into a
+// broken review).
+function restoredAmount(
+  sel: { f?: unknown; t?: unknown; g?: unknown; a?: unknown },
+  pkgs: ResumePackages,
+): number | null {
+  const f = sel.f;
+  if (f === "one_time" && typeof sel.g === "string") {
+    const gift = pkgs.oneTimeGifts.find((x) => x.id === sel.g);
+    return gift ? convertBdtToDonor(gift.amount_bdt, pkgs.bdtPerDonorUnit) : null;
+  }
+  if (sel.t === OTHER_TIER_ID) {
+    return typeof sel.a === "number" && sel.a > 0 ? sel.a : null;
+  }
+  if (typeof sel.t === "string") {
+    const source = f === "monthly" ? pkgs.monthlyTiers : pkgs.oneTimeQuick;
+    const found = source.find((x) => x.id === sel.t);
+    return found
+      ? convertBdtToDonor(found.amount_bdt, pkgs.bdtPerDonorUnit)
+      : null;
+  }
+  return null;
+}
+
+// Parse + validate the `rs` snapshot into a restorable selection, or null when
+// there's no snapshot / it's malformed / the frequency is unrecognised / the
+// package is stale. Field mapping is identical to the prior restore effect —
+// only WHERE it runs changes (lazy state init, not a post-mount effect), so a
+// returning donor's selection is applied before the first render and can't be
+// discarded by the authenticated-arrival re-init.
+function computeRestoredSelection(
+  resume: string | null,
+  pkgs: ResumePackages,
+): RestoredSelection | null {
+  if (!resume) return null;
+  let sel: Record<string, unknown>;
+  try {
+    sel = JSON.parse(resume) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (sel.f !== "monthly" && sel.f !== "one_time") return null;
+  if (restoredAmount(sel, pkgs) === null) return null;
+  return {
+    mode: sel.f as PaymentMode,
+    tierId: typeof sel.t === "string" ? sel.t : null,
+    giftId: typeof sel.g === "string" ? sel.g : null,
+    customAmount: typeof sel.a === "number" ? sel.a : "",
+    duration:
+      typeof sel.do === "string"
+        ? {
+            optionId: sel.do,
+            months: typeof sel.dm === "number" ? sel.dm : null,
+          }
+        : { optionId: "d_indef", months: null },
+    schedule:
+      sel.s === "monthly" || sel.s === "monthly_prepaid"
+        ? (sel.s as PaymentSchedule)
+        : null,
+    cause: typeof sel.k === "string" ? (sel.k as CauseEnum) : DEFAULT_CAUSE,
+    visibility:
+      typeof sel.v === "string" ? (sel.v as VisibilityEnum) : DEFAULT_VISIBILITY,
+  };
+}
+
 export function SponsorPageContent({
   child,
   signedIn,
@@ -207,18 +301,60 @@ export function SponsorPageContent({
   resume,
 }: SponsorPageContentProps) {
   // ── State machine ─────────────────────────────────────────────────
-  const [mode, setMode] = useState<PaymentMode | null>(null);
-  const [tierId, setTierId] = useState<string | null>(null);
-  const [giftId, setGiftId] = useState<string | null>(null);
-  const [customAmount, setCustomAmount] = useState<number | "">("");
-  const [duration, setDuration] = useState<DurationSelection>({
-    optionId: "d_indef",
-    months: null,
-  });
-  const [schedule, setSchedule] = useState<PaymentSchedule | null>(null);
-  const [cause, setCause] = useState<CauseEnum>(DEFAULT_CAUSE);
-  const [visibility, setVisibility] = useState<VisibilityEnum>(DEFAULT_VISIBILITY);
-  const [step, setStep] = useState<Step>(1);
+  // fix/resume-selections-reveal-reset — a just-authenticated donor returning
+  // from signup carries their in-progress selection back in `resume` (the `rs`
+  // snapshot). Compute it ONCE and use it to LAZY-INITIALISE the flow state
+  // below, so a RETURNING DONOR WITH CARRIED SELECTIONS is born PRE-FILLED at
+  // the reveal-approval step (Step 5). This is the distinguishing condition
+  // (`initialRestore !== null` = returning donor with a valid carried
+  // selection); applying it at init — rather than in a post-mount effect that
+  // the authenticated-arrival re-render could discard — is what stops the flow
+  // resetting to Step 1. Fresh entry (no snapshot) or a stale/invalid snapshot
+  // → null → the original fresh-start defaults, byte-for-byte unchanged.
+  const initialRestore = useMemo(
+    () =>
+      computeRestoredSelection(resume, {
+        monthlyTiers,
+        oneTimeQuick,
+        oneTimeGifts,
+        bdtPerDonorUnit,
+      }),
+    // Compute ONCE at mount — later prop changes must not re-run this and
+    // clobber the donor's own subsequent edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const [mode, setMode] = useState<PaymentMode | null>(
+    initialRestore?.mode ?? null,
+  );
+  const [tierId, setTierId] = useState<string | null>(
+    initialRestore?.tierId ?? null,
+  );
+  const [giftId, setGiftId] = useState<string | null>(
+    initialRestore?.giftId ?? null,
+  );
+  const [customAmount, setCustomAmount] = useState<number | "">(
+    initialRestore?.customAmount ?? "",
+  );
+  const [duration, setDuration] = useState<DurationSelection>(
+    initialRestore?.duration ?? {
+      optionId: "d_indef",
+      months: null,
+    },
+  );
+  const [schedule, setSchedule] = useState<PaymentSchedule | null>(
+    initialRestore?.schedule ?? null,
+  );
+  const [cause, setCause] = useState<CauseEnum>(
+    initialRestore?.cause ?? DEFAULT_CAUSE,
+  );
+  const [visibility, setVisibility] = useState<VisibilityEnum>(
+    initialRestore?.visibility ?? DEFAULT_VISIBILITY,
+  );
+  // Returning donor with a valid carried selection → land at Step 5
+  // (reveal-approval); everyone else → Step 1 (unchanged fresh start).
+  const [step, setStep] = useState<Step>(initialRestore ? 5 : 1);
   const [error, setError] = useState<string | null>(null);
 
   // Inline Stripe state — only present on Step 6 review when the
@@ -360,81 +496,26 @@ export function SponsorPageContent({
     return `/signup?next=${encodeURIComponent(next)}`;
   }
 
-  // Mirror donorAmount() for a restored selection — returns the donor-currency
-  // amount, or null when the package/amount is stale/invalid (→ graceful
-  // fallback to step 1 rather than resuming into a broken review).
-  function resolveResumeAmount(sel: {
-    f?: unknown;
-    t?: unknown;
-    g?: unknown;
-    a?: unknown;
-  }): number | null {
-    const f = sel.f;
-    if (f === "one_time" && typeof sel.g === "string") {
-      const gift = oneTimeGifts.find((x) => x.id === sel.g);
-      return gift ? convertBdtToDonor(gift.amount_bdt, bdtPerDonorUnit) : null;
-    }
-    if (sel.t === OTHER_TIER_ID) {
-      return typeof sel.a === "number" && sel.a > 0 ? sel.a : null;
-    }
-    if (typeof sel.t === "string") {
-      const source = f === "monthly" ? monthlyTiers : oneTimeQuick;
-      const found = source.find((x) => x.id === sel.t);
-      return found ? convertBdtToDonor(found.amount_bdt, bdtPerDonorUnit) : null;
-    }
-    return null;
-  }
-
-  // Restore on mount (once) from the `rs` snapshot, if present + valid.
-  const didRestore = useRef(false);
+  // fix/resume-selections-reveal-reset — the carried selection is now applied at
+  // state INIT (the lazy useState initializers above), NOT in a post-mount
+  // effect, so the authenticated-arrival re-render can no longer discard it and
+  // reset the donor to Step 1. This effect only cleans up the URL: once the
+  // restored donor moves PAST the reveal-approval step (Step 5) — advancing to
+  // review or editing back to re-pick — drop `rs` so a later reload doesn't
+  // re-apply the now-stale snapshot. While they remain ON Step 5 we deliberately
+  // KEEP `rs`, so any re-mount during the auth transition re-restores cleanly
+  // (this is the window where the old effect-based restore was being lost).
+  const rsCleared = useRef(false);
   useEffect(() => {
-    if (didRestore.current) return;
-    didRestore.current = true;
-    if (!resume) return;
-    let sel: Record<string, unknown>;
-    try {
-      sel = JSON.parse(resume) as Record<string, unknown>;
-    } catch {
-      return; // malformed → ignore, start fresh (existing behavior)
-    }
-    if (sel.f !== "monthly" && sel.f !== "one_time") return;
-    // Stale/invalid package or amount → graceful fallback to step 1 (no error,
-    // just re-pick — rare: e.g. a package deactivated since they started).
-    if (resolveResumeAmount(sel) === null) return;
-
-    clearAdvance();
-    setMode(sel.f as PaymentMode);
-    setTierId(typeof sel.t === "string" ? sel.t : null);
-    setGiftId(typeof sel.g === "string" ? sel.g : null);
-    setCustomAmount(typeof sel.a === "number" ? sel.a : "");
-    if (typeof sel.do === "string") {
-      setDuration({
-        optionId: sel.do,
-        months: typeof sel.dm === "number" ? sel.dm : null,
-      });
-    }
-    if (sel.s === "monthly" || sel.s === "monthly_prepaid") setSchedule(sel.s);
-    if (typeof sel.v === "string") setVisibility(sel.v as VisibilityEnum);
-    if (typeof sel.k === "string") setCause(sel.k as CauseEnum);
-    // Option A (founder): PRE-FILL the selections but do NOT teleport past the
-    // authenticated prerequisites. Land at Step 5 — the donor-name
-    // reveal-approval (visibility) step — which still executes as normal for
-    // the now-authenticated donor. They confirm it (their prior choice is
-    // pre-selected) → review → pay. Frequency/package/amount/duration/schedule
-    // are already chosen, so nothing is re-picked; only the reveal-approval +
-    // review/payment-prep steps run, exactly as they would for any signed-in
-    // donor. (Restore never fires an auto-advance — setState here bypasses the
-    // change handlers — so the donor rests on Step 5, not skipped past it.)
-    setStep(5);
-
-    // Drop `rs` from the URL so a reload/back doesn't re-trigger the jump.
+    if (!initialRestore || rsCleared.current) return;
+    if (step === 5) return; // still on the restored step — keep `rs`
+    rsCleared.current = true;
     try {
       window.history.replaceState(null, "", `/sponsor/${child.id}`);
     } catch {
       /* ignore */
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [step, initialRestore, child.id]);
 
   const previousStepRef = useRef<number>(1);
   useEffect(() => {
