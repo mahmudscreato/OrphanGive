@@ -95,6 +95,7 @@ export default async function AdminGuestDonationsPage() {
                 <tr>
                   <th className="px-4 py-3 font-medium">Cause</th>
                   <th className="px-4 py-3 font-medium">Amount</th>
+                  <th className="px-4 py-3 font-medium">Gateway</th>
                   <th className="px-4 py-3 font-medium">Email</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Date</th>
@@ -119,6 +120,11 @@ export default async function AdminGuestDonationsPage() {
                     </td>
                     <td className="px-4 py-3 tabular-nums text-ink">
                       {amountLabel(r)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-700 capitalize">
+                        {r.gateway ?? "stripe"}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-ink-soft break-all">
                       {r.guest_email ?? "—"}
@@ -161,6 +167,7 @@ export default async function AdminGuestDonationsPage() {
                 </p>
                 <p className="mt-1 text-[12px] text-ink-soft">
                   {formatWhen(r.paid_at ?? r.created_at)}
+                  <span className="ml-2 capitalize">· {r.gateway ?? "stripe"}</span>
                 </p>
               </li>
             ))}

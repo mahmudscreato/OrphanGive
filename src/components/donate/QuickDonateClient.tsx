@@ -40,6 +40,14 @@ export function QuickDonateClient({
   const [customAmount, setCustomAmount] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // feat/sslcommerz-phase1-guest — gateway choice. Default to SSLCommerz for
+  // BDT (geo-resolved Bangladesh) donors, Stripe otherwise; always overridable.
+  const [gateway, setGateway] = useState<"sslcommerz" | "stripe">(
+    currencyCode === "BDT" ? "sslcommerz" : "stripe",
+  );
+  // Email is required only for the SSLCommerz path (it needs cus_email + it's
+  // the receipt address). Stripe collects the email on its hosted Checkout.
+  const [email, setEmail] = useState("");
 
   const cause = causes.find((c) => c.enum === causeEnum) ?? null;
   const presetTotal = cause ? cause.unitAmountBdt * count : 0;
@@ -50,24 +58,69 @@ export function QuickDonateClient({
       setError("Please choose a cause.");
       return;
     }
-    let payload: Record<string, unknown> = {
-      packageId: cause.packageId,
-      currencyCode,
-      // Fix 1 — the curated cause drives the Stripe line-item label
-      // (server-validated; the charge is still keyed by packageId).
-      cause: cause.enum,
-    };
+
+    // Amount is computed the same way for both gateways; the server re-validates
+    // authoritatively (never trusts these). One of customAmount | childCount.
+    let amountPart: Record<string, unknown>;
     if (useCustom) {
       const n = Number(customAmount);
       if (!Number.isFinite(n) || n < customFloor) {
         setError(`Please enter at least ${currencySymbol}${customFloor}.`);
         return;
       }
-      payload = { ...payload, customAmount: Math.round(n) };
+      amountPart = { customAmount: Math.round(n) };
     } else {
-      payload = { ...payload, childCount: count };
+      amountPart = { childCount: count };
     }
 
+    // ── SSLCommerz (bKash/Nagad/local card, BDT) ──────────────────────
+    if (gateway === "sslcommerz") {
+      const em = email.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+        setError("Please enter a valid email for your receipt.");
+        return;
+      }
+      setPending(true);
+      try {
+        const res = await fetch("/api/donate/sslcommerz/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            packageId: cause.packageId,
+            cause: cause.enum,
+            cusEmail: em,
+            ...amountPart,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          url?: string;
+          error?: string;
+        };
+        if (!res.ok || !data.url) {
+          setError(
+            data.error ?? "Could not start the donation. Please try again.",
+          );
+          setPending(false);
+          return;
+        }
+        // Hand off to the SSLCommerz hosted payment page.
+        window.location.href = data.url;
+      } catch {
+        setError("Network error. Please try again.");
+        setPending(false);
+      }
+      return;
+    }
+
+    // ── Stripe hosted Checkout (international card) — UNCHANGED path ───
+    const payload: Record<string, unknown> = {
+      packageId: cause.packageId,
+      currencyCode,
+      // Fix 1 — the curated cause drives the Stripe line-item label
+      // (server-validated; the charge is still keyed by packageId).
+      cause: cause.enum,
+      ...amountPart,
+    };
     setPending(true);
     try {
       const res = await fetch("/api/donate/guest-init", {
@@ -223,6 +276,72 @@ export function QuickDonateClient({
         )}
       </section>
 
+      {/* ── Step 3: how to pay (gateway choice) ─────────────────────── */}
+      <section>
+        <h2 className="font-mono text-[11px] tracking-[0.14em] uppercase text-slate font-medium mb-3">
+          3 · How to pay
+        </h2>
+        <div className="grid grid-cols-2 gap-3 max-md:grid-cols-1">
+          <button
+            type="button"
+            onClick={() => setGateway("sslcommerz")}
+            disabled={pending}
+            aria-pressed={gateway === "sslcommerz"}
+            className={`text-left rounded-2xl border p-4 transition-all ${
+              gateway === "sslcommerz"
+                ? "border-tangerine bg-white shadow-warm"
+                : "border-ink/[0.08] bg-white hover:border-ink/20"
+            }`}
+          >
+            <div className="font-display text-[16px] text-ink leading-tight">
+              bKash · Nagad · Card
+            </div>
+            <div className="mt-0.5 text-[12px] text-slate">
+              Pay in BDT (Bangladesh)
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setGateway("stripe")}
+            disabled={pending}
+            aria-pressed={gateway === "stripe"}
+            className={`text-left rounded-2xl border p-4 transition-all ${
+              gateway === "stripe"
+                ? "border-tangerine bg-white shadow-warm"
+                : "border-ink/[0.08] bg-white hover:border-ink/20"
+            }`}
+          >
+            <div className="font-display text-[16px] text-ink leading-tight">
+              International card
+            </div>
+            <div className="mt-0.5 text-[12px] text-slate">
+              Visa · Mastercard · Amex
+            </div>
+          </button>
+        </div>
+        {gateway === "sslcommerz" ? (
+          <div className="mt-3">
+            <label
+              htmlFor="ssl-email"
+              className="block text-[13px] text-slate mb-1.5"
+            >
+              Email for your receipt
+            </label>
+            <input
+              id="ssl-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={pending}
+              placeholder="you@example.com"
+              className="w-full max-w-[360px] rounded-xl border border-ink/[0.12] bg-white px-3 py-2 text-[15px] text-ink focus:outline-none focus:border-tangerine focus:ring-2 focus:ring-tangerine-soft"
+            />
+          </div>
+        ) : null}
+      </section>
+
       {error ? (
         <p className="text-[13.5px] text-danger" role="alert">
           {error}
@@ -244,8 +363,10 @@ export function QuickDonateClient({
           {pending ? "Taking you to checkout…" : "Donate"}
         </button>
         <p className="mt-3 text-[12.5px] text-slate-soft leading-[1.6] max-w-[440px]">
-          No account needed. You&rsquo;ll pay securely on Stripe, and your
-          receipt goes to the email you enter there.
+          No account needed.{" "}
+          {gateway === "sslcommerz"
+            ? "You’ll pay securely on SSLCommerz (bKash, Nagad, or card) in BDT, and your receipt goes to the email above."
+            : "You’ll pay securely on Stripe, and your receipt goes to the email you enter there."}
         </p>
       </div>
     </div>
