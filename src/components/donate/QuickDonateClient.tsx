@@ -14,7 +14,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Heart, Loader2, Minus, Plus } from "lucide-react";
 import type { DonateCause } from "@/lib/donate-module";
 
@@ -48,6 +48,7 @@ export function QuickDonateClient({
   // Email is required only for the SSLCommerz path (it needs cus_email + it's
   // the receipt address). Stripe collects the email on its hosted Checkout.
   const [email, setEmail] = useState("");
+  const emailRef = useRef<HTMLInputElement>(null);
 
   const cause = causes.find((c) => c.enum === causeEnum) ?? null;
   const presetTotal = cause ? cause.unitAmountBdt * count : 0;
@@ -77,7 +78,15 @@ export function QuickDonateClient({
     if (gateway === "sslcommerz") {
       const em = email.trim();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
-        setError("Please enter a valid email for your receipt.");
+        // SSLCommerz REQUIRES cus_email at session init (unlike Stripe, which
+        // collects it on its own hosted page), so we must have it before the
+        // redirect. Make the requirement unmissable — focus + scroll the field
+        // and say exactly what's needed — instead of a silent no-op.
+        setError(
+          "Add your email for the receipt, then tap “Pay with bKash · Nagad · card”.",
+        );
+        emailRef.current?.focus();
+        emailRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
         return;
       }
       setPending(true);
@@ -325,13 +334,16 @@ export function QuickDonateClient({
               htmlFor="ssl-email"
               className="block text-[13px] text-slate mb-1.5"
             >
-              Email for your receipt
+              Email for your receipt{" "}
+              <span className="text-tangerine-deeper">(required)</span>
             </label>
             <input
+              ref={emailRef}
               id="ssl-email"
               type="email"
               inputMode="email"
               autoComplete="email"
+              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={pending}
@@ -360,7 +372,11 @@ export function QuickDonateClient({
           ) : (
             <Heart className="h-4 w-4" aria-hidden="true" />
           )}
-          {pending ? "Taking you to checkout…" : "Donate"}
+          {pending
+            ? "Taking you to checkout…"
+            : gateway === "sslcommerz"
+              ? "Pay with bKash · Nagad · card"
+              : "Donate"}
         </button>
         <p className="mt-3 text-[12.5px] text-slate-soft leading-[1.6] max-w-[440px]">
           No account needed.{" "}
