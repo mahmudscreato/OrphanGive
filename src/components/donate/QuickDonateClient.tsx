@@ -302,11 +302,25 @@ export function QuickDonateClient({
                 : "border-ink/[0.08] bg-white hover:border-ink/20"
             }`}
           >
-            <div className="font-display text-[16px] text-ink leading-tight">
-              bKash · Nagad · Card
-            </div>
-            <div className="mt-0.5 text-[12px] text-slate">
-              Pay in BDT (Bangladesh)
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                  gateway === "sslcommerz" ? "border-tangerine" : "border-ink/25"
+                }`}
+              >
+                {gateway === "sslcommerz" ? (
+                  <span className="h-2 w-2 rounded-full bg-tangerine" />
+                ) : null}
+              </span>
+              <span>
+                <span className="block font-display text-[16px] text-ink leading-tight">
+                  bKash · Nagad · Card
+                </span>
+                <span className="mt-0.5 block text-[12px] text-slate">
+                  Pay in BDT (Bangladesh)
+                </span>
+              </span>
             </div>
           </button>
           <button
@@ -320,11 +334,25 @@ export function QuickDonateClient({
                 : "border-ink/[0.08] bg-white hover:border-ink/20"
             }`}
           >
-            <div className="font-display text-[16px] text-ink leading-tight">
-              International card
-            </div>
-            <div className="mt-0.5 text-[12px] text-slate">
-              Visa · Mastercard · Amex
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                  gateway === "stripe" ? "border-tangerine" : "border-ink/25"
+                }`}
+              >
+                {gateway === "stripe" ? (
+                  <span className="h-2 w-2 rounded-full bg-tangerine" />
+                ) : null}
+              </span>
+              <span>
+                <span className="block font-display text-[16px] text-ink leading-tight">
+                  International card
+                </span>
+                <span className="mt-0.5 block text-[12px] text-slate">
+                  Visa · Mastercard · Amex
+                </span>
+              </span>
             </div>
           </button>
         </div>
