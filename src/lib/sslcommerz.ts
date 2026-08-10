@@ -41,22 +41,39 @@ export function isSslcommerzConfigured(): boolean {
   );
 }
 
+// Sandbox uses the current gateway host `sandbox-gw.sslcommerz.com` (what the
+// merchant dashboard registers stores against). The legacy `sandbox.sslcommerz.com`
+// alias still resolves to the same backend today, but `sandbox-gw` is the
+// canonical host going forward. Live is `securepay.sslcommerz.com`.
 function hosts(sandbox: boolean) {
-  return sandbox
-    ? {
-        init: "https://sandbox.sslcommerz.com/gwprocess/v4/api.php",
-        validate:
-          "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php",
-      }
-    : {
-        init: "https://securepay.sslcommerz.com/gwprocess/v4/api.php",
-        validate:
-          "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php",
-      };
+  const host = sandbox ? "sandbox-gw.sslcommerz.com" : "securepay.sslcommerz.com";
+  return {
+    host,
+    init: `https://${host}/gwprocess/v4/api.php`,
+    validate: `https://${host}/validator/api/validationserverAPI.php`,
+  };
 }
 
 function md5(input: string): string {
   return createHash("md5").update(input).digest("hex");
+}
+
+// Diagnostic log for credential/session/validation failures. Surfaces the
+// RESOLVED HOST + the SANDBOX flag (and store_id) so the most common failure —
+// "Store Credential Error Or Store is De-active", which is almost always a
+// sandbox/live mismatch (e.g. SSLCOMMERZ_SANDBOX=false against a sandbox store)
+// — is diagnosable from server logs, not only from the browser. Never logs the
+// store password.
+function logSslFailure(
+  stage: string,
+  cfg: SslcommerzConfig,
+  host: string,
+  reason: string,
+): void {
+  console.error(
+    `[sslcommerz] ${stage} failed — host=${host} sandbox=${cfg.sandbox} ` +
+      `store_id=${cfg.storeId} reason="${reason}"`,
+  );
 }
 
 // ─── Session init ───────────────────────────────────────────────────────
@@ -87,7 +104,7 @@ export async function createSslcommerzSession(
   input: SessionInput,
 ): Promise<SessionResult> {
   const cfg = getSslcommerzConfig();
-  const { init } = hosts(cfg.sandbox);
+  const { init, host } = hosts(cfg.sandbox);
 
   // total_amount must be decimal(10,2) within 10.00–500000.00 BDT.
   const form = new URLSearchParams();
@@ -121,10 +138,9 @@ export async function createSslcommerzSession(
       body: form.toString(),
     });
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "SSLCommerz network error",
-    };
+    const reason = err instanceof Error ? err.message : "SSLCommerz network error";
+    logSslFailure("session init (network)", cfg, host, reason);
+    return { ok: false, error: reason };
   }
 
   let data: {
@@ -136,14 +152,14 @@ export async function createSslcommerzSession(
   try {
     data = (await res.json()) as typeof data;
   } catch {
+    logSslFailure("session init (non-JSON)", cfg, host, `HTTP ${res.status}`);
     return { ok: false, error: "SSLCommerz returned a non-JSON response." };
   }
 
   if (data.status !== "SUCCESS" || !data.GatewayPageURL) {
-    return {
-      ok: false,
-      error: data.failedreason || "SSLCommerz session init failed.",
-    };
+    const reason = data.failedreason || "SSLCommerz session init failed.";
+    logSslFailure("session init", cfg, host, reason);
+    return { ok: false, error: reason };
   }
   return {
     ok: true,
@@ -172,7 +188,7 @@ export async function validateSslcommerzTransaction(
   valId: string,
 ): Promise<ValidationResult> {
   const cfg = getSslcommerzConfig();
-  const { validate } = hosts(cfg.sandbox);
+  const { validate, host } = hosts(cfg.sandbox);
   const url = new URL(validate);
   url.searchParams.set("val_id", valId);
   url.searchParams.set("store_id", cfg.storeId);
@@ -183,16 +199,16 @@ export async function validateSslcommerzTransaction(
   try {
     res = await fetch(url.toString(), { method: "GET" });
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "SSLCommerz network error",
-    };
+    const reason = err instanceof Error ? err.message : "SSLCommerz network error";
+    logSslFailure("validation (network)", cfg, host, reason);
+    return { ok: false, error: reason };
   }
 
   let data: Record<string, unknown>;
   try {
     data = (await res.json()) as Record<string, unknown>;
   } catch {
+    logSslFailure("validation (non-JSON)", cfg, host, `HTTP ${res.status}`);
     return { ok: false, error: "Validation API returned non-JSON." };
   }
 
@@ -205,8 +221,16 @@ export async function validateSslcommerzTransaction(
         ? amountRaw
         : undefined;
 
+  const ok = status === "VALID" || status === "VALIDATED";
+  if (!ok) {
+    // Not a settlement-valid transaction. Could be a genuinely invalid/spoofed
+    // val_id (normal for the IPN security gate) OR a store-credential problem on
+    // the validator — the host + flag context disambiguates in the logs.
+    logSslFailure("validation", cfg, host, `status=${status ?? "unknown"}`);
+  }
+
   return {
-    ok: status === "VALID" || status === "VALIDATED",
+    ok,
     status,
     tranId: typeof data.tran_id === "string" ? data.tran_id : undefined,
     valId: typeof data.val_id === "string" ? data.val_id : undefined,
