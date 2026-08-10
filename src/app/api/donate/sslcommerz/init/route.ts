@@ -147,10 +147,19 @@ export async function POST(req: NextRequest) {
     }
     amountBdt = customBdt;
   } else {
+    // Package-based amount = unit price × count. childCount is the OPTIONAL
+    // multiplier: a pooled CAUSE donation (from /donate/quick, the strip) has
+    // no count → default to 1 (one unit = the base package amount). When it IS
+    // supplied (child-count picker), it must be a valid 1..MAX multiplier.
+    // (fix/sslcommerz-childcount-validation — previously required unconditionally,
+    // which rejected pooled cause donations that omit childCount.)
     const rawCount = body.childCount;
-    const count = typeof rawCount === "number" ? Math.round(rawCount) : NaN;
-    if (!Number.isInteger(count) || count < 1 || count > MAX_CHILD_COUNT) {
-      return bad(`childCount must be between 1 and ${MAX_CHILD_COUNT}.`);
+    let count = 1;
+    if (rawCount !== undefined && rawCount !== null) {
+      count = typeof rawCount === "number" ? Math.round(rawCount) : NaN;
+      if (!Number.isInteger(count) || count < 1 || count > MAX_CHILD_COUNT) {
+        return bad(`childCount must be between 1 and ${MAX_CHILD_COUNT}.`);
+      }
     }
     childCount = count;
     unitAmountBdt = pkg.amount_bdt;
